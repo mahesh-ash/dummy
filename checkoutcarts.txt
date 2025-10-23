@@ -687,4 +687,191 @@ $(function() {
 </script>
 </body>
 </html>
+
 ---------------------------------------------------------------------------------------------------------
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Secure Payment - Ecommerce</title>
+
+<!-- Tailwind for layout -->
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<style>
+body {
+  background-color: #f9fafb;
+  font-family: 'Inter', sans-serif;
+}
+.payment-card {
+  background-color: white;
+  border-radius: 16px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+  padding: 30px;
+  max-width: 450px;
+  margin: 40px auto;
+}
+.hidden { display: none; }
+.loader {
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #22c55e;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  animation: spin 1s linear infinite;
+  display: inline-block;
+  margin-right: 10px;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+</style>
+</head>
+
+<body>
+<div class="payment-card">
+  <h2 class="text-2xl font-semibold text-gray-800 mb-2 text-center">Secure Checkout</h2>
+  <p class="text-sm text-gray-500 text-center mb-6">Choose your payment method</p>
+
+  <!-- Payment Tabs -->
+  <div class="flex justify-around mb-4 border-b">
+    <button id="tabCard" class="py-2 px-4 font-medium text-green-600 border-b-2 border-green-600">Card</button>
+    <button id="tabUpi" class="py-2 px-4 font-medium text-gray-500 hover:text-green-600">UPI</button>
+  </div>
+
+  <!-- CARD FORM -->
+  <form id="cardForm">
+    <label class="block text-sm font-medium text-gray-700 mb-1">Cardholder Name</label>
+    <input id="cardName" class="w-full mb-3 p-2 border rounded" type="text" placeholder="e.g. Mahesh Kumar" required>
+
+    <label class="block text-sm font-medium text-gray-700 mb-1">Card Number</label>
+    <input id="cardNumber" class="w-full mb-3 p-2 border rounded" maxlength="19" placeholder="4242 4242 4242 4242" required>
+
+    <div class="grid grid-cols-3 gap-2 mb-3">
+      <input id="expMonth" class="p-2 border rounded" maxlength="2" placeholder="MM" required>
+      <input id="expYear" class="p-2 border rounded" maxlength="4" placeholder="YYYY" required>
+      <input id="cvv" class="p-2 border rounded" maxlength="3" placeholder="CVV" required>
+    </div>
+
+    <label class="flex items-center space-x-2 mb-4">
+      <input type="checkbox" id="saveCard" class="accent-green-600">
+      <span class="text-sm text-gray-600">Save this card for future</span>
+    </label>
+  </form>
+
+  <!-- UPI FORM -->
+  <form id="upiForm" class="hidden">
+    <label class="block text-sm font-medium text-gray-700 mb-1">UPI ID</label>
+    <input id="upiId" class="w-full mb-3 p-2 border rounded" placeholder="yourname@upi" required>
+
+    <div class="flex space-x-3 mt-2">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/3/3b/Google_Pay_Logo.svg" alt="GPay" class="h-6">
+      <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/PhonePe-Logo.svg" alt="PhonePe" class="h-6">
+      <img src="https://upload.wikimedia.org/wikipedia/en/2/2b/Paytm_logo.svg" alt="Paytm" class="h-6">
+    </div>
+  </form>
+
+  <!-- PAYMENT SUMMARY -->
+  <div class="mt-6 flex items-center justify-between border-t pt-3">
+    <div class="text-lg font-medium text-gray-800">Total Amount</div>
+    <div id="amountText" class="text-xl font-bold text-green-700">₹0.00</div>
+  </div>
+
+  <!-- Pay Button -->
+  <button id="payBtn" class="w-full mt-5 bg-green-600 hover:bg-green-700 text-white py-3 rounded font-medium">
+    Pay Now
+  </button>
+
+  <!-- Loader and message -->
+  <div id="loaderBox" class="hidden mt-4 text-center">
+    <div class="loader"></div> <span>Processing payment...</span>
+  </div>
+  <div id="msgBox" class="mt-4 text-center text-sm font-medium"></div>
+</div>
+
+<script>
+function getParameterByName(name) {
+ const regex = new RegExp('[?&]' + name + '=([^&#]*)');
+ const results = regex.exec(window.location.href);
+ return results ? decodeURIComponent(results[1]) : null;
+}
+
+$(document).ready(function(){
+ const amount = parseFloat(getParameterByName('amount')) || 0.00;
+ $('#amountText').text('₹ ' + amount.toFixed(2));
+
+ // Switch tabs
+ $('#tabCard').click(() => {
+   $('#tabCard').addClass('text-green-600 border-green-600').removeClass('text-gray-500');
+   $('#tabUpi').removeClass('text-green-600 border-green-600').addClass('text-gray-500');
+   $('#cardForm').removeClass('hidden');
+   $('#upiForm').addClass('hidden');
+ });
+
+ $('#tabUpi').click(() => {
+   $('#tabUpi').addClass('text-green-600 border-green-600').removeClass('text-gray-500');
+   $('#tabCard').removeClass('text-green-600 border-green-600').addClass('text-gray-500');
+   $('#upiForm').removeClass('hidden');
+   $('#cardForm').addClass('hidden');
+ });
+
+ // Pay button logic
+ $('#payBtn').click(function(e){
+   e.preventDefault();
+   const isCard = !$('#cardForm').hasClass('hidden');
+   let payload = { amount: amount };
+
+   if (isCard) {
+     const num = $('#cardNumber').val().replace(/\D/g, '');
+     if (num.length < 12) return showMsg("Invalid card number", false);
+     payload.method = 'card';
+     payload.cardHolder = $('#cardName').val().trim();
+     payload.cardLast4 = num.slice(-4);
+     payload.expMonth = $('#expMonth').val();
+     payload.expYear = $('#expYear').val();
+   } else {
+     const upi = $('#upiId').val().trim();
+     if (!upi.includes('@')) return showMsg("Enter valid UPI ID", false);
+     payload.method = 'upi';
+     payload.upiId = upi;
+   }
+
+   $('#loaderBox').removeClass('hidden');
+   $('#payBtn').prop('disabled', true);
+
+   $.ajax({
+     url: '/Ecommerce_Website/PaymentServlet',
+     type: 'POST',
+     contentType: 'application/json',
+     data: JSON.stringify(payload),
+     success: function(resp){
+       $('#loaderBox').addClass('hidden');
+       if(resp.status === 'ok'){
+         showMsg('✅ Payment Successful! Order ID: ' + resp.orderId, true);
+         setTimeout(()=>window.location.href='../Html/orderhistory.html', 1500);
+       } else {
+         showMsg('❌ ' + resp.message, false);
+       }
+     },
+     error: function(){
+       $('#loaderBox').addClass('hidden');
+       showMsg('⚠️ Server Error while processing payment', false);
+     },
+     complete: function(){
+       $('#payBtn').prop('disabled', false);
+     }
+   });
+ });
+
+ function showMsg(msg, success){
+   $('#msgBox').text(msg)
+     .removeClass('text-red-600 text-green-600')
+     .addClass(success ? 'text-green-600' : 'text-red-600');
+ }
+});
+</script>
+</body>
+</html>
+--------------------
+
+
