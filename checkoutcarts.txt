@@ -1,0 +1,690 @@
+package dao;
+
+import java.sql.SQLException;
+import java.util.List;
+
+import model.CartItem;
+
+public interface CartInterface {
+
+    void addToCart(int userId, int productId, int qty) throws SQLException;
+
+    void updateQuantity(int userId, int productId, int qty) throws SQLException;
+
+    void removeFromCart(int userId, int productId) throws SQLException;
+
+    List<CartItem> getCartItems(int userId) throws SQLException;
+
+    void clearCart(int userId) throws SQLException;
+
+    // NEW: remove multiple items at once (used after successful payment)
+    void removeItemsFromCart(int userId, List<Integer> productIds) throws SQLException;
+
+    // keep your reorder method signature if used elsewhere
+    void reorderItems(int userId, int orderId) throws SQLException;
+}
+-----------------------------------------------------------------------------------------------------------
+package dao;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Collections;
+
+import model.CartItem;
+import utils.DBUtils;
+
+public class CartDao implements CartInterface {
+
+    public CartDao() { }
+
+    @Override
+    public void addToCart(int userId, int productId, int qty) throws SQLException {
+        String select = "SELECT cart_id, quantity FROM Ecommerce_Website.D_D_CART WHERE user_id=? AND product_id=?";
+        String insert = "INSERT INTO Ecommerce_Website.D_D_CART (user_id, product_id, quantity, createdat, updatedat) VALUES (?,?,?,GETDATE(),GETDATE())";
+        String update = "UPDATE Ecommerce_Website.D_D_CART SET quantity = ?, updatedat = GETDATE() WHERE cart_id = ?";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(select)) {
+            ps.setInt(1, userId);
+            ps.setInt(2, productId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    int cartId = rs.getInt("cart_id");
+                    int existing = rs.getInt("quantity");
+                    try (PreparedStatement psu = conn.prepareStatement(update)) {
+                        psu.setInt(1, existing + qty);
+                        psu.setInt(2, cartId);
+                        psu.executeUpdate();
+                    }
+                    return;
+                }
+            }
+            try (PreparedStatement psi = conn.prepareStatement(insert)) {
+                psi.setInt(1, userId);
+                psi.setInt(2, productId);
+                psi.setInt(3, qty);
+                psi.executeUpdate();
+            }
+        }
+    }
+
+    @Override
+    public void updateQuantity(int userId, int productId, int qty) throws SQLException {
+        String update = "UPDATE Ecommerce_Website.D_D_CART SET quantity = ?, updatedat = GETDATE() WHERE user_id=? AND product_id=?";
+        try (Connection conn = DBUtils.getConnection(); PreparedStatement ps = conn.prepareStatement(update)) {
+            ps.setInt(1, qty);
+            ps.setInt(2, userId);
+            ps.setInt(3, productId);
+            ps.executeUpdate();
+        }
+    }
+
+    @Override
+    public void removeFromCart(int userId, int productId) throws SQLException {
+        String del = "DELETE FROM Ecommerce_Website.D_D_CART WHERE user_id=? AND product_id=?";
+        try (Connection conn = DBUtils.getConnection(); PreparedStatement ps = conn.prepareStatement(del)) {
+            ps.setInt(1, userId);
+            ps.setInt(2, productId);
+            ps.executeUpdate();
+        }
+    }
+
+    @Override
+    public List<CartItem> getCartItems(int userId) throws SQLException {
+        List<CartItem> list = new ArrayList<>();
+        String sql = "SELECT c.product_id, c.quantity, p.product_name, p.price, p.image " +
+                     "FROM Ecommerce_Website.D_D_CART c LEFT JOIN Ecommerce_Website.M_S_DATAS p ON c.product_id = p.product_id " +
+                     "WHERE c.user_id = ?";
+        try (Connection conn = DBUtils.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    int pid = rs.getInt("product_id");
+                    int qty = rs.getInt("quantity");
+                    String name = rs.getString("product_name");
+                    double price = rs.getDouble("price");
+                    String image = rs.getString("image");
+                    list.add(new CartItem(pid, name, price, image, qty));
+                }
+            }
+        }
+        return list;
+    }
+
+    @Override
+    public void clearCart(int userId) throws SQLException {
+        String del = "DELETE FROM Ecommerce_Website.D_D_CART WHERE user_id=?";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(del)) {
+            ps.setInt(1, userId);
+            ps.executeUpdate();
+        }
+    }
+
+    @Override
+    public void removeItemsFromCart(int userId, List<Integer> productIds) throws SQLException {
+        if (productIds == null || productIds.isEmpty()) return;
+
+        // Build placeholders for IN clause
+        String placeholders = String.join(",", Collections.nCopies(productIds.size(), "?"));
+        String sql = "DELETE FROM Ecommerce_Website.D_D_CART WHERE user_id = ? AND product_id IN (" + placeholders + ")";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            int idx = 2;
+            for (Integer pid : productIds) {
+                ps.setInt(idx++, pid);
+            }
+            ps.executeUpdate();
+        }
+    }
+
+    @Override
+    public void reorderItems(int userId, int orderId) throws SQLException {
+        String itemsSql = "SELECT product_id, quantity FROM Ecommerce_Website.D_D_ORDERLOGS WHERE order_id = ?";
+        String addToCartSql = "MERGE INTO Ecommerce_Website.D_D_CART AS target " +
+                "USING (VALUES (?, ?, ?)) AS source (user_id, product_id, quantity) " +
+                "ON target.user_id = source.user_id AND target.product_id = source.product_id " +
+                "WHEN MATCHED THEN UPDATE SET target.quantity = target.quantity + source.quantity " +
+                "WHEN NOT MATCHED THEN INSERT (user_id, product_id, quantity) VALUES (source.user_id, source.product_id, source.quantity);";
+
+        try (Connection conn = DBUtils.getConnection()) {
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement itemsPs = conn.prepareStatement(itemsSql);
+                 PreparedStatement addToCartPs = conn.prepareStatement(addToCartSql)) {
+
+                itemsPs.setInt(1, orderId);
+
+                try (ResultSet rs = itemsPs.executeQuery()) {
+                    while (rs.next()) {
+                        int productId = rs.getInt("product_id");
+                        int quantity = rs.getInt("quantity");
+
+                        addToCartPs.setInt(1, userId);
+                        addToCartPs.setInt(2, productId);
+                        addToCartPs.setInt(3, quantity);
+                        addToCartPs.executeUpdate();
+                    }
+                }
+            }
+            conn.commit();
+        } catch (SQLException e) {
+            throw e;
+        }
+    }
+}
+------------------------------------------------------------------------------------------------
+package servlets;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import model.CartItem;
+import model.Paymentrequest;
+import dao.CartDao;
+import utils.DBUtils;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
+
+@WebServlet("/PaymentServlet")
+public class PaymentServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private final Gson gson = new Gson();
+    private final CartDao cartDao = new CartDao();
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
+        System.out.println("PaymentServlet initiated.");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        JsonObject out = new JsonObject();
+
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            sendError(response, out, "Not logged in", HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        // Retrieve the User object directly from the session (your session stores it)
+        Object userObj = session.getAttribute("user");
+        if (userObj == null) {
+            sendError(response, out, "User not logged in or session expired", HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        int userId;
+        try {
+            // your User has method getId()
+            userId = ((model.User) userObj).getId();
+        } catch (Exception ex) {
+            sendError(response, out, "Invalid user in session", HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        // Parse raw JSON body
+        JsonObject jObj;
+        try (BufferedReader br = request.getReader()) {
+            JsonElement je = com.google.gson.JsonParser.parseReader(br);
+            if (je == null || !je.isJsonObject()) {
+                sendError(response, out, "Invalid payload", HttpServletResponse.SC_BAD_REQUEST);
+                return;
+            }
+            jObj = je.getAsJsonObject();
+        } catch (Exception e) {
+            sendError(response, out, "Invalid JSON payload", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        // amount
+        double amount = 0.0;
+        if (jObj.has("amount")) {
+            try { amount = jObj.get("amount").getAsDouble(); } catch (Exception ex) { amount = 0.0; }
+        }
+
+        // extract productIds if provided
+        List<Integer> productIds = new ArrayList<>();
+        if (jObj.has("productIds") && jObj.get("productIds").isJsonArray()) {
+            for (JsonElement e : jObj.getAsJsonArray("productIds")) {
+                try { productIds.add(e.getAsInt()); } catch (Exception ex) { /* ignore */ }
+            }
+        }
+
+        // extract items payload (preferred)
+        List<CartItem> purchasedItems = new ArrayList<>();
+        if (jObj.has("items") && jObj.get("items").isJsonArray()) {
+            for (JsonElement e : jObj.getAsJsonArray("items")) {
+                try {
+                    JsonObject o = e.getAsJsonObject();
+                    int pid = o.has("productId") ? o.get("productId").getAsInt() : 0;
+                    String name = o.has("name") ? o.get("name").getAsString() : null;
+                    double price = o.has("price") ? o.get("price").getAsDouble() : 0.0;
+                    int qty = o.has("qty") ? o.get("qty").getAsInt() : 0;
+                    String image = o.has("image") ? o.get("image").getAsString() : null;
+                    purchasedItems.add(new CartItem(pid, name, price, image, qty));
+                } catch (Exception ex) {
+                    // ignore malformed item
+                }
+            }
+        }
+
+        // If items not supplied, but productIds are, fetch cart items and filter
+        if (purchasedItems.isEmpty() && !productIds.isEmpty()) {
+            try {
+                List<CartItem> all = cartDao.getCartItems(userId);
+                for (CartItem ci : all) {
+                    if (productIds.contains(ci.getProductId())) purchasedItems.add(ci);
+                }
+            } catch (SQLException e) {
+                sendError(response, out, "DB error fetching cart items: " + e.getMessage(), HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                return;
+            }
+        }
+
+        // If still empty -> error
+        if (purchasedItems.isEmpty()) {
+            sendError(response, out, "No purchased items found in payload or cart", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        // Begin DB transaction: create order, orderlogs for purchasedItems, remove those items from cart
+        Connection conn = null;
+        try {
+            conn = DBUtils.getConnection();
+            conn.setAutoCommit(false);
+
+            // 1) create order
+            int orderId = createOrder(conn, userId, amount);
+
+            // 2) insert order logs
+            String insertOrderLogSql = "INSERT INTO Ecommerce_Website.D_D_ORDERLOGS (order_id, product_id, quantity, price, total) VALUES (?, ?, ?, ?, ?)";
+            try (PreparedStatement ps = conn.prepareStatement(insertOrderLogSql)) {
+                for (CartItem ci : purchasedItems) {
+                    double lineTotal = ci.getQty() * ci.getPrice();
+                    ps.setInt(1, orderId);
+                    ps.setInt(2, ci.getProductId());
+                    ps.setInt(3, ci.getQty());
+                    ps.setDouble(4, ci.getPrice());
+                    ps.setDouble(5, lineTotal);
+                    ps.addBatch();
+                }
+                ps.executeBatch();
+            }
+
+            // 3) remove only purchased items from cart
+            List<Integer> idsToRemove = new ArrayList<>();
+            for (CartItem ci : purchasedItems) idsToRemove.add(ci.getProductId());
+            cartDao.removeItemsFromCart(userId, idsToRemove);
+
+            conn.commit();
+
+            out.addProperty("status", "ok");
+            out.addProperty("orderId", orderId);
+            out.addProperty("message", "Payment simulated and order placed.");
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.getWriter().write(out.toString());
+        } catch (SQLException e) {
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ex) { log("Rollback failed", ex); }
+            }
+            sendError(response, out, "Payment failed: " + e.getMessage(), HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        } finally {
+            if (conn != null) {
+                try { conn.close(); } catch (SQLException ex) { log("Connection close failed", ex); }
+            }
+        }
+    }
+
+    private void sendError(HttpServletResponse response, JsonObject jsonObject, String message, int statusCode) throws IOException {
+        jsonObject.addProperty("status", "error");
+        jsonObject.addProperty("message", message);
+        response.setStatus(statusCode);
+        response.getWriter().write(jsonObject.toString());
+    }
+
+    // reuse your existing helper to insert order and return id
+    private int createOrder(Connection conn, int userId, double totalAmount) throws SQLException {
+        String insertOrderSql = "INSERT INTO Ecommerce_Website.D_D_ORDER (user_id, total_amount, orderdate, status) VALUES (?, ?, GETDATE(), ?)";
+        try (PreparedStatement ps = conn.prepareStatement(insertOrderSql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, userId);
+            ps.setDouble(2, totalAmount);
+            ps.setString(3, "Paid");
+            int affected = ps.executeUpdate();
+            if (affected == 0) throw new SQLException("Creating order failed, no rows affected.");
+
+            try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    return generatedKeys.getInt(1);
+                } else {
+                    throw new SQLException("Creating order failed, no ID obtained.");
+                }
+            }
+        }
+    }
+}
+-------------------------------------------------------------------------------------------------------------------------------
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cart</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    .cart-check { width:18px; height:18px; position:relative; z-index:9999; cursor:pointer; pointer-events:auto; }
+    .cart-row { cursor: pointer; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <nav class="bg-green-600 text-white fixed w-full top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
+      <div class="text-2xl font-semibold">Shopping Center</div>
+      <div>
+        <button id="cart-badge" class="bg-red-500 text-white px-3 py-1 rounded">Cart</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-4xl mx-auto mt-20">
+    <h1 class="text-2xl font-bold mb-4">Your Cart</h1>
+    <div id="cart-container" class="bg-white p-4 rounded shadow">
+      <p class="text-gray-500">Loading cart...</p>
+    </div>
+    <div class="mt-4 text-right">
+      <button id="checkout-btn" class="bg-green-600 text-white px-4 py-2 rounded-md">Checkout</button>
+    </div>
+  </div>
+
+<script>
+function renderCart(items) {
+  if (!items || items.length === 0) {
+    $('#cart-container').html('<p class="text-gray-500">Your cart is empty.</p>');
+    $('#cart-badge').text('0');
+    return;
+  }
+
+  let html = '<table class="w-full">';
+  html += '<thead><tr><th></th><th>Product</th><th>Price</th><th>Qty</th><th>Total</th><th></th></tr></thead>';
+  html += '<tbody>';
+  let grand = 0;
+  let totalItems = 0;
+
+  items.forEach(it => {
+    const total = (it.price * it.qty);
+    grand += total;
+    totalItems += it.qty;
+    html += `<tr class="border-b cart-row" data-id="${it.productId}">
+      <td class="p-2 text-center"><input type="checkbox" class="cart-check" data-id="${it.productId}" ${it.checked ? 'checked' : ''}></td>
+      <td class="p-2 flex items-center"><img src="${it.image}" style="width:60px;height:60px;object-fit:cover" class="mr-3">${it.name}</td>
+      <td class="p-2">₹${it.price}</td>
+      <td class="p-2">
+        <button class="qty-decr bg-gray-200 px-2" data-id="${it.productId}">-</button>
+        <span class="mx-2 qty-val" data-id="${it.productId}">${it.qty}</span>
+        <button class="qty-incr bg-gray-200 px-2" data-id="${it.productId}">+</button>
+      </td>
+      <td class="p-2">₹${total}</td>
+      <td class="p-2"><button class="remove bg-red-500 text-white px-3 py-1 rounded" data-id="${it.productId}">Remove</button></td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  html += `<div class="mt-4 text-right font-bold">Grand Total: ₹${grand}</div>`;
+  $('#cart-container').html(html);
+  $('#cart-badge').text(totalItems);
+}
+
+function loadCart() {
+  $.getJSON("/Ecommerce_Website/CartServlet", function(data) {
+    const urlparams = new URLSearchParams(window.location.search);
+    const buynowId = urlparams.get("buyNowId");
+
+    if (buynowId) {
+      const buynowIdInt = parseInt(buynowId, 10);
+      data.forEach(it -> { /* not supported in JS; ignore */ });
+    }
+
+    renderCart(data);
+  }).fail(function(){ $('#cart-container').html('<p class="text-red-500">Failed to load cart.</p>'); });
+}
+
+$(document).ready(function () {
+  loadCart();
+
+  $(document).on('click', '.qty-incr', function () {
+    const id = $(this).data('id');
+    const span = $('.qty-val[data-id="' + id + '"]');
+    let val = parseInt(span.text());
+    val++;
+    $.post('/Ecommerce_Website/CartServlet', { action: 'update', productId: id, qty: val }, function(data) { renderCart(data); }, 'json');
+  });
+
+  $(document).on('click', '.qty-decr', function () {
+    const id = $(this).data('id');
+    const span = $('.qty-val[data-id="' + id + '"]');
+    let val = parseInt(span.text());
+    val = Math.max(0, val - 1);
+    $.post('/Ecommerce_Website/CartServlet', { action: 'update', productId: id, qty: val }, function(data) { renderCart(data); }, 'json');
+  });
+
+  $(document).on('click', '.remove', function () {
+    const id = $(this).data('id');
+    $.post('/Ecommerce_Website/CartServlet', { action: 'remove', productId: id }, function(data) { renderCart(data); }, 'json');
+  });
+
+  $(document).on('change', '.cart-check', function (e) {
+    e.stopPropagation();
+    // optional: inform server of selection
+    const id = $(this).data('id');
+    const checked = $(this).is(':checked');
+    $.post('/Ecommerce_Website/CartServlet', { action: 'toggle', productId: id, checked: checked });
+  });
+
+  $(document).on('click', '.cart-row', function (e) {
+    if ($(e.target).is('input') || $(e.target).is('button') || $(e.target).closest('button').length) return;
+    const cb = $(this).find('.cart-check');
+    cb.prop('checked', !cb.prop('checked'));
+    cb.trigger('change');
+  });
+
+  // --- CHECKOUT: save selected items and redirect to payment page ---
+  $('#checkout-btn').click(function () {
+    const checked = $('.cart-check:checked');
+    if (checked.length === 0) {
+      alert('Please select at least one item to checkout.');
+      return;
+    }
+
+    const selectedItems = [];
+    let grandTotal = 0;
+
+    checked.each(function() {
+      const row = $(this).closest('.cart-row');
+      const id = parseInt(row.data('id'), 10);
+      const name = row.find('td:nth-child(2)').text().trim();
+      const price = parseFloat(row.find('td:nth-child(3)').text().replace('₹','').trim());
+      const qty = parseInt(row.find('.qty-val').text(), 10);
+      const total = parseFloat(row.find('td:nth-child(5)').text().replace('₹','').trim());
+      selectedItems.push({ productId: id, name: name, price: price, qty: qty, total: total });
+      grandTotal += total;
+    });
+
+    localStorage.setItem('checkoutItems', JSON.stringify(selectedItems));
+    window.location.href = '../Html/payment.html?amount=' + grandTotal.toFixed(2);
+  });
+});
+</script>
+</body>
+</html>
+--------------------------------------------------------------------------------------------------------------
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Payment</title>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<style>
+ .panel { background:#fdeed6; border-radius:12px; border:3px solid #1f2937; padding:24px; max-width:760px; margin:20px auto; }
+ .hidden { display: none; }
+</style>
+</head>
+<body class="bg-green-50 min-h-screen">
+
+<div class="container mx-auto">
+ <div class="panel">
+  <div class="text-center">
+   <h1 class="text-4xl font-bold text-green-700 mt-4">Payment</h1>
+  </div>
+
+  <div class="mt-6 mb-4">
+   <h2 class="text-xl font-semibold mb-2">Select Payment Method</h2>
+   <div class="flex gap-6">
+    <label><input type="radio" name="paymentType" value="card" checked> Credit / Debit Card</label>
+    <label><input type="radio" name="paymentType" value="upi"> UPI</label>
+   </div>
+  </div>
+
+  <form id="cardForm" class="mt-4">
+   <div class="mb-4">
+    <label class="font-semibold">Name of Card Holder</label>
+    <input id="cardName" name="cardName" type="text" class="w-full mt-2 p-3 border rounded" placeholder="Enter Card Holder Name" required>
+   </div>
+
+   <div class="mb-4">
+    <label class="font-semibold">Enter Credit Card Number</label>
+    <input id="cardNumber" name="cardNumber" type="text" pattern="[0-9\- ]{12,25}" class="w-full mt-2 p-3 border rounded" placeholder="4242-4242-4242-4242" required>
+   </div>
+
+   <div class="grid grid-cols-3 gap-4 mb-4">
+    <div><label class="font-semibold">Expiry Month</label><input id="expMonth" name="expMonth" type="text" class="w-full mt-2 p-3 border rounded" placeholder="MM" maxlength="2" required></div>
+    <div><label class="font-semibold">Expiry Year</label><input id="expYear" name="expYear" type="text" class="w-full mt-2 p-3 border rounded" placeholder="YYYY" maxlength="4" required></div>
+    <div><label class="font-semibold">Enter CVV</label><input id="cvv" name="cvv" type="password" class="w-full mt-2 p-3 border rounded" placeholder="123" maxlength="4" required></div>
+   </div>
+  </form>
+
+  <form id="upiForm" class="mt-4 hidden">
+   <div class="mb-4">
+    <label class="font-semibold">Enter UPI ID</label>
+    <input id="upiId" name="upiId" type="text" class="w-full mt-2 p-3 border rounded" placeholder="yourname@upi" required>
+   </div>
+   <p class="text-sm text-gray-600">Example: mahesh@okicici, user@paytm</p>
+  </form>
+
+  <div id="selectedItems" class="mt-4"></div>
+
+  <div class="flex items-center justify-between mt-8">
+   <div class="text-lg font-semibold">Amount: <span id="amountText">Rs 0.00</span></div>
+   <button id="payBtn" class="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700">Pay Now</button>
+  </div>
+
+  <div id="msgBox" class="mt-4 text-center font-semibold"></div>
+ </div>
+</div>
+
+<script>
+function getParameterByName(name) {
+ name = name.replace(/[[]]/g, "\\$&");
+ const regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)");
+ const results = regex.exec(window.location.search);
+ if (!results) return null;
+ if (!results[2]) return '';
+ return decodeURIComponent(results[2].replace(/\+/g, " "));
+}
+
+$(function() {
+ const amount = parseFloat(getParameterByName('amount')) || 0.00;
+ $('#amountText').text('Rs ' + amount.toFixed(2));
+
+ // Read selected items saved by cart page
+ const items = JSON.parse(localStorage.getItem('checkoutItems') || '[]');
+ if (items.length === 0) {
+   $('#selectedItems').html('<p class="text-gray-600">No items selected. Go back to cart.</p>');
+   $('#payBtn').prop('disabled', true);
+ } else {
+   let html = '<ul class="bg-white p-3 rounded shadow">';
+   items.forEach(it => {
+     html += `<li class="py-2 border-b">${it.name} — ${it.qty} × ₹${it.price} = ₹${it.total}</li>`;
+   });
+   html += '</ul>';
+   html += `<div class="mt-3 font-bold">Total: ₹${items.reduce((s,i)=>s+i.total,0).toFixed(2)}</div>`;
+   $('#selectedItems').html(html);
+ }
+
+ $('input[name="paymentType"]').on('change', function() {
+  if (this.value === 'card') {
+   $('#cardForm').removeClass('hidden');
+   $('#upiForm').addClass('hidden');
+  } else {
+   $('#upiForm').removeClass('hidden');
+   $('#cardForm').addClass('hidden');
+  }
+ });
+
+ $('#payBtn').on('click', function(e) {
+  e.preventDefault();
+  const paymentType = $('input[name="paymentType"]:checked').val();
+  let payload = { amount: amount };
+
+  // include items & productIds in payload (server expects these)
+  payload.items = items;
+  payload.productIds = items.map(i => i.productId);
+
+  if (paymentType === 'card') {
+   const cardNum = $('#cardNumber').val().replace(/\D/g, '');
+   if (cardNum.length < 12) { showMsg("Invalid card number", false); return; }
+
+   payload.method = 'card';
+   payload.cardHolder = $('#cardName').val().trim();
+   payload.cardLast4 = cardNum.slice(-4);
+   payload.expMonth = $('#expMonth').val().trim();
+   payload.expYear = $('#expYear').val().trim();
+  } else {
+   const upiId = $('#upiId').val().trim();
+   if (!upiId.includes('@')) { showMsg("Invalid UPI ID format", false); return; }
+   payload.method = 'upi';
+   payload.upiId = upiId;
+  }
+
+  if (!confirm('Proceed to pay Rs ' + amount.toFixed(2) + '?')) return;
+
+  $.ajax({
+    url: '/Ecommerce_Website/PaymentServlet',
+    type: 'POST',
+    dataType: 'json',
+    contentType: 'application/json; charset=utf-8',
+    data: JSON.stringify(payload)
+  }).done(function(resp) {
+    if (resp && resp.status === 'ok') {
+      showMsg(' Payment successful. Order id: ' + resp.orderId, true);
+      // clear local checkout items, server removed purchased items from cart
+      localStorage.removeItem('checkoutItems');
+      setTimeout(() => window.location.href = '../Html/orderhistory.html', 1200);
+    } else {
+      showMsg(' Payment failed: ' + (resp.message || 'Unknown error'), false);
+    }
+  }).fail(function() {
+    showMsg('Server error while processing payment.', false);
+  });
+ });
+
+ function showMsg(msg, success) {
+  $('#msgBox').text(msg).removeClass('text-red-600 text-green-600')
+   .addClass(success ? 'text-green-600' : 'text-red-600');
+ }
+});
+</script>
+</body>
+</html>
+---------------------------------------------------------------------------------------------------------
