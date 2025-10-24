@@ -1,777 +1,40 @@
+use SQLTraining;
+
+GO
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'Ecommerce_Website')
+BEGIN
+    EXEC('CREATE SCHEMA Ecommerce_Website');
+END;
+GO
+
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'M_S_USER' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.M_S_USER (
+    user_id INT IDENTITY(1,1) PRIMARY KEY,
+    fullname VARCHAR(28) NOT NULL,
+    email VARCHAR(28) UNIQUE NOT NULL,
+	phone varchar(20) NOT NULL,
+    password VARCHAR(255) NOT NULL,
+	address varchar(255) NOT NULL,
+	pincode int not null,
+    is_active bit default 1,
+    createdat DATETIME DEFAULT GETDATE(),
+	updatedat DATETIME DEFAULT GETDATE(),
+);
+END;
+go
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Admin Dashboard</title>
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-  <style>
-    body { font-family: 'Inter', sans-serif; }
-    .sidebar { min-height: 100vh; }
-    .sidebar-btn { display:block; width:100%; text-align:left; padding:10px 16px; border-radius:8px; }
-    .sidebar-btn:hover, .active-btn { background-color:#16a34a; color:white; }
-  </style>
-</head>
-
-<body class="bg-gray-100">
-
-
-  <nav class="bg-green-600 text-white shadow-md fixed w-full top-0 z-50">
-    <div class="flex justify-between items-center px-6 h-14">
-      <h1 class="text-2xl font-semibold">E-Commerce Admin Panel</h1>
-      <div class="flex items-center space-x-4">
-        <span id="adminName" class="text-white font-medium">Admin Mahesh</span>
-        <button id="logoutBtn" class="bg-red-500 px-3 py-1 rounded hover:bg-red-600">Logout</button>
-      </div>
-    </div>
-  </nav>
-
-
-  <div class="flex pt-14">
-    
-
-    <aside class="sidebar bg-white w-64 border-r shadow-md">
-      <div class="p-4 border-b">
-        <h2 class="text-lg font-bold text-green-700">Dashboard Menu</h2>
-      </div>
-      <nav class="mt-2">
-        <button class="sidebar-btn active-btn" id="admin-profile"> Admin Profile</button>
-        <button class="sidebar-btn" id="view-products"> View Products</button>
-        <button class="sidebar-btn" id="user-details"> User Details</button>
-        <button class="sidebar-btn" id="logout-side"> Logout</button>
-      </nav>
-    </aside>
-
-    <main id="content-area" class="flex-1 p-8">
-      <h2 class="text-2xl font-bold text-green-700 mb-4">Welcome to Admin Dashboard</h2>
-      <p class="text-gray-600">Select an option from the left to manage your e-commerce system.</p>
-    </main>
-  </div>
-
-  <script>
-    function loadContent(title, html) {
-      $('#content-area').html('<h2 class="text-2xl font-bold text-green-700 mb-4">' + title + '</h2>' + html);
-    }
-
-    $('.sidebar-btn').click(function() {
-      $('.sidebar-btn').removeClass('active-btn');
-      $(this).addClass('active-btn');
-    });
-
-    $('#admin-profile').click(function(){
-      window.location.href='../Html/profile.html';
-    });
-
- $('#view-products').click(function(){
-    loadContent('Products', '<p>Loading products...</p>');
-    $.ajax({
-        url: 'http://localhost:8080/Ecommerce_Website/ProductServlet', 
-        method: 'GET',
-        dataType: 'json',
-        success: function(products) {
-            renderProductsTable(products);
-        },
-        error: function(jqXHR, textStatus, errorThrown) {
-            loadContent('Products', '<p class="text-red-500">Failed to load products: ' + textStatus + '</p>');
-            console.error("AJAX Error: ", textStatus, errorThrown);
-        }
-    });
-});
-
-function renderProductsTable(products) {
-    let tableHtml = `
-        <table class="min-w-full bg-white rounded shadow-md">
-            <thead class="bg-green-100">
-                <tr><th class="p-3 text-left">Product</th><th class="p-3">Price</th><th class="p-3">Stock</th><th class="p-3">Action</th></tr>
-            </thead>
-            <tbody>`;
-    
-    if (products.length === 0) {
-        tableHtml += `<tr class="border-t"><td class="p-3 text-center" colspan="4">No products found.</td></tr>`;
-    } else {
-        products.forEach(product => {
-            tableHtml += `
-                <tr class="border-t">
-                    <td class="p-3">${product.productName}</td>
-                    <td class="p-3">₹${product.price}</td>
-                    <td class="p-3">${product.stock}</td>
-                    <td class="p-3"><button class="bg-red-500 text-white px-3 py-1 rounded" onclick="deleteProduct(${product.productId})">Delete</button></td>
-                </tr>`;
-        });
-    }
-
-    tableHtml += `</tbody></table>`;
-    $('#content-area').html('<h2 class="text-2xl font-bold text-green-700 mb-4">Products</h2>' + tableHtml);
-}
-
-function deleteProduct(productId) {
-    alert(`Deleting product with ID: ${productId}`);
-}
-
-
-    $('#user-details').click(function(){
-      loadContent('User Details', `
-        <table class="min-w-full bg-white rounded shadow-md">
-          <thead class="bg-green-100">
-            <tr><th class="p-3 text-left">Name</th><th class="p-3">Email</th><th class="p-3">Status</th><th class="p-3">Action</th></tr>
-          </thead>
-          <tbody>
-            <tr class="border-t"><td class="p-3">Mahesh Kumar</td><td>mahesh@example.com</td><td>Active</td><td><button class="bg-red-500 text-white px-3 py-1 rounded">Delete</button></td></tr>
-            <tr class="border-t"><td class="p-3">Priya Devi</td><td>priya@example.com</td><td>Inactive</td><td><button class="bg-green-500 text-white px-3 py-1 rounded">Activate</button></td></tr>
-          </tbody>
-        </table>`);
-    });
-
-    $('#logoutBtn, #logout-side').click(function(){
-      if(confirm('Are you sure you want to logout?')){
-        window.location.href = '../Html/admin_login.html';
-      }
-    });
-  </script>
-
-</body>
-</html>
-<!DOCTYPE html>
-<html lang="en">
-<head>
- <meta charset="UTF-8">
- <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
- <title>User Profile</title>
- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
- <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-<style>
- .disabled-input {
- background-color: #f3f4f6;
- cursor: not-allowed;
-}
-#profile-photo {
- width: 120px;
-height: 120px;
- border-radius: 50%;
-object-fit: cover;
- margin: 0 auto;
- display: block;
-border: 2px solid #ddd;
- }
- </style>
-</head>
-
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
- <div class="bg-white p-8 rounded-lg shadow-md w-full max-w-lg">
- <h1 class="text-3xl font-bold mb-6 text-center text-gray-800">User Profile</h1>
-
- <div class="text-center mb-4">
- <img id="profile-photo" src="https://via.placeholder.com/120" alt="Profile Photo">
- <input type="file" id="photo-upload" accept="image/*" class="mt-2 hidden">
- <button id="change-photo-btn" class="mt-2 bg-indigo-500 hover:bg-indigo-700 text-white font-bold py-1 px-3 rounded text-sm">Change Photo</button>
- </div>
-
- <form id="profile-form">
-<div class="mb-4">
-<label class="block text-gray-700 text-sm font-bold mb-2" for="fullname">Full Name</label>
- <input class="shadow border rounded w-full py-2 px-3 text-gray-700 disabled-input" id="fullname" name="fullname" type="text" readonly>
- </div>
-
- <div class="mb-4">
-<label class="block text-gray-700 text-sm font-bold mb-2" for="email">Email</label>
-<input class="shadow border rounded w-full py-2 px-3 text-gray-700 disabled-input" id="email" name="email" type="email" readonly>
- </div>
-
-<div class="mb-4">
-<label class="block text-gray-700 text-sm font-bold mb-2" for="phone">Phone</label>
-<input class="shadow border rounded w-full py-2 px-3 text-gray-700" id="phone" name="phone" type="text" disabled>
-</div>
-
- <div class="mb-4">
-<label class="block text-gray-700 text-sm font-bold mb-2" for="address">Address</label>
- <textarea class="shadow border rounded w-full py-2 px-3 text-gray-700" id="address" name="address" rows="3" disabled></textarea>
- </div>
-
-<div class="mb-6">
- <label class="block text-gray-700 text-sm font-bold mb-2" for="pincode">Pincode</label>
-<input class="shadow border rounded w-full py-2 px-3 text-gray-700" id="pincode" name="pincode" type="text" disabled>
- </div>
-
-<div class="flex items-center justify-between">
- <button id="edit-btn" type="button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit Profile</button>
- <button id="save-btn" type="submit" class="hidden bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Save</button>
- <button id="cancel-btn" type="button" class="hidden bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Cancel</button>
-</div>
-</form>
-
- <div id="change-password-section" class="hidden mt-6 border-t pt-4">
-<h2 class="text-xl font-semibold mb-4 text-gray-700">Change Password</h2>
-<form id="password-form">
- <div class="mb-3">
-<label class="block text-gray-700 text-sm font-bold mb-2">New Password</label>
- <input type="password" id="new-password" class="w-full border rounded py-2 px-3 mb-2" placeholder="Enter new password">
- </div>
-
-<div class="mb-3">
- <label class="block text-gray-700 text-sm font-bold mb-2">Confirm Password</label>
-<input type="password" id="confirm-password" class="w-full border rounded py-2 px-3" placeholder="Confirm password">
- </div>
-
-<p id="password-error" class="text-red-500 text-sm mb-3 hidden">Passwords do not match!</p>
-
-<div class="flex justify-end space-x-2">
-<button id="update-password-btn" type="button" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Update Password</button>
- <button id="cancel-password-btn" type="button" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Cancel</button>
- </div>
- </form>
-</div>
-
-      <div class="mt-6 space-y-3">
-         <button id="change-password-btn" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded w-full">Change Password</button>
-         <button id="order-history-btn" class="bg-purple-500 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded w-full">View Order History</button>
-      </div>
-   </div>
-
-   <script>
-      let userData;
-
-      function fetchUserData() {
-         $.ajax({
-            url: 'http://localhost:8080/Ecommerce_Website/ProfileServlet',
-            type: 'GET',
-            dataType: 'json',
-            success: function (user) {
-               userData = user;
-               $('#fullname').val(user.name);
-               $('#email').val(user.email);
-               $('#phone').val(user.mobile);
-               $('#address').val(user.address);
-               $('#pincode').val(user.pinCode);
-            },
-            error: function () {
-               alert('Error fetching user data.');
-            }
-         });
-      }
-
-
-      $('#edit-btn').on('click', function () {
-         $('#profile-form input, #profile-form textarea').prop('disabled', false).removeClass('disabled-input');
-         $('#fullname, #email').prop('readonly', true).addClass('disabled-input');
-         $('#edit-btn').addClass('hidden');
-         $('#save-btn, #cancel-btn').removeClass('hidden');
-      });
-
-      $('#cancel-btn').on('click', function () {
-         $('#profile-form input, #profile-form textarea').prop('disabled', true).addClass('disabled-input');
-         $('#edit-btn').removeClass('hidden');
-         $('#save-btn, #cancel-btn').addClass('hidden');
-         $('#fullname').val(userData.name);
-         $('#phone').val(userData.mobile);
-         $('#address').val(userData.address);
-         $('#pincode').val(userData.pinCode);
-      });
-
-      $('#profile-form').on('submit', function (e) {
-         e.preventDefault();
-         const updatedData = {
-            name: $('#fullname').val(),
-            phone: $('#phone').val(),
-            address: $('#address').val(),
-            pincode: $('#pincode').val()
-         };
-         $.ajax({
-            url: 'http://localhost:8080/Ecommerce_Website/ProfileServlet',
-            type: 'POST',
-            data: updatedData,
-            dataType: 'json',
-            success: function (response) {
-               if (response.status === 'success') {
-                  alert('Profile updated successfully!');
-                  fetchUserData();
-                  $('#cancel-btn').click();
-               } else {
-                  alert('Error updating profile: ' + response.message);
-               }
-            },
-            error: function () {
-               alert('Server error updating profile.');
-            }
-         });
-      });
-
-    $('#change-password-btn').on('click', function () {
-window.location.href = '../Html/changepassword.html';
-});
-
-
-      $('#cancel-password-btn').on('click', function () {
-         $('#change-password-section').slideUp(300);
-         $('#new-password, #confirm-password').val('');
-         $('#password-error').addClass('hidden');
-      });
-
-
-$('#update-password-btn').on('click', function () {
-    const newPass = $('#new-password').val().trim();
-    const confirmPass = $('#confirm-password').val().trim();
-
-    if (newPass === '' || confirmPass === '') {
-        alert('Please fill all fields.');
-        return;
-    }
-
-    if (newPass.length < 6) {
-        alert('Password must be at least 6 characters.');
-        return;
-    }
-
-    if (newPass !== confirmPass) {
-        $('#password-error').removeClass('hidden');
-        return;
-    }
-
-    $('#password-error').addClass('hidden');
-
-    $.ajax({
-        url: 'http://localhost:8080/Ecommerce_Website/ChangeServlet',
-        type: 'POST',
-        data: { 
-            newPassword: newPass,
-            confirmPassword: confirmPass
-        },
-        dataType: 'text',
-        success: function (res) {
-
-            if (res.includes("Password changed successfully!")) {
-                alert('Password updated successfully!');
-                $('#change-password-section').slideUp(300);
-                $('#new-password, #confirm-password').val('');
-            } else {
-                alert(res.trim()); 
-            }
-        },
-        error: function () {
-            alert('Server error updating password.');
-        }
-    });
-});
-
-
-
-
-      $('#change-photo-btn').on('click', function () {
-         $('#photo-upload').click();
-      });
-
-      $('#photo-upload').on('change', function (e) {
-         const file = e.target.files[0];
-         if (file) {
-            const reader = new FileReader();
-            reader.onload = function (e) {
-               $('#profile-photo').attr('src', e.target.result);
-            };
-            reader.readAsDataURL(file);
-         }
-      });
-      $('#order-history-btn').on('click', function () {
-         window.location.href = '../Html/orderhistory.html';
-      });
-
-      fetchUserData();
-   </script>
-</body>
-</html>package servlets;
-
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import dao.UserDao;
-import model.User;
-
-import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
-import java.io.IOException;
-import java.sql.SQLException;
-
-@WebServlet("/ProfileServlet")
-public class ProfileServlet extends HttpServlet {
-    private static final long serialVersionUID = 1L;
-    private final Gson gson = new Gson();
-    private final UserDao userDao = new UserDao();
-
-    @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-        HttpSession session = request.getSession(false);
-
-        if (session == null || session.getAttribute("user") == null) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Not logged in.\"}");
-            return;
-        }
-
-        User user = (User) session.getAttribute("user");
-        response.getWriter().write(gson.toJson(user));
-    }
-
-    @Override
-    	    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-    	        response.setContentType("application/json");
-    	        HttpSession session = request.getSession(false);
-    	        UserDao userDao = new UserDao();
-    	        
-    	        if (session == null || session.getAttribute("user") == null) {
-    	            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "User not logged in.");
-    	            return;
-    	        }
-
-    	        try {
-    	            User user = (User) session.getAttribute("user");
-    	            
-
-    	            String newName = request.getParameter("fullname");
-    	            String newMobile = request.getParameter("phone");
-    	            String newAddress = request.getParameter("address");
-    	            String newPincode = request.getParameter("pincode");
-
-
-    	            if (newName != null && !newName.trim().isEmpty()) {
-    	                user.setName(newName);
-    	            }
-    	            if (newMobile != null && !newMobile.trim().isEmpty()) {
-    	                user.setMobile(newMobile);
-    	            }
-    	            if (newAddress != null && !newAddress.trim().isEmpty()) {
-    	                user.setAddress(newAddress);
-    	            }
-    	            if (newPincode != null && !newPincode.trim().isEmpty()) {
-    	                try {
-    	                    user.setPinCode(Integer.parseInt(newPincode));
-    	                } catch (NumberFormatException e) {
-                              e.getStackTrace();
-    	                }
-    	            }
-
-
-    	            boolean success = userDao.updateUser(user);
-
-    	            if (success) {
-
-    	                session.setAttribute("user", user);
-    	                response.getWriter().print("{\"status\":\"success\", \"message\":\"Profile updated successfully\"}");
-    	            } else {
-    	                response.getWriter().print("{\"status\":\"error\", \"message\":\"Profile update failed\"}");
-    	            }
-
-    	        } catch (SQLException e) {
-    	            getServletContext().log("servlets.ProfileServlet: Database error updating user profile", e);
-    	            response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Database error updating user profile.");
-    }
-    }
-}
-package dao;
-
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-
-import model.User;
-import utils.DBUtils;
-
-public class UserDao {
-
-    public boolean registerUser(User u) {
-        String sql = "INSERT INTO Ecommerce_Website.M_S_USER(fullname, email, phone, password, address, pincode) VALUES(?,?,?,?,?,?)";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            System.out.println("Connection Executed Successfully");
-            ps.setString(1, u.getName());
-            ps.setString(2, u.getEmail());
-            ps.setString(3, u.getMobile());
-            ps.setString(4, u.getPassword());
-            ps.setString(5, u.getAddress());
-            ps.setInt(6, u.getPinCode());
-            return ps.executeUpdate() > 0;
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return false;
-    }
-
-    public String isValid(String email, String password) {
-        String status = "Invalid Username or Password";
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_USER WHERE email=? AND password=?";
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            ps.setString(2, password);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                status = "valid";
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return status;
-    }
-
-
-    public User getUserDetails(String email) {
-        User user = null;
-        String sql = "SELECT user_id, fullname, phone, email, address, pincode, password FROM Ecommerce_Website.M_S_USER WHERE email=?";
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                user = new User();
-                user.setId(rs.getInt("user_id"));
-                user.setName(rs.getString("fullname"));
-                user.setMobile(rs.getString("phone"));
-                user.setEmail(rs.getString("email"));
-                user.setAddress(rs.getString("address"));
-                user.setPinCode(rs.getInt("pincode"));
-                user.setPassword(rs.getString("password"));
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return user;
-    }
-    
-
-    public static User getUserByEmail(String email) throws SQLException {
-        User user = null;
-        String sql = "SELECT id, fullname, phone, address, pincode, password FROM Ecommerce_Website.M_S_USER WHERE email = ?"; 
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, email);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    user = new User();
-                    user.setId(rs.getInt("id"));
-                    user.setEmail(email);
-                    user.setName(rs.getString("fullname"));
-                    user.setMobile(rs.getString("phone"));
-                    user.setAddress(rs.getString("address"));
-                    user.setPinCode(rs.getInt("pincode"));
-                    user.setPassword(rs.getString("password"));
-                }
-            }
-        }
-        return user;
-    }
-
-    public boolean updateUser(User user) throws SQLException {
-        String sql = "UPDATE Ecommerce_Website.M_S_USER SET fullname=?, phone=?, address=?, pincode=?, updatedat=GETDATE() WHERE user_id=?";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            
-            ps.setString(1, user.getName());
-            ps.setString(2, user.getMobile());
-            ps.setString(3, user.getAddress());
-            ps.setInt(4, user.getPinCode());
-            ps.setInt(5, user.getId());
-
-            int rowsAffected = ps.executeUpdate();
-            return rowsAffected > 0;
-        }
-    }
-    }package servlets;
-
-import dao.AdminDao;
-import model.Admin;
-import model.Product;
-import model.User;
-import com.google.gson.Gson;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.*;
-import java.io.IOException;
-import java.sql.SQLException;
-import java.util.List;
-
-@WebServlet("/AdminServlet")
-public class AdminServlet extends HttpServlet {
-    private final AdminDao dao = new AdminDao();
-    private final Gson gson = new Gson();
-
-    protected void doPost(HttpServletRequest req, HttpServletResponse res) throws IOException {
-        String action = req.getParameter("action");
-        res.setContentType("application/json");
-
-        try {
-            switch (action) {
-                case "login":
-                    String username = req.getParameter("username");
-                    String password = req.getParameter("password");
-                    Admin admin = dao.login(username, password);
-                    if (admin != null) {
-                        req.getSession().setAttribute("admin", admin);
-                        res.getWriter().write("{\"status\":\"success\"}");
-                    } else res.getWriter().write("{\"status\":\"fail\"}");
-                    break;
-
-                case "listUsers":
-                    List<User> users = dao.getAllUsers();
-                    res.getWriter().write(gson.toJson(users));
-                    break;
-
-                case "deleteUser":
-                    int uid = Integer.parseInt(req.getParameter("userId"));
-                    dao.deleteUser(package dao;
-
-import model.User;
-import model.Product;
-import model.Admin;
-import utils.DBUtils;
-import java.sql.*;
-import java.util.*;
-
-public class AdminDao {
-
-    public Admin login(String username, String password) throws SQLException {
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_ADMIN WHERE username=? AND password=?";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, username);
-            ps.setString(2, password);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return new Admin(rs.getInt("admin_id"), rs.getString("fullname"), rs.getString("username"), rs.getString("email"));
-                }
-            }
-        }
-        return null;
-    }
-
-    public List<User> getAllUsers() throws SQLException {
-        List<User> list = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_USER";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                User u = new User();
-                u.setId(rs.getInt("user_id"));
-                u.setName(rs.getString("fullname"));
-                u.setEmail(rs.getString("email"));
-                u.setMobile(rs.getString("phone"));
-                u.setAddress(rs.getString("address"));
-                u.setPinCode(rs.getInt("pincode"));
-                u.setPassword(rs.getString("password"));
-                list.add(u);
-            }
-        }
-        return list;
-    }
-
-    public boolean deleteUser(int userId) throws SQLException {
-        String sql = "DELETE FROM Ecommerce_Website.M_S_USER WHERE user_id=?";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, userId);
-            return ps.executeUpdate() > 0;
-        }
-    }
-
-    public boolean updateUserStatus(int userId, boolean active) throws SQLException {
-        String sql = "UPDATE Ecommerce_Website.M_S_USER SET status=? WHERE user_id=?";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setBoolean(1, active);
-            ps.setInt(2, userId);
-            return ps.executeUpdate() > 0;
-        }
-    }
-
-    public List<Product> getAllProducts() throws SQLException {
-        return new ProductDao<>().getAllProducts();
-    }
-
-    public boolean addProduct(Product p) throws SQLException {
-        String sql = "INSERT INTO Ecommerce_Website.M_S_DATAS(category_id, product_name, description, price, stock, image) VALUES(?,?,?,?,?,?)";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, p.getCategoryId());
-            ps.setString(2, p.getProductName());
-            ps.setString(3, p.getDescription());
-            ps.setDouble(4, p.getPrice());
-            ps.setInt(5, p.getStock());
-            ps.setString(6, p.getImageUrl());
-            return ps.executeUpdate() > 0;
-        }
-    }
-
-    public boolean updateProduct(Product p) throws SQLException {
-        String sql = "UPDATE Ecommerce_Website.M_S_DATAS SET category_id=?, product_name=?, description=?, price=?, stock=?, image=? WHERE product_id=?";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, p.getCategoryId());
-            ps.setString(2, p.getProductName());
-            ps.setString(3, p.getDescription());
-            ps.setDouble(4, p.getPrice());
-            ps.setInt(5, p.getStock());
-            ps.setString(6, p.getImageUrl());
-            ps.setInt(7, p.getProductId());
-            return ps.executeUpdate() > 0;
-        }
-    }
-
-    public boolean deleteProduct(int productId) throws SQLException {
-        String sql = "DELETE FROM Ecommerce_Website.M_S_DATAS WHERE product_id=?";
-        try (Connection c = DBUtils.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, productId);
-            return ps.executeUpdate() > 0;
-        }
-    }
-});
-                    res.getWriter().write("{\"status\":\"ok\"}");
-                    break;
-
-                case "toggleStatus":
-                    int userId = Integer.parseInt(req.getParameter("userId"));
-                    boolean active = Boolean.parseBoolean(req.getParameter("active"));
-                    dao.updateUserStatus(userId, active);
-                    res.getWriter().write("{\"status\":\"ok\"}");
-                    break;
-
-                case "listProducts":
-                    List<Product> products = dao.getAllProducts();
-                    res.getWriter().write(gson.toJson(products));
-                    break;
-
-                case "addProduct":
-                    Product p = new Product(
-                        Integer.parseInt(req.getParameter("categoryId")),
-                        req.getParameter("productName"),
-                        req.getParameter("description"),
-                        Double.parseDouble(req.getParameter("price")),
-                        Integer.parseInt(req.getParameter("stock")),
-                        req.getParameter("image")
-                    );
-                    dao.addProduct(p);
-                    res.getWriter().write("{\"status\":\"ok\"}");
-                    break;
-
-                case "deleteProduct":
-                    int pid = Integer.parseInt(req.getParameter("productId"));
-                    dao.deleteProduct(pid);
-                    res.getWriter().write("{\"status\":\"ok\"}");
-                    break;
-
-                default:
-                    res.getWriter().write("{\"error\":\"Unknown action\"}");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-            res.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
-        }
-    }
-}
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'M_S_ADMINS' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.M_S_ADMINS (
+  admin_id INT IDENTITY PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+);
+END;
+go
 
 
 
@@ -779,29 +42,185 @@ public class AdminDao {
 
 
 
+ALTER TABLE M_S_USER ADD status BIT DEFAULT 1; -- 1 = active, 0 = deactivated
 
 
+select * from Ecommerce_Website.M_S_USER with (nolock);
 
 
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'M_S_CATEGORY' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.M_S_CATEGORY (
+    category_id INT IDENTITY(1,1) PRIMARY KEY,
+    category_name VARCHAR(28) NOT NULL,
+    description VARCHAR(28) UNIQUE NOT NULL,
+	createdat DATETIME DEFAULT GETDATE()
+);
+END;
 
+ALTER TABLE Ecommerce_Website.M_S_CATEGORY
+ALTER COLUMN description varchar(100) not null;
 
 
+go
 
+INSERT INTO Ecommerce_Website.M_S_CATEGORY (category_name, description)
+VALUES 
+('Mobiles', 'Smartphones and accessories'),
+('Laptops', 'Laptops for work and play'),
+('TVs', 'LED and Smart TVs'),
+('Speakers', 'Bluetooth and home speakers');
 
 
 
+select * from Ecommerce_Website.M_S_CATEGORY with(nolock);
 
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'M_S_DATAS' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.M_S_DATAS (
+    product_id INT IDENTITY(1,1) PRIMARY KEY,
+	category_id int not null,
+    product_name VARCHAR(28) NOT NULL,
+    description VARCHAR(100) UNIQUE NOT NULL,
+	price decimal(10,2) not null,
+	stock int not null,
+	image varchar(255) not null,
+	createdat DATETIME DEFAULT GETDATE(),
+	updatedat DATETIME DEFAULt GETDATE()
+);
+END;
 
 
+GO
 
+INSERT INTO  Ecommerce_Website.M_S_DATAS(category_id, product_name, description, price, stock, image)
+VALUES
+(1, 'iPhone 15 Pro', 'A17 Pro Chip, 256GB', 129999, 15, '/Ecommerce_Website/Assets/iphone.jpg'),
+(1, 'Samsung Galaxy S24', 'Snapdragon 8 Gen 3, 128GB', 99999, 20, '/Ecommerce_Website/Assets/Samsung.jpg'),
+(2, 'HP Laptop 15s', 'Intel i5, 16GB RAM, 512GB SSD', 59999, 10, '/Ecommerce_Website/Assets/Hp.jpg'),
+(2, 'Dell Inspiron', 'Ryzen 5, 8GB RAM, 512GB SSD', 54999, 15, '/Ecommerce_Website/Assets/Dell.jpg'),
+(3, 'Samsung Smart TV', '4K UHD 55-inch', 49999, 8, '/Ecommerce_Website/Assets/smart Tv.jpg'),
+(3, 'Sony Bravia', 'LED 43-inch Full HD', 42999, 10, '/Ecommerce_Website/Assets/Sony.jpg'),
+(4, 'JBL Speaker', 'Portable Bluetooth Speaker', 7999, 25, '/Ecommerce_Website/Assets/JBL.jpg'),
+(4, 'Sony Speaker', 'Extra Bass Waterproof', 8999, 18, '/Ecommerce_Website/Assets/Sony Speaker.jpg');
 
 
 
 
+INSERT INTO Ecommerce_Website.M_S_CATEGORY (category_name, description) VALUES
+  ('Cameras', 'DSLRs, mirrorless, and action cameras'),
+  ('Tablets', 'Android and iOS tablets');
 
+  select * from Ecommerce_Website.M_S_CATEGORY with(nolock);
 
 
+  update Ecommerce_Website.M_S_CATEGORY 
+  set category_id=5 where category_name='Cameras';
 
 
+INSERT INTO Ecommerce_Website.M_S_DATAS (category_id, product_name, description, price, stock, image) VALUES
+  (7, 'Sony Alpha ZV-E10', '24MP APS-C, 16-50mm Lens', 69999, 10, '/Ecommerce_Website/Assets/sony_zve10.jpeg')
+
+
+INSERT INTO Ecommerce_Website.M_S_DATAS (category_id, product_name, description, price, stock, image) VALUES
+  (8, 'Apple iPad Air', 'M1 Chip, 10.9-inch, 64GB', 59999, 12, '/Ecommerce_Website/Assets/ipad_air.jpg'),
+  (8, 'Samsung Galaxy Tab S9', '11-inch AMOLED, 128GB', 54999, 10, '/Ecommerce_Website/Assets/galaxy_tab_s9.jpg');
+
+
+INSERT INTO Ecommerce_Website.M_S_DATAS (category_id, product_name, description, price, stock, image) VALUES
+  (2, 'HP Pavilion 14', 'Intel i3, 16GB RAM, 1TB SSD', 74999, 8, '/Ecommerce_Website/Assets/hp_pavilion.jpeg'),
+  (2, 'Dell XPS 13', 'Intel i4, 8GB RAM, 512GB SSD', 89999, 5, '/Ecommerce_Website/Assets/dell_xps13.jpeg'),
+  (2, 'Lenovo ThinkPad E14', 'Ryzen 8, 16GB RAM, 512GB SSD', 69999, 10, '/Ecommerce_Website/Assets/lenovo_e14.jpg');
+
+
+INSERT INTO Ecommerce_Website.M_S_DATAS (category_id, product_name, description, price, stock, image) VALUES
+  (1, 'OnePlus 12', 'Snapdragon 9 Gen 2, 256GB', 69999, 12, '/Ecommerce_Website/Assets/oneplus_12.jpg'),
+  (1, 'Vivo X100', 'Dimensity 9307, 512GB', 59999, 10, '/Ecommerce_Website/Assets/vivo_x100.jpg'),
+  (1, 'Realme GT 5', 'Snapdragon 5 Gen 2, 256GB', 49999, 15, '/Ecommerce_Website/Assets/realme_gt5.jpg');
+
+
+
+
+select * from Ecommerce_Website.M_S_DATAS;
+
+update Ecommerce_Website.M_S_DATAS
+SET image='/Ecommerce_Website/Assets/sony_zve10.jpg' where product_id=47;
+
+update Ecommerce_Website.M_S_DATAS
+SET category_id=7 where product_id=10;
+
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'D_D_CART' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.D_D_CART (
+    cart_id INT IDENTITY(1,1) PRIMARY KEY,
+	user_id int not null,
+	product_id int null,
+	quantity int not null,
+	createdat DATETIME DEFAULT GETDATE(),
+	updatedat DATETIME DEFAULT GETDATE()
+);
+END;
+go
+
+
+select * from Ecommerce_Website.D_D_CART with(nolock);
+
+
+use SQLTraining
+DELETE  FROM Ecommerce_Website.M_S_DATAS where product_id=54 ;
+select *  FROM Ecommerce_Website.M_S_DATAS ;
+
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'D_D_ORDER' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.D_D_ORDER (
+    order_id INT IDENTITY(1,1) PRIMARY KEY,
+	user_id int not null,
+	total_amount decimal(10,2) not null,
+    orderdate DATETIME DEFAULT GETDATE(),
+	status varchar(30) default 'Pending'
+
+);
+END;
+go
+
+use SQLTraining;
+select  * from Ecommerce_Website.D_D_ORDER with (nolock);
+
+
+
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'D_D_ORDERLOGS' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.D_D_ORDERLOGS (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+	order_id int not null,
+	product_id int not null,
+	quantity int not null,
+	price decimal(10,2) not null,
+    total decimal(10,2) not null
+
+);
+END;
+go
+
+select * from Ecommerce_Website.D_D_ORDERLOGS WITH(nolock);
+
+go
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'D_D_LOGS' AND schema_id = SCHEMA_ID('Ecommerce_Website'))
+BEGIN
+CREATE TABLE Ecommerce_Website.D_D_LOGS (
+    log_id INT IDENTITY(1,1) PRIMARY KEY,
+	user_id int not null,
+	total_amount decimal(10,2) not null,
+	action varchar(30) not null,
+    timestamp DATETIME DEFAULT GETDATE()
+
+);
+END;
+go
 
 
