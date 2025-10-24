@@ -2690,6 +2690,340 @@ $('#update-password-btn').on('click', function () {
 
 
 
+------------
+
+package servlets;
+
+import dao.AdminDao;
+import model.Admin;
+import model.Product;
+import model.User;
+import com.google.gson.Gson;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.List;
+
+@WebServlet("/AdminServlet")
+public class AdminServlet extends HttpServlet {
+    private final AdminDao dao = new AdminDao();
+    private final Gson gson = new Gson();
+
+    protected void doPost(HttpServletRequest req, HttpServletResponse res) throws IOException {
+        String action = req.getParameter("action");
+        res.setContentType("application/json");
+
+        try {
+            switch (action) {
+                case "login":
+                    String username = req.getParameter("username");
+                    String password = req.getParameter("password");
+                    Admin admin = dao.login(username, password);
+                    if (admin != null) {
+                        req.getSession().setAttribute("admin", admin);
+                        res.getWriter().write("{\"status\":\"success\"}");
+                    } else res.getWriter().write("{\"status\":\"fail\"}");
+                    break;
+
+                case "listUsers":
+                    List<User> users = dao.getAllUsers();
+                    res.getWriter().write(gson.toJson(users));
+                    break;
+
+                case "deleteUser":
+                    int uid = Integer.parseInt(req.getParameter("userId"));
+                    dao.deleteUser(uid);
+                    res.getWriter().write("{\"status\":\"ok\"}");
+                    break;
+
+                case "toggleStatus":
+                    int userId = Integer.parseInt(req.getParameter("userId"));
+                    boolean active = Boolean.parseBoolean(req.getParameter("active"));
+                    dao.updateUserStatus(userId, active);
+                    res.getWriter().write("{\"status\":\"ok\"}");
+                    break;
+
+                case "listProducts":
+                    List<Product> products = dao.getAllProducts();
+                    res.getWriter().write(gson.toJson(products));
+                    break;
+
+                case "addProduct":
+                    Product p = new Product(
+                        Integer.parseInt(req.getParameter("categoryId")),
+                        req.getParameter("productName"),
+                        req.getParameter("description"),
+                        Double.parseDouble(req.getParameter("price")),
+                        Integer.parseInt(req.getParameter("stock")),
+                        req.getParameter("image")
+                    );
+                    dao.addProduct(p);
+                    res.getWriter().write("{\"status\":\"ok\"}");
+                    break;
+
+                case "deleteProduct":
+                    int pid = Integer.parseInt(req.getParameter("productId"));
+                    dao.deleteProduct(pid);
+                    res.getWriter().write("{\"status\":\"ok\"}");
+                    break;
+
+                default:
+                    res.getWriter().write("{\"error\":\"Unknown action\"}");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            res.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+        }
+    }
+}package model;
+
+public class Admin {
+    private int id;
+    private String fullname;
+    private String username;
+    private String email;
+
+    public Admin(int id, String fullname, String username, String email) {
+        this.id = id;
+        this.fullname = fullname;
+        this.username = username;
+        this.email = email;
+    }
+    public Admin() {}
+
+    // getters and setters
+}package dao;
+
+import model.User;
+import model.Product;
+import model.Admin;
+import utils.DBUtils;
+import java.sql.*;
+import java.util.*;
+
+public class AdminDao {
+
+    public Admin login(String username, String password) throws SQLException {
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_ADMIN WHERE username=? AND password=?";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, password);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return new Admin(rs.getInt("admin_id"), rs.getString("fullname"), rs.getString("username"), rs.getString("email"));
+                }
+            }
+        }
+        return null;
+    }
+
+    public List<User> getAllUsers() throws SQLException {
+        List<User> list = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_USER";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                User u = new User();
+                u.setId(rs.getInt("user_id"));
+                u.setName(rs.getString("fullname"));
+                u.setEmail(rs.getString("email"));
+                u.setMobile(rs.getString("phone"));
+                u.setAddress(rs.getString("address"));
+                u.setPinCode(rs.getInt("pincode"));
+                u.setPassword(rs.getString("password"));
+                list.add(u);
+            }
+        }
+        return list;
+    }
+
+    public boolean deleteUser(int userId) throws SQLException {
+        String sql = "DELETE FROM Ecommerce_Website.M_S_USER WHERE user_id=?";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public boolean updateUserStatus(int userId, boolean active) throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.M_S_USER SET status=? WHERE user_id=?";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setBoolean(1, active);
+            ps.setInt(2, userId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public List<Product> getAllProducts() throws SQLException {
+        return new ProductDao<>().getAllProducts();
+    }
+
+    public boolean addProduct(Product p) throws SQLException {
+        String sql = "INSERT INTO Ecommerce_Website.M_S_DATAS(category_id, product_name, description, price, stock, image) VALUES(?,?,?,?,?,?)";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, p.getCategoryId());
+            ps.setString(2, p.getProductName());
+            ps.setString(3, p.getDescription());
+            ps.setDouble(4, p.getPrice());
+            ps.setInt(5, p.getStock());
+            ps.setString(6, p.getImageUrl());
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public boolean updateProduct(Product p) throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.M_S_DATAS SET category_id=?, product_name=?, description=?, price=?, stock=?, image=? WHERE product_id=?";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, p.getCategoryId());
+            ps.setString(2, p.getProductName());
+            ps.setString(3, p.getDescription());
+            ps.setDouble(4, p.getPrice());
+            ps.setInt(5, p.getStock());
+            ps.setString(6, p.getImageUrl());
+            ps.setInt(7, p.getProductId());
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public boolean deleteProduct(int productId) throws SQLException {
+        String sql = "DELETE FROM Ecommerce_Website.M_S_DATAS WHERE product_id=?";
+        try (Connection c = DBUtils.getConnection();
+             PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setInt(1, productId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+}CREATE TABLE M_S_ADMIN (
+  admin_id INT IDENTITY PRIMARY KEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+  fullname VARCHAR(100),
+  email VARCHAR(100)
+);
+
+ALTER TABLE M_S_USER ADD status BIT DEFAULT 1; -- 1 = active, 0 = deactivated<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Dashboard</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .sidebar { min-height: 100vh; }
+    .sidebar-btn { display:block; width:100%; text-align:left; padding:10px 16px; border-radius:8px; }
+    .sidebar-btn:hover, .active-btn { background-color:#16a34a; color:white; }
+  </style>
+</head>
+
+<body class="bg-gray-100">
+
+  <!-- Navbar -->
+  <nav class="bg-green-600 text-white shadow-md fixed w-full top-0 z-50">
+    <div class="flex justify-between items-center px-6 h-14">
+      <h1 class="text-2xl font-semibold">E-Commerce Admin Panel</h1>
+      <div class="flex items-center space-x-4">
+        <span id="adminName" class="text-white font-medium">Admin Mahesh</span>
+        <button id="logoutBtn" class="bg-red-500 px-3 py-1 rounded hover:bg-red-600">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Layout Wrapper -->
+  <div class="flex pt-14">
+    
+    <!-- Sidebar -->
+    <aside class="sidebar bg-white w-64 border-r shadow-md">
+      <div class="p-4 border-b">
+        <h2 class="text-lg font-bold text-green-700">Dashboard Menu</h2>
+      </div>
+      <nav class="mt-2">
+        <button class="sidebar-btn active-btn" id="admin-profile">👤 Admin Profile</button>
+        <button class="sidebar-btn" id="view-products">📦 View Products</button>
+        <button class="sidebar-btn" id="user-details">👥 User Details</button>
+        <button class="sidebar-btn" id="logout-side">🚪 Logout</button>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="content-area" class="flex-1 p-8">
+      <h2 class="text-2xl font-bold text-green-700 mb-4">Welcome to Admin Dashboard</h2>
+      <p class="text-gray-600">Select an option from the left to manage your e-commerce system.</p>
+    </main>
+  </div>
+
+  <!-- jQuery Logic -->
+  <script>
+    function loadContent(title, html) {
+      $('#content-area').html('<h2 class="text-2xl font-bold text-green-700 mb-4">' + title + '</h2>' + html);
+    }
+
+    $('.sidebar-btn').click(function() {
+      $('.sidebar-btn').removeClass('active-btn');
+      $(this).addClass('active-btn');
+    });
+
+    $('#admin-profile').click(function(){
+      loadContent('Admin Profile', `
+        <div class="bg-white p-6 rounded shadow-md max-w-lg">
+          <h3 class="text-xl font-semibold mb-2">Admin Details</h3>
+          <p><strong>Name:</strong> Mahesh Admin</p>
+          <p><strong>Email:</strong> admin@shop.com</p>
+          <p><strong>Role:</strong> Super Admin</p>
+        </div>`);
+    });
+
+    $('#view-products').click(function(){
+      loadContent('Products', `
+        <table class="min-w-full bg-white rounded shadow-md">
+          <thead class="bg-green-100">
+            <tr><th class="p-3 text-left">Product</th><th class="p-3">Price</th><th class="p-3">Stock</th><th class="p-3">Action</th></tr>
+          </thead>
+          <tbody>
+            <tr class="border-t"><td class="p-3">iPhone 15 Pro</td><td>₹1,29,999</td><td>15</td><td><button class="bg-red-500 text-white px-3 py-1 rounded">Delete</button></td></tr>
+            <tr class="border-t"><td class="p-3">Dell XPS 13</td><td>₹89,000</td><td>10</td><td><button class="bg-red-500 text-white px-3 py-1 rounded">Delete</button></td></tr>
+            <tr class="border-t"><td class="p-3">Sony Bravia TV</td><td>₹59,000</td><td>7</td><td><button class="bg-red-500 text-white px-3 py-1 rounded">Delete</button></td></tr>
+          </tbody>
+        </table>`);
+    });
+
+    $('#user-details').click(function(){
+      loadContent('User Details', `
+        <table class="min-w-full bg-white rounded shadow-md">
+          <thead class="bg-green-100">
+            <tr><th class="p-3 text-left">Name</th><th class="p-3">Email</th><th class="p-3">Status</th><th class="p-3">Action</th></tr>
+          </thead>
+          <tbody>
+            <tr class="border-t"><td class="p-3">Mahesh Kumar</td><td>mahesh@example.com</td><td>Active</td><td><button class="bg-red-500 text-white px-3 py-1 rounded">Delete</button></td></tr>
+            <tr class="border-t"><td class="p-3">Priya Devi</td><td>priya@example.com</td><td>Inactive</td><td><button class="bg-green-500 text-white px-3 py-1 rounded">Activate</button></td></tr>
+          </tbody>
+        </table>`);
+    });
+
+    $('#logoutBtn, #logout-side').click(function(){
+      if(confirm('Are you sure you want to logout?')){
+        window.location.href = '../Html/admin_login.html';
+      }
+    });
+  </script>
+
+</body>
+</html>
+
+,----------
+
+
+
+
+
 
 
 
