@@ -1,367 +1,89 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ecommerce Website</title>
+package dao;
 
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+import java.sql.*;
+import java.util.*;
+import model.Product;
+import utils.DBUtils;
 
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
-</head>
-<style>
-  .disabled-button {
-    background-color: #9ca3af; 
-    cursor: not-allowed;
-}
-</style>
-<body class="bg-green-50">
+public class ProductDao<getProductsByCategoryId> implements ProductInterface {
 
-  <nav class="bg-green-600 text-white fixed w-full top-0 z-50 shadow-md">
-    <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
-<ul class="text-2xl font-semibold">Shopping Center</ul>
-      <ul class="flex space-x-6 items-center">
-    <li><button id="nav-login" class="navbar-btn px-4 py-2 rounded-md hover:bg-yellow-300">Login</button></li>
-    <li><button id="nav-register" class="navbar-btn px-4 py-2 rounded-md hover:bg-yellow-300">Register</button></li>
-         <li class="relative">
-           <button id="cart-link" class="relative hover:text-yellow-300 focus:outline-none">
-               <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.293 6.707A1 1 0 007.707 21h8.586a1 1 0 00.707-1.707L15 13H7z" />
-               </svg>
-               <span id="cart-badge" class="absolute -top-2 -right-3 bg-red-500 text-white rounded-full px-2 text-xs">0</span>
-            </button>
-        </li>
-        <li class="relative group">
-          <button id="category-dropdown-btn" class="hover:text-yellow-300 focus:outline-none">Category</button>
-          <ul id="category-dropdown" class="absolute left-0 mt-2 w-40 bg-white text-green-700 rounded shadow-lg hidden z-50">
-            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="1">Mobiles</button></li>
-            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="2">Laptops</button></li>
-            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="3">TVs</button></li>
-            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="4">Speakers</button></li>
-            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="7">Cameras</button></li>
-            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="8">Tablets</button></li>
-          </ul>
-        </li>
-      </ul>
-      <div class="ml-4 flex items-center">
-        <!-- <button id="nav-back" class="navbar-btn px-4 py-2 rounded-md bg-gray-400 text-white hover:bg-gray-500 mr-2">Back</button> -->
-        <button id="nav-logout" class="navbar-btn px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600">Logout</button>
-        
-      </div>
-      <button id="nav-profile" class="hover:text-yellow-300 focus:outline-none">
-               <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A9 9 0 1118.878 6.196 9 9 0 015.12 17.804zM15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-               </svg>
-            </button>
-    </div>
-  </nav>
-
-  <div class="mt-20 text-center">
-    <h2 class="text-3xl font-bold text-green-700">Welcome to Ecommerce Website</h2>
-    <p class="text-gray-600 mt-1">We specialize in Electronics</p>
-
-    <div class="mt-4">
-      <input id="search-input" type="text" placeholder="Search Items..." class="border p-2 rounded-md w-64">
-      <button id="search-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Search</button>
-
-      <div class="relative inline-block text-left">
-            <button id="filter-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600">Filter</button>
-            <ul id="filter-options" class="absolute hidden mt-2 w-44 bg-white text-green-700 rounded shadow-lg z-50">
-               <li><button class="filter-option w-full text-left px-4 py-2 hover:bg-green-100" data-type="low-high">Price: Low → High</button></li>
-               <li><button class="filter-option w-full text-left px-4 py-2 hover:bg-green-100" data-type="high-low">Price: High → Low</button></li>
-               <li><button class="filter-option w-full text-left px-4 py-2 hover:bg-green-100" data-type="rating">Top Rated</button></li>
-            </ul>
-         </div>
-    </div>
-  </div>
-  
-  
-
-  <div id="product-list" class="max-w-7xl mx-auto mt-8">
-    <p class="text-center text-gray-500">Loading products...</p>
-  </div>
-
-  <script>
-
-    $(document).ready(function () {
-      
-
-      function setActiveNav(page) {
-        $(".navbar-btn").removeClass("bg-blue-600 text-white");
-        $("#nav-" + page).addClass("bg-blue-600 text-white");
-      }
-      $("#nav-login").click(function () { 
-        window.location.href = "login.html"; 
-      });
-      $("#cart-link").click(function () { 
-        window.location.href = "cart.html"; 
-      });
-      $("#nav-profile").click(function () { 
-        window.location.href = "profile.html"; 
-      });
-      
-      $("#nav-register").click(function () {
-        window.location.href = "register.html";
-      });
-      $("#nav-products").click(function () { window.location.href = "index.html"; });
-      $("#nav-back").click(function () { window.history.back(); });
-      
-      if (window.location.pathname.includes("login.html")) setActiveNav("login");
-      else if (window.location.pathname.includes("register.html")) setActiveNav("register");
-      else if (window.location.pathname.includes("index.html")) setActiveNav("products");
-      
-     $("#nav-logout").click(function () {
-    sessionStorage.removeItem("cart");
-    $("#cart-badge").text("0");
-    sessionStorage.removeItem("isLoggedIn");
-    toggleAddToCartButtons(false);
-    window.location.href = "login.html";
-})
-    });
-$(document).ready(function () {
-    let allProducts = [];
-    let lastCategoryId = null;
-
-    // A single, reusable function to fetch and display products.
-    function fetchAndShowProducts(categoryId = null, query = "", sortType = "") {
-        let url = "http://localhost:8080/Ecommerce_Website/ProductServlet";
-        let params = [];
-
-        if (categoryId) params.push("category_id=" + categoryId);
-        if (query) params.push("query=" + encodeURIComponent(query));
-        if (sortType) params.push("filter=" + sortType);
-
-        if (params.length > 0) url += "?" + params.join("&");
-
-        $.ajax({    
-            url: url,
-            type: "GET",
-            dataType: "json",
-            success: function (data) {
-                allProducts = data; 
-                if (allProducts.length > 0) {
-                    showProducts(allProducts);
-                } else {
-                    $("#product-list").html("<p class='text-center text-gray-500'>No products found.</p>");
-                }
-            },
-            error: function () {
-                alert("Failed to load filtered products.");
-            },
-        });
-
-        $("#filter-options").hide();
+    @Override
+    public List<Product> getAllProducts() {
+        List<Product> products = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) products.add(mapProduct(rs));
+        } catch (SQLException e) { e.printStackTrace(); }
+        return products;
     }
 
-    $(".dropdown-category").click(function () {
-        lastCategoryId = $(this).data("cat");
-        fetchAndShowProducts(lastCategoryId);
-    });
-
-
-    let searchTimeout;
-    $("#search-input").on("input", function () {
-        clearTimeout(searchTimeout);
-        searchTimeout = setTimeout(function() {
-            let query = $("#search-input").val().trim();
-            fetchAndShowProducts(lastCategoryId, query);  
-        }, 300); 
-    });
-
-    $(document).on("click", ".filter-option", function () {
-        const sortType = $(this).data("type");
-        const query = $("#search-input").val().trim();
-        fetchAndShowProducts(lastCategoryId, query, sortType);
-    }); 
-
-
-    $("#filter-btn").click(function () {
-        $("#filter-options").toggle();
-    });
-
-
-    $(document).on("click", function(event) {
-        if (!$(event.target).closest("#filter-btn, #filter-options").length) {
-            $("#filter-options").hide();
-        }
-    });
-
-
-    $(document).on("click", ".buy-now", function () {
-        const id = $(this).data('id');
-        const qty = 1;
-
-        $.post('http://localhost:8080/Ecommerce_Website/CartServlet', {
-            action: 'add',
-            productId: id,
-            qty: qty
-        }, function(data) {
-            window.location.href = `cart.html?buyNowId=${id}`;
-        }, 'json');
-    });
-
-    fetchAndShowProducts();
-    
-    
-    
-    function showProducts(list) {
-      let html = "";
-      const chunkSize = 4;
-      for (let i = 0; i < list.length; i += chunkSize) {
-        html += '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 mb-10">';
-          let row = list.slice(i, i + chunkSize);
-          html += row
-          .map(
-            (p) => `
-            <div class="bg-white p-4 rounded-lg shadow-md text-center">
-              <img src="${p.imageUrl || 'https://via.placeholder.com/400x250?text=No+Image'}" alt="${p.productName}" style="width:400px;height:250px;object-fit:cover;" class="mb-3 mx-auto">
-              <h4 class="font-semibold text-gray-800">${p.productName}</h4>
-              <div class="flex justify-center items-center mb-2">
-                ${renderStars(p.stars || 4)}
-                <span class="ml-2 text-yellow-600 font-semibold">${p.stars || 4}</span>
-              </div>
-              <p class="text-green-600 font-bold mt-2">₹${p.price}</p>
-              <p class="text-gray-600 text-sm mb-2">${p.description}</p>
-              <button class="add-cart bg-green-600 text-white px-4 py-2 rounded-md mt-3 hover:bg-green-700"
-              data-id="${p.productId}"
-              data-name="${p.productName}"
-              data-price="${p.price}"
-              data-image="${p.image || p.imageUrl || 'https://via.placeholder.com/100'}">
-              Add to Cart
-              </button>
-              <button class="buy-now bg-yellow-500 text-white px-4 py-2 rounded-md mt-3 ml-2 hover:bg-yellow-600" data-id="${p.productId}">
-                Buy Now
-                </button>
-                </div>
-                `
-              )
-            .join("");
-            
-            
-            function fetchAndShowProducts(categoryId, query, sortType) {
-              let url = "http://localhost:8080/Ecommerce_Website/ProductServlet";
-              let params = [];
-              
-              if (categoryId) params.push("category_id=" + categoryId);
-              if (query) params.push("query=" + encodeURIComponent(query));
-              if (sortType) params.push("filter=" + sortType);
-              
-              if (params.length > 0) url += "?" + params.join("&");
-              
-              $.ajax({
-                url: url,
-                type: "GET",
-                dataType: "json",
-                success: function (data) {
-                  allProducts = data;
-                  if (allProducts.length > 0) {
-                    showProducts(allProducts);
-                  } else {
-                    $("#product-list").html("<p class='text-center text-gray-500'>No products found.</p>");
-                  }
-                },
-                error: function () {
-                  alert("Failed to load filtered products.");
-                },
-              });
-              
-              $("#filter-options").hide();
+    @Override
+    public List<Product> getProductsByCategoryId(int categoryId) {
+        List<Product> products = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ?";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, categoryId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) products.add(mapProduct(rs));
             }
-            
-            $(document).ready(function() {
-              
-              
-              $(document).on("click", ".filter-option", function () {
-                const sortType = $(this).data("type");
-                
-                const categoryId = lastCategoryId; 
-                const query = $("#search-input").val().trim(); 
-                
-                fetchAndShowProducts(categoryId, query, sortType);
-              });
-              
-              
-              $("#filter-btn").click(function () {
-                $("#filter-options").toggle();
-              });
-              
-              
-              $(document).on("click", function(event) {
-                if (!$(event.target).closest(".relative.inline-block").length) {
-                  $("#filter-options").hide();
-                }
-              });
-              
-              
-            });
-            
-            
-            
-            
-            $(document).on("click", function(event) {
-              if (!$(event.target).closest(".relative.inline-block").length) {
-                $("#filter-options").hide();
-              }
-            });
-            
-            
-            
-            function renderStars(rating) {
-              const fullStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z" /></svg>';
-              const halfStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path d="M10 15.27L16.18 18l-1.64-7.03L20 7.24l-7.19-.61L10 0 7.19 6.63 0 7.24l5.46 3.73L3.82 18z" /></svg>';
-              let html = '';
-              let full = Math.floor(rating);
-              let half = rating % 1 >= 0.5 ? 1 : 0;
-              for (let i = 0; i < full; i++) html += fullStar;
-              if (half) html += halfStar;
-              for (let i = full + half; i < 5; i++) html += '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-gray-300" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z" /></svg>';
-              return html;
+        } catch (SQLException e) { e.printStackTrace(); }
+        return products;
+    }
+
+    public List<Product> getFilteredProducts(Integer categoryId, String query, String filter) {
+        List<Product> products = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE 1=1");
+
+        if (categoryId != null) sql.append(" AND category_id = ?");
+        if (query != null && !query.isEmpty()) sql.append(" AND (LOWER(product_name) LIKE ? OR LOWER(description) LIKE ?)");
+
+        if (filter != null) {
+            switch (filter) {
+                case "low-high": sql.append(" ORDER BY price ASC"); break;
+                case "high-low": sql.append(" ORDER BY price DESC"); break;
+                case "rating": sql.append(" ORDER BY rating DESC"); break;
             }
-            html += '</div>';
-          }
-          $("#product-list").html(html);
         }
-        
-      });
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+
+            int i = 1;
+            if (categoryId != null) ps.setInt(i++, categoryId);
+            if (query != null && !query.isEmpty()) {
+                String like = "%" + query.toLowerCase() + "%";
+                ps.setString(i++, like);
+                ps.setString(i++, like);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) products.add(mapProduct(rs));
+            }
+
+        } catch (SQLException e) { e.printStackTrace(); }
+        return products;
+    }
+
+    private Product mapProduct(ResultSet rs) throws SQLException {
+        return new Product(
+            rs.getInt("product_id"),
+            rs.getInt("category_id"),
+            rs.getString("product_name"),
+            rs.getString("description"),
+            rs.getDouble("price"),
+            rs.getInt("stock"),
+            rs.getString("image"),
+            rs.getDouble("rating")
+        );
+    }
+}
 
 
- 
-      $("#category-dropdown-btn").click(function (e) {
-        e.stopPropagation();
-        $("#category-dropdown").toggle();
-      });
+------------
 
-      $(document).on("click", function () {
-        $("#category-dropdown").hide();
-      });
-
-
-
-      function refreshBadge() {
-        $.get('http://localhost:8080/Ecommerce_Website/CartServlet', function (data) {
-          let total = 0; data.forEach(function (it) { total += it.qty; });
-          $('#cart-badge').text(total);
-        }, 'json');
-      }
-      refreshBadge();
-
-      $(document).on("click", ".add-cart", function () {
-        const id = $(this).data('id');
-        const qty = 1;
-        $.post('http://localhost:8080/Ecommerce_Website/CartServlet', { action: 'add', productId: id, qty: qty }, function (data) {
-          let total = 0; data.forEach(function (it) { total += it.qty; });
-          $('#cart-badge').text(total);
-          alert('Added to cart!');
-        }, 'json');
-      });
-
-
-  </script>
-
-</body>
-</html>
-
--------------------
 package servlets;
 
 import java.io.*;
@@ -382,7 +104,6 @@ public class ProductServlet extends HttpServlet {
 
     @Override
     public void init() throws ServletException {
-        super.init();
         this.productDao = new ProductDao<>();
         this.gson = new GsonBuilder().setPrettyPrinting().create();
     }
@@ -409,14 +130,10 @@ public class ProductServlet extends HttpServlet {
             }
         }
 
-        if (query != null) {
-            query = query.trim().replaceAll("[^a-zA-Z0-9 ]", "");
-        }
+        if (query != null) query = query.trim().replaceAll("[^a-zA-Z0-9 ]", "");
 
         List<Product> products = productDao.getFilteredProducts(categoryId, query, filter);
-        System.out.println(products);
-        String json = gson.toJson(products);
-        out.print(json);
+        out.print(gson.toJson(products));
         out.flush();
     }
 
@@ -426,175 +143,187 @@ public class ProductServlet extends HttpServlet {
         doGet(request, response);
     }
 }
------------------------------------------------------------------------------------
-package dao;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
 
-import model.Product;
-import utils.DBUtils;
-public class ProductDao<getProductsByCategoryId> implements ProductInterface {
 
-    @Override
-    public List<Product> getAllProducts() {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS";
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+------
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ecommerce Website</title>
 
-            while (rs.next()) {
-                Product product = new Product(
-                    rs.getInt("product_id"),
-                    rs.getInt("category_id"),
-                    rs.getString("product_name"),
-                    rs.getString("description"),
-                    rs.getDouble("price"),
-                    rs.getInt("stock"),
-                    rs.getString("image")
-                );
-                products.add(product);
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return products;
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+
+  <style>
+    .disabled-button {
+      background-color: #9ca3af;
+      cursor: not-allowed;
     }
+  </style>
+</head>
+<body class="bg-green-50">
 
-    @Override
-    public List<Product> getProductsByCategoryId(int categoryId) {
-        ArrayList<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ?";
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, categoryId);
+  <!-- Navbar -->
+  <nav class="bg-green-600 text-white fixed w-full top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
+      <ul class="text-2xl font-semibold">Shopping Center</ul>
+      <ul class="flex space-x-6 items-center">
+        <li><button id="nav-login" class="navbar-btn px-4 py-2 rounded-md hover:bg-yellow-300">Login</button></li>
+        <li><button id="nav-register" class="navbar-btn px-4 py-2 rounded-md hover:bg-yellow-300">Register</button></li>
+        <li class="relative">
+          <button id="cart-link" class="relative hover:text-yellow-300 focus:outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.293 6.707A1 1 0 007.707 21h8.586a1 1 0 00.707-1.707L15 13H7z" />
+            </svg>
+            <span id="cart-badge" class="absolute -top-2 -right-3 bg-red-500 text-white rounded-full px-2 text-xs">0</span>
+          </button>
+        </li>
+        <li class="relative group">
+          <button id="category-dropdown-btn" class="hover:text-yellow-300 focus:outline-none">Category</button>
+          <ul id="category-dropdown" class="absolute left-0 mt-2 w-40 bg-white text-green-700 rounded shadow-lg hidden z-50">
+            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="1">Mobiles</button></li>
+            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="2">Laptops</button></li>
+            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="3">TVs</button></li>
+            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="4">Speakers</button></li>
+            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="7">Cameras</button></li>
+            <li><button class="dropdown-category w-full text-left px-4 py-2 hover:bg-green-100" data-cat="8">Tablets</button></li>
+          </ul>
+        </li>
+      </ul>
+      <div class="ml-4 flex items-center">
+        <button id="nav-logout" class="navbar-btn px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600">Logout</button>
+      </div>
+      <button id="nav-profile" class="hover:text-yellow-300 focus:outline-none">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A9 9 0 1118.878 6.196 9 9 0 015.12 17.804zM15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+    </div>
+  </nav>
 
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Product product = new Product(
-                        rs.getInt("product_id"),
-                        rs.getInt("category_id"),
-                        rs.getString("product_name"),
-                        rs.getString("description"),
-                        rs.getDouble("price"),
-                        rs.getInt("stock"),
-                        rs.getString("image")
-                    );
-                    products.add(product);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return products;
-    }
-    
+  <!-- Main Content -->
+  <div class="mt-20 text-center">
+    <h2 class="text-3xl font-bold text-green-700">Welcome to Ecommerce Website</h2>
+    <p class="text-gray-600 mt-1">We specialize in Electronics</p>
 
+    <div class="mt-4">
+      <input id="search-input" type="text" placeholder="Search Items..." class="border p-2 rounded-md w-64">
+      <button id="search-btn" class="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700">Search</button>
 
-	@Override
-    public List<Product> searchProductsByName(String query) {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE product_name LIKE ?";
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, "%" + query + "%");
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Product product = new Product(
-                        rs.getInt("product_id"),
-                        rs.getInt("category_id"),
-                        rs.getString("product_name"),
-                        rs.getString("description"),
-                        rs.getDouble("price"),
-                        rs.getInt("stock"),
-                        rs.getString("image")
-                    );
-                    products.add(product);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return products;
-    }
-   @Override
-    public List<Product> searchProductsByCategoryAndName(int categoryId, String query) {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ? AND product_name LIKE ?";
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, categoryId);
-            ps.setString(2, "%" + query + "%");
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Product product = new Product(
-                        rs.getInt("product_id"),
-                        rs.getInt("category_id"),
-                        rs.getString("product_name"),
-                        rs.getString("description"),
-                        rs.getDouble("price"),
-                        rs.getInt("stock"),
-                        rs.getString("image")
-                    );
-                    products.add(product);
-                }
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        return products;
-    }
-   
-   @Override
-   public List<Product> getFilteredProducts(Integer categoryId, String query, String sortType) {
-       List<Product> products = new ArrayList<>();
+      <div class="relative inline-block text-left">
+        <button id="filter-btn" class="bg-yellow-500 text-white px-4 py-2 rounded-md hover:bg-yellow-600">Filter</button>
+        <ul id="filter-options" class="absolute hidden mt-2 w-44 bg-white text-green-700 rounded shadow-lg z-50">
+          <li><button class="filter-option w-full text-left px-4 py-2 hover:bg-green-100" data-type="low-high">Price: Low → High</button></li>
+          <li><button class="filter-option w-full text-left px-4 py-2 hover:bg-green-100" data-type="high-low">Price: High → Low</button></li>
+          <li><button class="filter-option w-full text-left px-4 py-2 hover:bg-green-100" data-type="rating">Top Rated</button></li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
-       StringBuilder sql = new StringBuilder("SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE 1=1");
-       if (categoryId != null) sql.append(" AND category_id = ?");
-       if (query != null && !query.trim().isEmpty()) sql.append(" AND product_name LIKE ?");
+  <div id="product-list" class="max-w-7xl mx-auto mt-8">
+    <p class="text-center text-gray-500">Loading products...</p>
+  </div>
 
-       if ("low-high".equalsIgnoreCase(sortType))
-           sql.append(" ORDER BY price ASC");
-       else if ("high-low".equalsIgnoreCase(sortType))
-           sql.append(" ORDER BY price DESC");
-       else if ("rating".equalsIgnoreCase(sortType))
-           sql.append(" ORDER BY rating DESC");
+  <script>
+    $(document).ready(function () {
+      // --- Navbar Actions ---
+      $("#nav-login").click(() => window.location.href = "login.html");
+      $("#nav-register").click(() => window.location.href = "register.html");
+      $("#cart-link").click(() => window.location.href = "cart.html");
+      $("#nav-profile").click(() => window.location.href = "profile.html");
 
-       try (Connection conn = DBUtils.getConnection();
-            PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+      $("#nav-logout").click(function () {
+        sessionStorage.removeItem("cart");
+        sessionStorage.removeItem("isLoggedIn");
+        sessionStorage.removeItem("userProfile");
+        $("#cart-badge").text("0");
+        alert("You have been logged out!");
+        window.location.href = "login.html";
+      });
 
-           int index = 1;
-           if (categoryId != null) ps.setInt(index++, categoryId);
-           if (query != null && !query.trim().isEmpty()) ps.setString(index++, "%" + query + "%");
+      // --- Product Loading ---
+      let lastCategoryId = null;
 
-           try (ResultSet rs = ps.executeQuery()) {
-               while (rs.next()) {
-                   Product product = new Product(
-                       rs.getInt("product_id"),
-                       rs.getInt("category_id"),
-                       rs.getString("product_name"),
-                       rs.getString("description"),
-                       rs.getDouble("price"),
-                       rs.getInt("stock"),
-                       rs.getString("image")
-                   );
-                   products.add(product);
-               }
-           }
-       } catch (SQLException e) {
-           e.printStackTrace();
-       }
+      function fetchAndShowProducts(categoryId = null, query = "", sortType = "") {
+        let url = "http://localhost:8080/Ecommerce_Website/ProductServlet";
+        let params = [];
 
-       return products;
-   }
+        if (categoryId) params.push("category_id=" + categoryId);
+        if (query) params.push("query=" + encodeURIComponent(query));
+        if (sortType) params.push("filter=" + sortType);
 
-    
-    
-}
+        if (params.length > 0) url += "?" + params.join("&");
 
+        $.ajax({
+          url: url,
+          type: "GET",
+          dataType: "json",
+          success: function (data) {
+            if (data.length > 0) showProducts(data);
+            else $("#product-list").html("<p class='text-center text-gray-500'>No products found.</p>");
+          },
+          error: function () {
+            alert("Failed to load products.");
+          },
+        });
+      }
+
+      $(".dropdown-category").click(function () {
+        lastCategoryId = $(this).data("cat");
+        fetchAndShowProducts(lastCategoryId);
+      });
+
+      $("#filter-btn").click(() => $("#filter-options").toggle());
+      $(document).on("click", function (e) {
+        if (!$(e.target).closest("#filter-btn, #filter-options").length) $("#filter-options").hide();
+      });
+
+      $(document).on("click", ".filter-option", function () {
+        const sortType = $(this).data("type");
+        const query = $("#search-input").val().trim();
+        fetchAndShowProducts(lastCategoryId, query, sortType);
+      });
+
+      $("#search-input").on("input", function () {
+        const query = $(this).val().trim();
+        fetchAndShowProducts(lastCategoryId, query);
+      });
+
+      // --- Display Products ---
+      function showProducts(list) {
+        let html = '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 mb-10">';
+        list.forEach(p => {
+          html += `
+            <div class="bg-white p-4 rounded-lg shadow-md text-center">
+              <img src="${p.image || 'https://via.placeholder.com/400x250'}" alt="${p.productName}" class="w-full h-48 object-cover mb-3">
+              <h4 class="font-semibold text-gray-800">${p.productName}</h4>
+              <div class="flex justify-center items-center mb-2">
+                ${renderStars(p.rating || 4)}
+                <span class="ml-2 text-yellow-600 font-semibold">${p.rating || 4}</span>
+              </div>
+              <p class="text-green-600 font-bold mt-2">₹${p.price}</p>
+              <p class="text-gray-600 text-sm mb-2">${p.description}</p>
+              <button class="add-cart bg-green-600 text-white px-4 py-2 rounded-md mt-3 hover:bg-green-700" data-id="${p.productId}">Add to Cart</button>
+              <button class="buy-now bg-yellow-500 text-white px-4 py-2 rounded-md mt-3 ml-2 hover:bg-yellow-600" data-id="${p.productId}">Buy Now</button>
+            </div>`;
+        });
+        html += '</div>';
+        $("#product-list").html(html);
+      }
+
+      function renderStars(rating) {
+        const fullStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z" /></svg>';
+        return fullStar.repeat(Math.round(rating));
+      }
+
+      fetchAndShowProducts();
+    });
+  </script>
+
+</body>
+</html>
 
 
