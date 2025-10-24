@@ -1,4 +1,4 @@
-package dao;
+oopackage dao;
 
 import java.sql.SQLException;
 import java.util.List;
@@ -1074,6 +1074,267 @@ public class PaymentServlet extends HttpServlet {
         }
     }
 }
+-----------------------
+
+
+package dao;
+
+import java.sql.*;
+import java.util.*;
+import model.Product;
+import utils.DBUtils;
+
+public class ProductDao<getProductsByCategoryId> implements ProductInterface {
+
+    @Override
+    public List<Product> getAllProducts() {
+        List<Product> products = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                Product product = new Product(
+                    rs.getInt("product_id"),
+                    rs.getInt("category_id"),
+                    rs.getString("product_name"),
+                    rs.getString("description"),
+                    rs.getDouble("price"),
+                    rs.getInt("stock"),
+                    rs.getString("image")
+                );
+                products.add(product);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return products;
+    }
+
+    @Override
+    public List<Product> getProductsByCategoryId(int categoryId) {
+        ArrayList<Product> products = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ?";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, categoryId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Product product = new Product(
+                        rs.getInt("product_id"),
+                        rs.getInt("category_id"),
+                        rs.getString("product_name"),
+                        rs.getString("description"),
+                        rs.getDouble("price"),
+                        rs.getInt("stock"),
+                        rs.getString("image")
+                    );
+                    products.add(product);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return products;
+    }
+
+    @Override
+    public List<Product> searchProductsByName(String query) {
+        List<Product> products = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE product_name LIKE ?";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, "%" + query + "%");
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Product product = new Product(
+                        rs.getInt("product_id"),
+                        rs.getInt("category_id"),
+                        rs.getString("product_name"),
+                        rs.getString("description"),
+                        rs.getDouble("price"),
+                        rs.getInt("stock"),
+                        rs.getString("image")
+                    );
+                    products.add(product);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return products;
+    }
+
+    @Override
+    public List<Product> searchProductsByCategoryAndName(int categoryId, String query) {
+        List<Product> products = new ArrayList<>();
+        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ? AND product_name LIKE ?";
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, categoryId);
+            ps.setString(2, "%" + query + "%");
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Product product = new Product(
+                        rs.getInt("product_id"),
+                        rs.getInt("category_id"),
+                        rs.getString("product_name"),
+                        rs.getString("description"),
+                        rs.getDouble("price"),
+                        rs.getInt("stock"),
+                        rs.getString("image")
+                    );
+                    products.add(product);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return products;
+    }
+
+    // ✅ New unified filter method (handles category, search, and sorting)
+    public List<Product> getFilteredProducts(Integer categoryId, String query, String sortType) {
+        List<Product> products = new ArrayList<>();
+
+        StringBuilder sql = new StringBuilder("SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE 1=1");
+        if (categoryId != null) sql.append(" AND category_id = ?");
+        if (query != null && !query.trim().isEmpty()) sql.append(" AND product_name LIKE ?");
+
+        if ("low-high".equalsIgnoreCase(sortType))
+            sql.append(" ORDER BY price ASC");
+        else if ("high-low".equalsIgnoreCase(sortType))
+            sql.append(" ORDER BY price DESC");
+        else if ("rating".equalsIgnoreCase(sortType))
+            sql.append(" ORDER BY rating DESC"); // make sure rating column exists
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+
+            int index = 1;
+            if (categoryId != null) ps.setInt(index++, categoryId);
+            if (query != null && !query.trim().isEmpty()) ps.setString(index++, "%" + query + "%");
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Product product = new Product(
+                        rs.getInt("product_id"),
+                        rs.getInt("category_id"),
+                        rs.getString("product_name"),
+                        rs.getString("description"),
+                        rs.getDouble("price"),
+                        rs.getInt("stock"),
+                        rs.getString("image")
+                    );
+                    products.add(product);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return products;
+    }
+}package servlets;
+
+import java.io.*;
+import java.util.*;
+import javax.servlet.*;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+
+import com.google.gson.*;
+import dao.ProductDao;
+import model.Product;
+
+@WebServlet("/ProductServlet")
+public class ProductServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private ProductDao<?> productDao;
+    private Gson gson;
+
+    @Override
+    public void init() throws ServletException {
+        super.init();
+        this.productDao = new ProductDao<>();
+        this.gson = new GsonBuilder().setPrettyPrinting().create();
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+
+        response.setContentType("application/json");
+        PrintWriter out = response.getWriter();
+
+        String categoryIdParam = request.getParameter("category_id");
+        String query = request.getParameter("query");
+        String filter = request.getParameter("filter");
+
+        Integer categoryId = null;
+        if (categoryIdParam != null && !categoryIdParam.isEmpty()) {
+            try {
+                categoryId = Integer.parseInt(categoryIdParam);
+            } catch (NumberFormatException e) {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                out.print("{\"error\":\"Invalid category_id\"}");
+                return;
+            }
+        }
+
+        if (query != null) {
+            query = query.trim().replaceAll("[^a-zA-Z0-9 ]", "");
+        }
+
+        List<Product> products = productDao.getFilteredProducts(categoryId, query, filter);
+        String json = gson.toJson(products);
+        out.print(json);
+        out.flush();
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        doGet(request, response);
+    }
+}// ✅ Handle filter button click
+$("#filter-btn").click(function () {
+  $("#filter-options").toggle();
+});
+
+// ✅ Handle filter selection
+$(document).on("click", ".filter-option", function () {
+  const sortType = $(this).data("type");
+  let url = "http://localhost:8080/Ecommerce_Website/ProductServlet";
+  let params = [];
+
+  if (lastCategoryId) params.push("category_id=" + lastCategoryId);
+  let query = $("#search-input").val().trim();
+  if (query) params.push("query=" + encodeURIComponent(query));
+  if (sortType) params.push("filter=" + sortType);
+
+  if (params.length > 0) url += "?" + params.join("&");
+
+  $.ajax({
+    url: url,
+    type: "GET",
+    dataType: "json",
+    success: function (data) {
+      allProducts = data;
+      if (allProducts.length > 0) {
+        showProducts(allProducts);
+      } else {
+        $("#product-list").html("<p class='text-center text-gray-500'>No products found.</p>");
+      }
+    },
+    error: function () {
+      alert("Failed to load filtered products.");
+    },
+  });
+
+  $("#filter-options").hide();
+});
 
 
 
