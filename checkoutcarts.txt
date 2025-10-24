@@ -874,4 +874,206 @@ $(document).ready(function(){
 </html>
 --------------------
 
+package servlets;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import model.CartItem;
+import model.User;
+import model.Paymentrequest;
+import dao.CartDao;
+import utils.DBUtils;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.sql.*;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+@WebServlet("/PaymentServlet")
+public class PaymentServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private final Gson gson = new Gson();
+    private final CartDao cartDao = new CartDao();
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        System.out.println("PaymentServlet initiated.");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        JsonObject out = new JsonObject();
+
+        HttpSession session = request.getSession(false);
+        if (session == null) {
+            sendError(response, out, "Not logged in", HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        Object userObj = session.getAttribute("user");
+        if (!(userObj instanceof User)) {
+            sendError(response, out, "User not logged in or session expired", HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        User user = (User) userObj;
+        int userId = user.getId();
+        String userEmail = user.getEmail();
+
+        if (userId <= 0) {
+            sendError(response, out, "Could not determine user id", HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            return;
+        }
+
+        System.err.println("Processing payment for user ID: " + userId + " (Email: " + userEmail + ")");
+
+        Paymentrequest payReq;
+        try (BufferedReader br = request.getReader()) {
+            payReq = gson.fromJson(br, Paymentrequest.class);
+        } catch (Exception e) {
+            log("Error parsing payment request", e);
+            sendError(response, out, "Invalid JSON payload", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        if (payReq == null || payReq.getAmount() == null) {
+            sendError(response, out, "Invalid payload", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        List<CartItem> allItems;
+        try {
+            allItems = cartDao.getCartItems(userId);
+            System.out.println("Found " + allItems.size() + " items in cart for user ID: " + userId);
+        } catch (SQLException e) {
+            log("Database error retrieving cart items", e);
+            sendError(response, out, "Database error: " + e.getMessage(), HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            return;
+        }
+
+        if (allItems.isEmpty()) {
+            sendError(response, out, "Cart is empty", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        // Filter only selected items for checkout
+        List<Integer> selectedIds = payReq.getSelectedItems();
+        if (selectedIds == null || selectedIds.isEmpty()) {
+            sendError(response, out, "No items selected for checkout", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        Set<Integer> selectedSet = selectedIds.stream().collect(Collectors.toSet());
+        List<CartItem> checkoutItems = allItems.stream()
+                .filter(ci -> selectedSet.contains(ci.getProductId()))
+                .collect(Collectors.toList());
+
+        if (checkoutItems.isEmpty()) {
+            sendError(response, out, "Selected items not found in cart", HttpServletResponse.SC_BAD_REQUEST);
+            return;
+        }
+
+        Connection conn = null;
+        try {
+            conn = DBUtils.getConnection();
+            conn.setAutoCommit(false);
+
+            int orderId = createOrder(conn, userId, payReq.getAmount());
+            createOrderLogs(conn, orderId, checkoutItems);
+            clearSelectedCartItems(conn, userId, selectedIds);
+
+            conn.commit();
+            out.addProperty("status", "ok");
+            out.addProperty("orderId", orderId);
+            out.addProperty("message", "Payment simulated and order placed for selected items.");
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.getWriter().write(out.toString());
+        } catch (SQLException e) {
+            log("Transaction failed", e);
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    log("Rollback failed", ex);
+                }
+            }
+            sendError(response, out, "Payment failed: " + e.getMessage(), HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.close();
+                } catch (SQLException e) {
+                    log("Connection close failed", e);
+                }
+            }
+        }
+    }
+
+    private void sendError(HttpServletResponse response, JsonObject jsonObject, String message, int statusCode)
+            throws IOException {
+        jsonObject.addProperty("status", "error");
+        jsonObject.addProperty("message", message);
+        response.setStatus(statusCode);
+        response.getWriter().write(jsonObject.toString());
+    }
+
+    private int createOrder(Connection conn, int userId, double totalAmount) throws SQLException {
+        String insertOrderSql = "INSERT INTO Ecommerce_Website.D_D_ORDER (user_id, total_amount, orderdate, status) VALUES (?, ?, GETDATE(), ?)";
+        try (PreparedStatement ps = conn.prepareStatement(insertOrderSql, Statement.RETURN_GENERATED_KEYS)) {
+            ps.setInt(1, userId);
+            ps.setDouble(2, totalAmount);
+            ps.setString(3, "Paid");
+            int affected = ps.executeUpdate();
+            if (affected == 0)
+                throw new SQLException("Creating order failed, no rows affected.");
+
+            try (ResultSet generatedKeys = ps.getGeneratedKeys()) {
+                if (generatedKeys.next()) {
+                    return generatedKeys.getInt(1);
+                } else {
+                    throw new SQLException("Creating order failed, no ID obtained.");
+                }
+            }
+        }
+    }
+
+    private void createOrderLogs(Connection conn, int orderId, List<CartItem> items) throws SQLException {
+        String insertOrderLogSql = "INSERT INTO Ecommerce_Website.D_D_ORDERLOGS (order_id, product_id, quantity, price, total) VALUES (?, ?, ?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(insertOrderLogSql)) {
+            for (CartItem ci : items) {
+                double lineTotal = ci.getQty() * ci.getPrice();
+                ps.setInt(1, orderId);
+                ps.setInt(2, ci.getProductId());
+                ps.setInt(3, ci.getQty());
+                ps.setDouble(4, ci.getPrice());
+                ps.setDouble(5, lineTotal);
+                ps.addBatch();
+            }
+            ps.executeBatch();
+        }
+    }
+
+    private void clearSelectedCartItems(Connection conn, int userId, List<Integer> selectedItems) throws SQLException {
+        if (selectedItems == null || selectedItems.isEmpty()) return;
+
+        String placeholders = selectedItems.stream()
+                .map(i -> "?")
+                .collect(Collectors.joining(","));
+        String sql = "DELETE FROM Ecommerce_Website.D_D_CART WHERE user_id = ? AND product_id IN (" + placeholders + ")";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            for (int i = 0; i < selectedItems.size(); i++) {
+                ps.setInt(i + 2, selectedItems.get(i));
+            }
+            ps.executeUpdate();
+        }
+    }
+}
+
+
 
