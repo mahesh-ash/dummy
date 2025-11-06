@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin — Enhanced E-commerce Panel</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: '#10B981'
+          }
+        }
+      }
+    }
+  </script>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <style>
+    :root {
+      --panel-bg: #fff;
+      --muted: #6b7280;
+      --card-shadow: 0 8px 24px rgba(15,23,42,0.08);
+    }
+    html, body { height: 100%; }
+    body {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      min-height: 100vh;
+    }
+    header { backdrop-filter: blur(6px); box-shadow: 0 2px 8px rgba(2,6,23,0.06); }
+    .brand { display: flex; gap: 12px; align-items: center; }
+    .brand-logo { width: 36px; height: 36px; border-radius: 8px; background: linear-gradient(135deg, #06b6d4 0%, #10b981 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; box-shadow: 0 4px 16px rgba(16,185,129,0.12); }
+    .header-actions { display: flex; gap: 0.5rem; align-items: center; }
+    .container { max-width: 1200px; margin: 1.25rem auto; padding: 0 1rem; }
+    .panel-wrap { display: flex; gap: 20px; align-items: flex-start; }
+    .sidebar { width: 260px; border-radius: 12px; background: var(--panel-bg); box-shadow: var(--card-shadow); padding: 14px; border: 1px solid rgba(15,23,42,0.04); position: sticky; top: 88px; height: calc(100vh - 120px); overflow: auto; }
+    .sidebar h2 { color: #047857; }
+    .sidebar .nav-item { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 8px; color: #0f172a; font-weight: 600; transition: all 0.15s ease; }
+    .sidebar .nav-item:hover { background: #ecfdf5; transform: translateX(4px); color: #065f46; }
+    .sidebar .nav-item.active { background: linear-gradient(90deg, rgba(16,185,129,0.06), transparent); color: #065f46; box-shadow: inset 0 0 0 1px rgba(16,185,129,0.06); }
+    main { flex: 1; min-width: 0; }
+    .card { background: var(--panel-bg); border-radius: 12px; padding: 18px; box-shadow: var(--card-shadow); border: 1px solid rgba(2,6,23,0.04); }
+    .page-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .controls { display: flex; gap: 10px; align-items: center; }
+    table.dataTable { border-collapse: collapse !important; width: 100% !important; }
+    table.dataTable thead th { background: linear-gradient(180deg, #f8fafc, #ffffff); color: #0f172a; font-weight: 700; border-bottom: 1px solid rgba(15,23,42,0.06); padding: 12px; }
+    table.dataTable tbody td { padding: 12px; vertical-align: middle; }
+    .dt-button { border-radius: 8px; padding: 6px 10px; background: #0f172a; color: white; border: none; }
+    .dataTables_wrapper .dataTables_filter input { border-radius: 8px; padding: 8px 10px; border: 1px solid rgba(15,23,42,0.06); box-shadow: none; }
+    .modal-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); z-index: 9999; padding: 24px; }
+    .modal-overlay.open { display: flex; }
+    .modal-card { background: #fff; border-radius: 12px; width: 100%; max-width: 880px; padding: 18px; box-shadow: 0 12px 40px rgba(2,6,23,0.18); border: 1px solid rgba(2,6,23,0.04); max-height: 86vh; overflow: auto; }
+    .modal-card img { display: block; margin: 8px auto; max-width: 100%; }
+    @media (max-width: 1024px) { .sidebar { display: none; } .panel-wrap { flex-direction: column; } .container { padding: 0 18px; } }
+    .muted { color: var(--muted); font-size: 0.9rem; }
+    .btn { padding: 8px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    #toast { position: fixed; right: 1rem; bottom: 1rem; background: #111; color: #fff; padding: 8px 12px; border-radius: 6px; display: none; z-index: 10000; }
+    .file-label { display: inline-block; padding: 6px 10px; border-radius: 8px; border: 1px dashed rgba(15,23,42,0.08); cursor: pointer; }
+    .file-input { display: none; }
+  </style>
+</head>
+
+<body>
+
+  <header class="bg-white fixed w-full top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="brand">
+        <div class="brand-logo">E</div>
+        <div>
+          <div style="font-weight:800; color:#065f46;">E-Commerce Admin</div>
+          <div class="muted" style="font-size:12px;">Dashboard & management</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="hidden sm:flex items-center space-x-3">
+          <div class="muted text-sm">
+            Signed in as <strong id="adminName" style="color:#0f172a;">Admin</strong>
+          </div>
+          <button id="profileBtn" type="button" class="btn border border-gray-200">Profile</button>
+          <button id="logoutBtn" type="button" class="btn" style="background:#ef4444;color:white;">Logout</button>
+        </div>
+
+        <div class="sm:hidden">
+          <button id="mobileMenuBtn" type="button" class="btn border border-gray-200">Menu</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container" style="padding-top:86px;">
+    <div class="panel-wrap">
+
+      <aside id="sidebar" class="sidebar">
+        <div class="p-2 pb-3 border-b">
+          <h2>Admin Menu</h2>
+          <div class="muted" style="font-size:13px;">Manage products, users & orders</div>
+        </div>
+
+        <nav class="mt-4 space-y-1">
+          <div class="nav-item sidebar-btn active" data-target="products" role="button">Products</div>
+          <div class="nav-item sidebar-btn" data-target="users" role="button">Users</div>
+          <div class="nav-item sidebar-btn" data-target="orders" role="button">Orders</div>
+        </nav>
+
+        <div class="mt-6 border-t pt-4 muted" style="font-size:13px;">Quick actions</div>
+        <div class="mt-3 space-y-2">
+          <button id="addCategoryBtn" type="button" class="w-full text-left px-3 py-2 bg-emerald-500 text-white rounded">
+            + Add Category
+          </button>
+        </div>
+      </aside>
+
+      <main>
+        <section id="view-products" class="panel">
+          <div class="page-head">
+            <div>
+              <h2>Products</h2>
+              <div class="muted">Manage the product catalog, prices and stock</div>
+            </div>
+
+            <div class="controls">
+              <select id="categoryFilter" class="border rounded p-2 text-sm muted">
+                <option value="">All categories</option>
+              </select>
+
+              <div class="flex items-center space-x-2">
+                <button id="addProductBtnTop" type="button" class="btn" style="background:#10b981;color:white;">
+                  Add Product
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <table id="productsTable" class="display stripe hover" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Category</th>
+                  <th>Price</th>
+                  <th>Stock</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="view-users" class="panel hidden mt-6">
+          <div class="page-head">
+            <div>
+              <h2>Users</h2>
+              <div class="muted">List of registered users</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <table id="usersTable" class="display stripe hover" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="view-orders" class="panel hidden mt-6">
+          <div class="page-head">
+            <div>
+              <h2>Orders</h2>
+              <div class="muted">Recent orders & statuses</div>
+            </div>
+          </div>
+
+          <div class="card">
+            <table id="ordersTable" class="display stripe hover" style="width:100%">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Username</th>
+                  <th>Total</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="productModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="productModalTitle">
+      <h3 id="productModalTitle" class="text-xl font-semibold mb-4">Add Product</h3>
+
+      <!-- IMPORTANT: multipart/form-data + method="post" so file uploads work -->
+      <form id="productForm" class="space-y-3" enctype="multipart/form-data" method="post">
+        <input type="hidden" name="productId" id="productId">
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium">Product Name</label>
+            <input id="productName" name="productName" required class="border rounded p-2 w-full">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium">Category</label>
+            <select id="categorySelect" name="categoryId" required class="border rounded p-2 w-full text-sm">
+              <option value="">Select category</option>
+            </select>
+          </div>
+
+          <div class="col-span-2">
+            <label class="block text-sm font-medium">Description</label>
+            <textarea id="description" name="description" class="border rounded p-2 w-full"></textarea>
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium">Price</label>
+            <input id="price" name="price" type="number" step="0.01" required class="border rounded p-2 w-full">
+          </div>
+
+          <div>
+            <label class="block text-sm font-medium">Stock</label>
+            <input id="stock" name="stock" type="number" min="0" required class="border rounded p-2 w-full">
+          </div>
+
+          <div class="col-span-2">
+            <label class="block text-sm font-medium">Image URL</label>
+            <input id="image" name="image" class="border rounded p-2 w-full" placeholder="/Ecommerce_Website/Assets/Hp.jpg or Assets/Hp.jpg or http://...">
+          </div>
+
+          <div class="col-span-2">
+            <label class="block text-sm font-medium">Or choose image file</label>
+            <!-- file input MUST have name="image" so AdminServlet can read req.getPart("image") -->
+            <input id="imageFile" name="image" class="file-input" type="file" accept="image/*">
+            <label for="imageFile" id="fileLabel" class="file-label">Select image file</label>
+            <img id="imagePreview" class="mt-2 max-h-40 mx-auto hidden rounded" alt="preview">
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-4">
+          <button type="button" id="closeProductModal" class="px-3 py-1 rounded border">Cancel</button>
+          <button type="submit" id="saveProductBtn" class="bg-emerald-500 text-white px-4 py-1 rounded">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="categoryModal" class="modal-overlay" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle">
+      <h3 id="categoryModalTitle" class="text-xl font-semibold mb-4">Add Category</h3>
+
+      <form id="categoryForm" class="space-y-3">
+        <input type="hidden" name="categoryId" id="categoryId">
+
+        <div>
+          <label class="block text-sm font-medium">Category Name</label>
+          <input id="categoryName" name="categoryName" required class="border rounded p-2 w-full">
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Description</label>
+          <textarea id="categoryDescription" name="description" class="border rounded p-2 w-full"></textarea>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-4">
+          <button type="button" id="closeCategoryModal" class="px-3 py-1 rounded border">Cancel</button>
+          <button type="submit" id="saveCategoryBtn" class="bg-emerald-500 text-white px-4 py-1 rounded">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" aria-hidden="true"></div>
+
+<script src="../Jquery/Admin.js"></script>
+
+</body>
+</html>

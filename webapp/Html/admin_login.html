@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Admin Login — Ecommerce</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: {} }
+    }
+  </script>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <style>
+    body {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial;
+      background: linear-gradient(180deg,#f8fafc 0%, #f1f5f9 100%);
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      min-height: 100vh;
+      margin: 0;
+    }
+    #toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #111827;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: none;
+      z-index: 1000;
+    }
+    header {
+      backdrop-filter: blur(6px);
+      box-shadow: 0 2px 8px rgba(2,6,23,0.06);
+    }
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg,#06b6d4 0%, #10b981 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      box-shadow: 0 4px 16px rgba(16,185,129,0.12);
+    }
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .btn {
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="toast"></div>
+
+  <header class="bg-white fixed w-full top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="brand">
+        <div class="brand-logo">E</div>
+        <div>
+          <div style="font-weight:800; color:#065f46;">E-Commerce Admin</div>
+          <div style="color:#6b7280;font-size:12px;">Dashboard &amp; management</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="hidden sm:flex items-center space-x-3">
+          <div style="color:#6b7280;font-size:0.9rem;">
+            Signed in as <strong id="adminName" style="color:#0f172a;">Admin</strong>
+          </div>
+          <button id="profileBtn" type="button" class="btn border border-gray-200">
+            Profile
+          </button>
+        </div>
+
+        <div class="sm:hidden">
+          <button id="mobileMenuBtn" type="button" class="btn border border-gray-200">
+            Menu
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="flex-1 flex items-center justify-center pt-28 min-h-screen">
+    <div class="w-full max-w-md bg-white rounded-lg shadow p-6 mt-8 mx-4">
+      <h2 class="text-2xl font-semibold text-center mb-4">Admin Login</h2>
+
+      <form id="adminLoginForm" class="space-y-4" autocomplete="off"
+            method="post" action="/Ecommerce_Website/AdminLoginServlet">
+        <div>
+          <label class="block text-sm font-medium">Email</label>
+          <input id="email" name="email" type="email" required
+                 class="w-full border rounded p-2"
+                 placeholder=""
+                 value="" />
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium">Password</label>
+          <input id="password" name="password" type="password" required
+                 class="w-full border rounded p-2"
+                 placeholder=""
+                 value="" />
+        </div>
+
+        <div>
+          <button id="loginBtn" type="submit"
+                  class="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 transition">
+            Login as Admin
+          </button>
+        </div>
+
+        <p id="msg" class="text-sm text-red-600 mt-2 hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <script src="../Jquery/admin_login.js"></script>
+</body>
+</html>

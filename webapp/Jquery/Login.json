@@ -1,0 +1,26 @@
+{
+    "Inputfields": [
+
+    {
+    "title":"Email",
+    "id": "email",
+    "inputType": "email",
+    "mandatory": true,
+    "enable": true
+  },
+  {
+    "title":"Password",
+    "id": "password",
+    "inputType": "password",
+    "mandatory": true,
+    "enable": true
+  },
+  {
+    "title":"Submit",
+     "id":"button",
+     "inputType":"button",
+     "mandatory":false,
+     "enable":true
+  }
+]
+}

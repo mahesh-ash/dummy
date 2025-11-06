@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context>
+  <Environment name="SMTP_HOST" value="smtp.gmail.com" type="java.lang.String"/>
+  <Environment name="SMTP_PORT" value="587" type="java.lang.String"/>
+  <Environment name="SMTP_USER" value="maheshwarantyr@gmail.com" type="java.lang.String"/>
+  <Environment name="SMTP_PASS" value="mxgvznapvohzlpul" type="java.lang.String"/>
+  <Environment name="SMTP_FROM" value="maheshwarantyr@gmail.com" type="java.lang.String"/>
+</Context>

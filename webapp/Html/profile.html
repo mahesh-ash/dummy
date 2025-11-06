@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>User Profile & Wishlist - Shopping App</title>
+
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+
+<style>
+
+  body { 
+    background: linear-gradient(180deg,#f7fafc 0%, #eef2f7 100%); 
+    min-height:100vh; 
+  }
+  .disabled-input { 
+    background-color: #f3f4f6;
+     cursor: not-allowed; 
+    }
+  .sidebar-btn { 
+    transition: all 0.15s; 
+  }
+  .sidebar-btn:hover {
+     background-color: #edf2f7; 
+    }
+  .card { 
+    background: linear-gradient(180deg, #ffffffcc, #ffffff); 
+    backdrop-filter: blur(4px); 
+    border-radius: 0.75rem; 
+  }
+  button:focus { 
+    outline: 3px solid rgba(34,197,94,0.15); 
+  }
+
+  .product-card {
+     position: relative; 
+     background: #fff; 
+     border-radius: 8px; 
+     padding: 12px; 
+     box-shadow: 0 2px 8px rgba(0,0,0,0.06); 
+     text-align: left; 
+    }
+  .product-image {
+    width: 100%; 
+    height: 160px; 
+    object-fit: cover; 
+    display:block; 
+    border-radius:6px;
+   }
+  .product-title { 
+    font-weight: 700; 
+    color: #1f2937; 
+  }
+  .product-desc { 
+    font-size: 13px; 
+    color: #6b7280; 
+    margin-top:4px;
+   }
+  .price { 
+    font-weight:800; 
+    color:#059669; 
+  }
+  .line-through { 
+    text-decoration: 
+    line-through; 
+    color: #9ca3af; 
+    margin-right:8px; 
+  }
+  .small-btn { 
+    font-size: 13px; 
+    padding:6px 10px; 
+    border-radius:6px; 
+  }
+
+  .wishlist-btn-small { 
+    display:inline-flex; 
+    align-items:center; 
+    justify-content:center; 
+    width:34px; height:34px; 
+    border-radius:999px; 
+    background:#fff; 
+    border:1px solid #eee; 
+    cursor:pointer; 
+  }
+  .wishlist-btn-small.filled svg { 
+    fill:#ef4444; 
+    stroke:#ef4444; 
+  }
+
+  .sidebar { 
+    min-width: 230px; 
+  }
+  .main { 
+    flex:1; 
+  }
+
+  #toast { 
+    position: fixed; 
+    top:20px; 
+    right:20px; 
+    background:#111827;
+    color:#fff;
+    padding:8px 12px;
+    border-radius:6px;
+    display:none;
+    z-index:1000; 
+  }
+
+  #wishlist-panel {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 18px;
+  }
+
+  #wishlist-grid {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(3, minmax(0, 1fr)); /* 3 per row */
+    align-items: start;
+  }
+
+
+  @media (max-width: 1024px) {
+    #wishlist-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    #wishlist-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .wishlist-card {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 6px 18px rgba(2,6,23,0.06);
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 100%;
+  }
+
+  .wishlist-card .wishlist-actions {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .wishlist-card .wishlist-actions button {
+    flex: 1;
+    text-align: center;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .wishlist-card .move-to-cart { 
+    background:#059669; 
+    color:#fff; 
+    border:0; 
+  }
+  .wishlist-card .buy-now { 
+    background:#f59e0b; 
+    color:#fff; 
+    border:0; 
+  }
+  .wishlist-card .remove-wishlist { 
+    background:#fff; 
+    color:#ef4444; 
+    border:1px solid #fee2e2; 
+  }
+
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+
+<nav class="bg-green-600 text-white fixed w-full top-0 z-50 shadow-md">
+  <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
+    <div class="text-2xl font-semibold">Shopping App</div>
+    <div class="flex items-center space-x-6">
+      <button id="home-btn" class="hover:text-yellow-300">Home</button>
+      <button id="orders-btn" class="hover:text-yellow-300">Orders</button>
+      <button id="cart-btn" class="relative hover:text-yellow-300">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.293 6.707A1 1 0 007.707 21h8.586a1 1 0 00.707-1.707L15 13H7z" />
+        </svg>
+        <span id="cart-badge" class="absolute -top-2 -right-3 bg-red-500 text-white rounded-full px-2 text-xs">0</span>
+      </button>
+      <button id="nav-logout" class="bg-red-500 hover:bg-red-600 px-3 py-1 rounded">Logout</button>
+    </div>
+  </div>
+</nav>
+
+
+<div class="flex mt-20 max-w-7xl mx-auto px-4 gap-6">
+
+
+  <aside class="sidebar w-1/4 bg-white rounded-lg shadow-lg p-4 space-y-2 sticky top-20 h-fit">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-12 h-12 flex items-center justify-center rounded-full bg-gray-200 shadow-md">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M12 14c3.866 0 7 1.343 7 3v3H5v-3c0-1.657 3.134-3 7-3zM12 12a4 4 0 100-8 4 4 0 000 8z" />
+        </svg>
+      </div>
+      <div>
+        <div id="side-name" class="font-semibold text-gray-800">Guest User</div>
+        <div id="side-email" class="text-xs text-gray-500">--</div>
+      </div>
+    </div>
+
+    <button class="sidebar-btn w-full text-left py-2 px-4 rounded font-semibold text-gray-700 bg-gray-100" id="sidebar-profile">My Profile</button>
+    <button class="sidebar-btn w-full text-left py-2 px-4 rounded font-semibold text-gray-700" id="sidebar-orders">My Orders</button>
+    <button class="sidebar-btn w-full text-left py-2 px-4 rounded font-semibold text-gray-700" id="sidebar-wishlist">My Wishlist</button>
+  </aside>
+
+
+  <main class="main">
+
+
+    <section id="profile-section" class="card p-6 shadow-md mb-6">
+      <div class="flex flex-col md:flex-row gap-6">
+        <div class="w-full md:w-1/3 flex flex-col items-center text-center">
+          <div class="w-32 h-32 flex items-center justify-center rounded-full bg-gray-200 shadow-md">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-16 h-16 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 14c3.866 0 7 1.343 7 3v3H5v-3c0-1.657 3.134-3 7-3zM12 12a4 4 0 100-8 4 4 0 000 8z" />
+            </svg>
+          </div>
+          <h2 id="display-name" class="mt-4 text-lg font-bold text-gray-800">Full Name</h2>
+          <p id="display-email" class="text-sm text-gray-500">youremail@example.com</p>
+        </div>
+
+        <div class="w-full md:w-2/3">
+          <div class="flex justify-between items-start">
+            <h1 class="text-2xl font-bold mb-2 text-gray-800">My Profile</h1>
+            <div class="flex gap-2">
+              <button id="edit-btn" type="button" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Edit</button>
+              <button id="save-btn" type="button" class="hidden bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">Save</button>
+              <button id="cancel-btn" type="button" class="hidden bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">Cancel</button>
+            </div>
+          </div>
+
+          <form id="profile-form" class="mt-2">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="md:col-span-2">
+                <label class="block text-gray-700 text-sm font-medium mb-1">Full Name</label>
+                <input id="fullname" name="fullname" type="text" class="shadow border rounded w-full py-2 px-3 text-gray-700 disabled-input">
+              </div>
+
+              <div class="md:col-span-2">
+                <label class="block text-gray-700 text-sm font-medium mb-1">Email</label>
+                <input id="email" name="email" type="email" class="shadow border rounded w-full py-2 px-3 text-gray-700 disabled-input" readonly>
+              </div>
+
+              <div>
+                <label class="block text-gray-700 text-sm font-medium mb-1">Phone</label>
+                <input id="phone" name="phone" type="text" class="shadow border rounded w-full py-2 px-3 text-gray-700" disabled>
+              </div>
+
+              <div>
+                <label class="block text-gray-700 text-sm font-medium mb-1">Pincode</label>
+                <input id="pincode" name="pincode" type="text" class="shadow border rounded w-full py-2 px-3 text-gray-700" disabled>
+              </div>
+
+              <div class="md:col-span-2">
+                <label class="block text-gray-700 text-sm font-medium mb-1">Address</label>
+                <textarea id="address" name="address" rows="3" class="shadow border rounded w-full py-2 px-3 text-gray-700" disabled></textarea>
+              </div>
+            </div>
+          </form>
+
+          <div class="mt-4 md:mt-6">
+            <button id="change-password-btn" class="bg-yellow-500 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded w-full md:w-1/3">Change Password</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 border-t pt-4">
+        <a href="../Html/orderhistory.html" class="text-xs text-green-600 hover:underline">View all orders</a>
+      </div>
+    </section>
+
+    <section id="wishlist-panel" class="card p-6 shadow-md" style="display:none;">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">My Wishlist</h2>
+        <div>
+          <button id="wishlist-refresh" class="small-btn bg-gray-100 mr-2">Refresh</button>
+          <button id="wishlist-clear-all" class="small-btn bg-red-100 text-red-700">Clear All</button>
+        </div>
+      </div>
+
+      <div id="wishlist-empty" class="text-center text-gray-500" style="display:none;">
+        <p class="mb-2">Your wishlist is empty.</p>
+        <a href="../Html/navbar.html" class="text-green-600 hover:underline">Shop now</a>
+      </div>
+
+      <div id="wishlist-loading" class="text-gray-500">Loading wishlist...</div>
+
+      <div id="wishlist-grid" aria-live="polite" class="mt-4">
+        
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="../Jquery/profile.js"></script>
+</body>
+</html>

@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Your Wishlist</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <style>
+    /* small local style to ensure product cards look nice in wishlist page */
+    .product-card { position: relative; }
+    .wishlist-btn { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.95); border-radius: 999px; padding: 6px; cursor: pointer; z-index: 30; }
+    .wishlist-btn svg { width:18px; height:18px; stroke:#ef4444; fill: transparent; }
+    .wishlist-btn.filled svg { fill:#ef4444; stroke:#ef4444; }
+  </style>
+</head>
+<body class="bg-gray-50">
+
+
+  <nav class="bg-green-600 text-white fixed w-full top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 flex justify-between items-center h-16">
+      <div class="text-2xl font-semibold cursor-pointer" id="nav-home">Shopping App</div>
+      <div class="flex items-center space-x-6">
+        <button id="nav-orders" class="hover:text-yellow-300">Orders</button>
+        <button id="nav-cart" class="relative hover:text-yellow-300">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.293 6.707A1 1 0 007.707 21h8.586a1 1 0 00.707-1.707L15 13H7z" />
+          </svg>
+          <span id="cart-badge" class="absolute -top-2 -right-3 bg-red-500 text-white rounded-full px-2 text-xs">0</span>
+        </button>
+        <button id="nav-logout" class="bg-red-500 hover:bg-red-600 px-3 py-1 rounded">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-7xl mx-auto mt-28 px-4">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="text-2xl font-semibold">Your Wishlist</h2>
+      <div>
+        <button id="wishlist-refresh" class="bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded mr-2">Refresh</button>
+        <button id="wishlist-clear" class="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1 rounded">Clear All</button>
+      </div>
+    </div>
+
+    <div id="wishlist-container">
+      <p class="text-center text-gray-500">Loading your wishlist...</p>
+    </div>
+  </div>
+
+<script src="../Jquery/navbar.js"></script>
+
+
+  <script>
+  $(function(){
+    // require login
+    const rawUser = localStorage.getItem('user');
+    if (!rawUser) { window.location.href = 'login.html'; return; }
+
+    let userObj = null;
+    try { userObj = JSON.parse(rawUser); } catch(e) { console.error('Failed to parse stored user', e); window.location.href = 'login.html'; return; }
+    const userId = userObj.userId || userObj.id || userObj.user_id;
+
+    $('#nav-home').click(()=>window.location.href='navbar.html');
+    $('#nav-orders').click(()=>window.location.href='orderhistory.html');
+    $('#nav-cart').click(()=>window.location.href='cart.html');
+
+    $('#nav-logout').click(function(){
+      const raw = localStorage.getItem('user');
+      if (!raw) {
+        localStorage.clear();
+        window.location.href = 'login.html';
+        return;
+      }
+      $.ajax({
+        url: 'http://localhost:8080/Ecommerce_Website/LogoutServlet',
+        method: 'POST',
+        dataType: 'json',
+        timeout: 4000
+      }).always(function(res){
+        try { localStorage.clear(); } catch(e){}
+        try { localStorage.removeItem('buyNowItem'); } catch(e){}
+        $('#cart-badge').text(0);
+        if (typeof refreshWishlistBadge === 'function') {
+          try { refreshWishlistBadge(); } catch(e){}
+        }
+        window.location.href = 'login.html';
+      });
+    });
+
+    // Provide a minimal fallback buildProductCardHtml if navbar.js isn't loaded
+    if (typeof buildProductCardHtml !== 'function') {
+      window.buildProductCardHtml = function(p) {
+        const id = p.productId ?? p.id ?? p.product_id;
+        const name = p.productName ?? p.name ?? p.product_name ?? 'Product';
+        const image = (Array.isArray(p.images) && p.images[0]) ? p.images[0] : (p.imageUrl || p.image || 'https://via.placeholder.com/400x250?text=No+Image');
+        const price = p.price ?? 0;
+        const isWish = p.inWishlist === true;
+        const heartClass = isWish ? 'wishlist-btn filled' : 'wishlist-btn';
+        return `
+          <div class="bg-white p-4 rounded-lg shadow-md text-center product-card" data-id="${id}">
+            <button class="${heartClass}" data-id="${id}" aria-label="Wishlist" title="${isWish ? 'Remove from wishlist' : 'Add to wishlist'}">
+              <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
+                <path d="M12 21s-7-4.35-9-7.2C-1.1 8.8 4.5 3 8.4 6.2 10.8 8.3 12 10 12 10s1.2-1.7 3.6-3.8C19.5 3 25.1 8.8 21 13.8 19 16.65 12 21 12 21z"></path>
+              </svg>
+            </button>
+            <img src="${image}" class="product-image mb-3 mx-auto rounded" alt="${escapeHtml(name)}" style="width:100%;height:200px;object-fit:cover;">
+            <h4 class="font-semibold text-gray-800">${escapeHtml(name)}</h4>
+            <div class="font-bold text-green-600 mt-2">₹${price}</div>
+            <div class="mt-3">
+              <button class="move-to-cart bg-green-600 text-white px-3 py-1 rounded" data-id="${id}">Move to Cart</button>
+              <button class="remove-from-wishlist bg-red-100 text-red-700 px-3 py-1 rounded ml-2" data-id="${id}">Remove</button>
+            </div>
+          </div>
+        `;
+      };
+    }
+
+    function escapeHtml(s){
+      if (s == null) return '';
+      return String(s).replace(/[&<>"'`]/g, function(ch){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'})[ch]; });
+    }
+
+    function loadWishlist() {
+      $('#wishlist-container').html("<p class='text-center text-gray-500'>Loading your wishlist...</p>");
+      $.getJSON('http://localhost:8080/Ecommerce_Website/WishlistServlet', { userId: userId })
+        .done(function(products){
+          if (!products || products.length === 0) {
+            $('#wishlist-container').html("<p class='text-center text-gray-500'>Your wishlist is empty.</p>");
+            return;
+          }
+          let html = '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">';
+          products.forEach(p => {
+            p.inWishlist = true;
+            html += buildProductCardHtml(p);
+          });
+          html += '</div>';
+          $('#wishlist-container').html(html);
+        })
+        .fail(function(jqxhr, status, err){
+          console.error("Failed to load wishlist:", status, err);
+          $('#wishlist-container').html("<p class='text-center text-red-600'>Failed to load wishlist.</p>");
+        });
+    }
+
+    loadWishlist();
+
+    $('#wishlist-refresh').click(() => loadWishlist());
+
+    $('#wishlist-clear').click(function(){
+      if (!confirm("Are you sure you want to clear your entire wishlist?")) return;
+      $.post('http://localhost:8080/Ecommerce_Website/WishlistServlet', { action:'clearAll', userId: userId }, function(res){
+        if (typeof res === 'string') {
+          try { res = JSON.parse(res); } catch(e) { res = null; }
+        }
+        if (res && res.status === 'ok') {
+          $('#wishlist-container').html("<p class='text-center text-gray-500'>Your wishlist is empty.</p>");
+          if ($('#wishlist-badge').length) $('#wishlist-badge').text(res.count ?? 0);
+        } else {
+          alert((res && res.message) ? res.message : "Failed to clear wishlist.");
+        }
+      }, 'json').fail(function(jqxhr, status, err){
+        console.error("Clear wishlist failed:", status, err);
+        alert("Failed to clear wishlist.");
+      });
+    });
+
+    $(document).off('click.wishlistLocal').on('click.wishlistLocal', '.wishlist-btn', function(e){
+      e.stopPropagation();
+    });
+
+    // Toggle wishlist add/remove for items on the page
+    $(document).off('click.wishlistToggle').on('click.wishlistToggle', '.wishlist-btn', function(e){
+      e.stopPropagation();
+      const $btn = $(this);
+      const productId = $btn.data('id');
+      if (!productId) return;
+      const user = localStorage.getItem('user');
+      if(!user) { alert("Please login to use wishlist"); window.location.href = "login.html"; return; }
+
+      const currentlyFilled = $btn.hasClass('filled');
+      const action = currentlyFilled ? 'remove' : 'add';
+
+      $btn.prop('disabled', true);
+      $.post("http://localhost:8080/Ecommerce_Website/WishlistServlet", { action: action, productId: productId, userId: userId }, function(res){
+        if (typeof res === 'string') {
+          try { res = JSON.parse(res); } catch(e) {}
+        }
+        if (res && res.status === 'ok') {
+          if (action === 'add') {
+            $btn.addClass('filled').attr('title','Remove from wishlist');
+          } else {
+            $btn.removeClass('filled').attr('title','Add to wishlist');
+            if (window.location.pathname.endsWith('whishlist.html')) {
+              $btn.closest('.product-card').fadeOut(200, function(){ $(this).remove(); if ($('#wishlist-container').find('.product-card').length === 0) $('#wishlist-container').html("<p class='text-center text-gray-500'>Your wishlist is empty.</p>"); });
+            }
+          }
+          if ($('#wishlist-badge').length && typeof res.count !== 'undefined') $('#wishlist-badge').text(res.count);
+        } else {
+          $btn.toggleClass('filled', currentlyFilled);
+          alert((res && res.message) ? res.message : 'Failed to update wishlist.');
+        }
+        $btn.prop('disabled', false);
+      }, 'json').fail(function(){
+        $btn.toggleClass('filled', currentlyFilled);
+        $btn.prop('disabled', false);
+        alert('Network error: failed to update wishlist.');
+      });
+    });
+
+    // Remove button (fallback cards which have remove button)
+    $(document).off('click.removeWishlist').on('click.removeWishlist', '.remove-from-wishlist', function(e){
+      e.stopPropagation();
+      const $btn = $(this);
+      const pid = $btn.data('id');
+      if (!pid) return;
+      if (!confirm('Remove this item from wishlist?')) return;
+      $btn.prop('disabled', true);
+      $.post('http://localhost:8080/Ecommerce_Website/WishlistServlet', { action:'remove', productId: pid, userId: userId }, function(res){
+        if (typeof res === 'string') {
+          try { res = JSON.parse(res); } catch(e) {}
+        }
+        if (res && res.status === 'ok') {
+          $btn.closest('.product-card').fadeOut(200, function(){ $(this).remove(); if ($('#wishlist-container').find('.product-card').length === 0) $('#wishlist-container').html("<p class='text-center text-gray-500'>Your wishlist is empty.</p>"); });
+          if ($('#wishlist-badge').length && typeof res.count !== 'undefined') $('#wishlist-badge').text(res.count);
+        } else {
+          alert((res && res.message) ? res.message : 'Failed to remove from wishlist');
+          $btn.prop('disabled', false);
+        }
+      }, 'json').fail(function(){ alert('Network error'); $btn.prop('disabled', false); });
+    });
+
+    // Move to cart button (fallback)
+    $(document).off('click.moveToCart').on('click.moveToCart', '.move-to-cart', function(e){
+      e.stopPropagation();
+      const $btn = $(this);
+      const pid = $btn.data('id');
+      if (!pid) return;
+      $btn.prop('disabled', true);
+      $.post('http://localhost:8080/Ecommerce_Website/CartServlet', { action:'add', productId: pid, qty:1 }, function(res){
+        if (typeof res === 'string') {
+          try { res = JSON.parse(res); } catch(e) {}
+        }
+        if (res && res.status === 'ok') {
+          $.post('http://localhost:8080/Ecommerce_Website/WishlistServlet', { action:'remove', productId: pid, userId: userId }).always(function(){ loadWishlist(); });
+          $.getJSON('http://localhost:8080/Ecommerce_Website/CartServlet').done(function(cart){ const total = Array.isArray(cart) ? cart.reduce((s,i)=>s+(i.qty||0),0) : 0; $('#cart-badge').text(total); });
+          alert('Moved to cart');
+        } else {
+          alert((res && res.message) ? res.message : 'Failed to add to cart');
+          $btn.prop('disabled', false);
+        }
+      }, 'json').fail(function(){ alert('Network error while adding to cart'); $btn.prop('disabled', false); });
+    });
+
+    if (typeof refreshWishlistBadge === 'function') refreshWishlistBadge();
+    if (typeof refreshBadge === 'function') refreshBadge();
+
+  });
+  </script>
+
+</body>
+</html>

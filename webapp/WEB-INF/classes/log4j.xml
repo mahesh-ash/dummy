@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+
+<log4j:configuration>
+
+    <appender name="console" class="org.apache.log4j.ConsoleAppender">
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%d{HH:mm:ss} %-5p [%C:%L] - %m%n"/>
+        </layout>
+    </appender>
+
+    <appender name="infoFile" class="org.apache.log4j.FileAppender">
+        <param name="File" value="C:/Users/91978/Downloads/wholeproject/Final_Project-1/logss/info.log"/>
+        <param name="Append" value="true"/>
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%d{yyyy-MM-dd HH:mm:ss} %-5p [%C:%L] - %m%n"/>
+        </layout>
+        <filter class="org.apache.log4j.varia.LevelMatchFilter">
+            <param name="LevelToMatch" value="INFO"/>
+            <param name="AcceptOnMatch" value="true"/>
+        </filter>
+        <filter class="org.apache.log4j.varia.DenyAllFilter"/>
+    </appender>
+
+    <appender name="debugFile" class="org.apache.log4j.FileAppender">
+        <param name="File" value="C:/Users/91978/Downloads/wholeproject/Final_Project-1/logss/debug.log"/>
+        <param name="Append" value="true"/>
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%d{yyyy-MM-dd HH:mm:ss} %-5p [%C:%L] - %m%n"/>
+        </layout>
+        <filter class="org.apache.log4j.varia.LevelMatchFilter">
+            <param name="LevelToMatch" value="DEBUG"/>
+            <param name="AcceptOnMatch" value="true"/>
+        </filter>
+        <filter class="org.apache.log4j.varia.DenyAllFilter"/>
+    </appender>
+
+    <appender name="errorFile" class="org.apache.log4j.FileAppender">
+        <param name="File" value="C:/Users/91978/Downloads/wholeproject/Final_Project-1/logss/error.log"/>
+        <param name="Append" value="true"/>
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern" value="%d{yyyy-MM-dd HH:mm:ss} %-5p [%C:%L] - %m%n"/>
+        </layout>
+        <filter class="org.apache.log4j.varia.LevelMatchFilter">
+            <param name="LevelToMatch" value="ERROR"/>
+            <param name="AcceptOnMatch" value="true"/>
+        </filter>
+        <filter class="org.apache.log4j.varia.DenyAllFilter"/>
+    </appender>
+
+    <logger name="servlets" additivity="true">
+        <level value="all"/>
+        <appender-ref ref="infoFile"/>
+        <appender-ref ref="debugFile"/>
+        <appender-ref ref="errorFile"/>
+    </logger>
+
+    <root>
+        <level value="all"/>
+        <appender-ref ref="console"/>
+        <appender-ref ref="infoFile"/>
+        <appender-ref ref="debugFile"/>
+        <appender-ref ref="errorFile"/>
+    </root>
+
+</log4j:configuration>

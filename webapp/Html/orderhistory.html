@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Order History — Ecommerce</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <style>
+    .order-card:hover { 
+    transform: translateY(-3px); 
+    transition: 0.3s;
+     }
+     
+    .order-summary {
+     border-left: 4px solid #10B981; 
+     padding-left: 1rem;
+      }
+      
+    .order-details { 
+    background: #F9FAFB; 
+    border-left: 4px solid #FBBF24;
+    padding: 1rem;
+    border-radius: 0 0 .5rem .5rem;
+       }
+    .disabled-button { 
+    background: #9ca3af;
+    cursor: not-allowed;
+      }
+    .product-image { 
+    width: 100%; 
+    height: 200px;
+    object-fit: cover;
+      }
+    #toast {
+     position: fixed; top: 20px;
+     right: 20px; 
+     background: #111827;
+     color: #fff; 
+     padding: 8px 12px;
+     border-radius: 6px; 
+     display: none;
+     z-index:1000;
+   }
+    .cat-btn {
+     background: transparent;
+      border: 1px solid rgba(255,255,255,0.12); 
+      padding: .35rem .6rem;
+      border-radius: .375rem;
+      color: white;
+      font-weight: 600; 
+     }
+    .cat-btn.active {
+     background: rgba(255,255,255,0.12); 
+     }
+    .cat-scroll {
+     display: flex; 
+     gap: .5rem; 
+     align-items: center;
+     overflow-x: auto;
+     padding: .25rem;
+      }
+    .category-select {
+     background: #fff; 
+     color: #111827;
+     border: none;
+     padding: .5rem .75rem;
+     border-radius: .375rem;
+     font-weight: 600; 
+      }
+    .category-select:focus { 
+      outline: none; 
+      box-shadow: 0 0 0 3px rgba(34,197,94,0.15); 
+    }
+    @media (min-width: 768px) { 
+      .cat-scroll.md-only { 
+        display: none; 
+      } 
+      .category-select-wrapper { 
+        display: block; 
+      } }
+    @media (max-width: 767px) { 
+      .category-select-wrapper { 
+        display: none; 
+      } 
+      .cat-scroll.md-only { 
+        display: flex; 
+      } }
+  </style>
+</head>
+
+<body class="bg-green-50 min-h-screen">
+  <div id="toast"></div>
+
+  <nav class="bg-green-600 text-white fixed w-full top-0 z-50 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 flex items-center justify-between py-3 gap-4">
+      <div class="flex items-center gap-3">
+        <div class="text-2xl font-semibold">Shopping Center</div>
+      </div>
+      <div class="flex-1 flex flex-col md:flex-row md:items-center md:justify-center"></div>
+      <div class="flex items-center space-x-4">
+        <button id="nav-login" class="px-4 py-2 rounded-md hover:bg-yellow-300">Login</button>
+        <button id="nav-register" class="px-4 py-2 rounded-md hover:bg-yellow-300">Register</button>
+        <button id="cart-link" class="relative hover:text-yellow-300 focus:outline-none">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.293 6.707A1 1 0 007.707 21h8.586a1 1 0 00.707-1.707L15 13H7z"/>
+          </svg>
+          <span id="cart-badge" class="absolute -top-2 -right-3 bg-red-500 text-white rounded-full px-2 text-xs">0</span>
+        </button>
+        <button id="nav-logout" class="px-4 py-2 rounded-md bg-red-500 text-white hover:bg-red-600">Logout</button>
+        <button id="nav-profile" class="hover:text-yellow-300 focus:outline-none">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M5.121 17.804A9 9 0 1118.878 6.196 9 9 0 015.12 17.804zM15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div id="category-container" class="hidden bg-green-600">
+      <div class="max-w-7xl mx-auto px-4 py-2">
+        <div class="cat-scroll" id="category-buttons-mobile"></div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="max-w-5xl mx-auto mt-20 p-4">
+    <h1 class="text-3xl font-bold mb-4 text-center text-gray-800">Your Order History</h1>
+    <div id="order-history-container" class="space-y-6">
+      <p class="text-center text-gray-500">Loading order history...</p>
+    </div>
+  </div>
+
+  <script src="../Jquery/OrderHistory.js"></script>
+</body>
+</html>

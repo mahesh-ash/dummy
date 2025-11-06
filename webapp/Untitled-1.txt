@@ -1,0 +1,86 @@
+
+
+$(document).ready(function(){
+
+  const APP_ROOT = 'http://localhost:8080/Ecommerce_Website';
+
+  function toast(msg){
+    const toastDiv = $('<div class="fixed bottom-5 right-5 bg-black text-white px-4 py-2 rounded-lg shadow-lg z-50">'
+                       + msg + '</div>');
+    $('body').append(toastDiv);
+    setTimeout(()=> toastDiv.fadeOut(400, ()=> toastDiv.remove()), 2000);
+  }
+
+  // ✅ Load Admin Profile
+  function loadAdmin(){
+    $.get(APP_ROOT + '/AdminServlet', { action: 'getAdmin' })
+      .done(function(res){
+        if(res && res.username){
+          $('#adminName').text(res.username);
+          $('#adminEmail').text(res.email);
+          $('#username').val(res.username);
+          $('#email').val(res.email);
+          if(res.photo){
+            $('#adminPhoto').attr('src', res.photo);
+          }
+        } else {
+          toast('Failed to load admin details');
+        }
+      })
+      .fail(function(){
+        toast('Error loading admin details');
+      });
+  }
+
+  // ✅ Modal open/close handlers
+  $(document).on('click', '#changePasswordBtn', function(){
+    $('#changePasswordModal').removeClass('hidden').addClass('flex');
+  });
+
+  $(document).on('click', '#closeChangePassword', function(){
+    $('#changePasswordModal').addClass('hidden').removeClass('flex');
+  });
+
+  // ✅ Save new password
+  $(document).on('click', '#saveChangePassword', function(){
+    const current = $('#currentPassword').val().trim();
+    const newPass = $('#newPassword').val().trim();
+    const confirm = $('#confirmPassword').val().trim();
+
+    if(!current || !newPass || !confirm){
+      toast('Please fill all fields');
+      return;
+    }
+    if(newPass !== confirm){
+      toast('Passwords do not match');
+      return;
+    }
+
+    $.post(APP_ROOT + '/AdminServlet', {
+      action: 'changePassword',
+      currentPassword: current,
+      newPassword: newPass
+    }).done(function(res){
+      if(res.success){
+        toast('Password changed successfully');
+        $('#changePasswordModal').addClass('hidden').removeClass('flex');
+      } else {
+        toast(res.message || 'Failed to change password');
+      }
+    }).fail(function(){
+      toast('Error changing password');
+    });
+  });
+
+  // ✅ Initialize
+  loadAdmin();
+
+});
+
+
+if(validAdmin){
+    HttpSession session = req.getSession();
+    session.setAttribute("isAdmin", true);
+    session.setAttribute("admin", admin); // required for AdminServlet -> getAdmin
+    res.sendRedirect("adminprofile.html");
+}

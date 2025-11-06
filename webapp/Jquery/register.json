@@ -1,0 +1,70 @@
+{
+  "FormTitle": "Registration Form",
+  "fields": [
+    {
+      "title": "Full Name",
+      "id": "fname",
+      "inputType": "text",
+      "mandatory": true,
+      "validation": { "pattern": "^[A-Za-z]+(?:\\s[A-Za-z]+)*$", "message": "Only letters allowed" }
+    },
+    {
+        "title": "Email",
+        "id": "email",
+        "inputType": "email",
+        "mandatory": true,
+		"validation": {
+		  "pattern": "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$",
+		  "message": "Enter a valid email"
+		}
+
+    },
+	{
+	  "title": "Phone Number",
+	  "id": "phone",
+	  "inputType": "tel",
+	  "mandatory": true,
+	  "validation": {
+	    "pattern": "^(\\+91[-\\s]?|0)?[6-9]\\d{9}$",
+	    "message": "Enter a valid 10-digit Indian mobile number"
+	  }
+	},
+
+
+    {
+      "title": "Password",
+      "id": "password",
+      "inputType": "password",
+      "mandatory": true,
+      "validation": { "pattern": "^(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{6,}$", "message": "Password must have 6+ chars, 1 uppercase, 1 number, 1 special char" }
+    },
+     {
+      "title": "confirmPassword",
+      "id": "confirm_password",
+      "inputType": "password",
+      "mandatory": true,
+      "validation": { "pattern": "^(?=.*[A-Z])(?=.*[0-9])(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]{6,}$", "message": "Password must have 6+ chars, 1 uppercase, 1 number, 1 special char" }
+    },
+
+    {
+      "title": "Full Address",
+      "id": "full_address",
+      "inputType": "textarea",
+      "mandatory": true
+    },
+        {
+      "title": "Pincode",
+      "id": "pincode",
+      "inputType": "number",
+      "mandatory": true
+    },
+    {
+      "title": "Submit",
+      "id": "submitBtn",
+      "inputType": "button"
+    }
+  ]
+ 
+ 
+ 
+}

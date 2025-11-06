@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Profile — E-Commerce Panel</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { brand: '#10B981' }
+        }
+      }
+    }
+  </script>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <style>
+    :root {
+      --panel-bg: #fff;
+      --muted: #6b7280;
+      --card-shadow: 0 8px 24px rgba(15,23,42,0.08);
+    }
+
+    body {
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial;
+      background: linear-gradient(180deg,#f8fafc 0%, #f1f5f9 100%);
+      color: #0f172a;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      min-height: 100vh;
+      margin: 0;
+    }
+
+    header {
+      backdrop-filter: blur(6px);
+      box-shadow: 0 2px 8px rgba(2,6,23,0.06);
+    }
+
+    .brand {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg,#06b6d4 0%, #10b981 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      box-shadow: 0 4px 16px rgba(16,185,129,0.12);
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 1.25rem auto;
+      padding: 0 1rem;
+    }
+
+    .panel-wrap {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .sidebar {
+      width: 260px;
+      border-radius: 12px;
+      background: var(--panel-bg);
+      box-shadow: var(--card-shadow);
+      padding: 14px;
+      border: 1px solid rgba(15,23,42,0.04);
+      position: sticky;
+      top: 88px;
+      height: calc(100vh - 120px);
+      overflow: auto;
+    }
+
+    .sidebar h2 {
+      color: #047857;
+    }
+
+    .sidebar .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      border-radius: 8px;
+      color: #0f172a;
+      font-weight: 600;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+
+    .sidebar .nav-item:hover {
+      background: #ecfdf5;
+      transform: translateX(4px);
+      color: #065f46;
+    }
+
+    main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .card {
+      background: var(--panel-bg);
+      border-radius: 12px;
+      padding: 18px;
+      box-shadow: var(--card-shadow);
+      border: 1px solid rgba(2,6,23,0.04);
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .btn {
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    @media (max-width:1024px) {
+      .sidebar { display: none; }
+      .panel-wrap { flex-direction: column; }
+      .container { padding: 0 18px; }
+    }
+
+    #toast {
+      display: none;
+      position: fixed;
+      right: 16px;
+      top: 16px;
+      z-index: 99999;
+      background: #111827;
+      color: #fff;
+      padding: 8px 12px;
+      border-radius: 6px;
+    }
+
+    .profile-card {
+      max-width: 520px;
+      padding: 14px;
+      border-radius: 12px;
+    }
+
+    .profile-field {
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(15,23,42,0.06);
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .profile-label {
+      font-size: 0.95rem;
+      color: #111827;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .profile-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="bg-white fixed w-full top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="brand">
+        <div class="brand-logo">E</div>
+        <div>
+          <div style="font-weight:800; color:#065f46;">E-Commerce Admin</div>
+          <div class="muted" style="font-size:12px;">Dashboard & management</div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="hidden sm:flex items-center space-x-3">
+          <div class="muted text-sm">
+            Signed in as
+            <strong id="adminName" style="color:#0f172a;">Admin</strong>
+          </div>
+          <button id="profileBtn" type="button" class="btn border border-gray-200">Profile</button>
+          <button id="logoutBtn" type="button" class="btn" style="background:#ef4444;color:white;">Logout</button>
+        </div>
+
+        <div class="sm:hidden">
+          <button id="mobileMenuBtn" type="button" class="btn border border-gray-200">Menu</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container" style="padding-top:86px;">
+    <div class="panel-wrap">
+      <aside id="sidebar" class="sidebar">
+        <div class="p-2 pb-3 border-b">
+          <h2>Admin Menu</h2>
+          <div class="muted" style="font-size:13px;">Manage products, users & orders</div>
+        </div>
+
+        <nav class="mt-4 space-y-1">
+          <div class="nav-item" onclick="window.location.href='Admin.html'">Products</div>
+          <div class="nav-item" onclick="window.location.href='Admin.html#users'">Users</div>
+          <div class="nav-item" onclick="window.location.href='Admin.html#orders'">Orders</div>
+        </nav>
+      </aside>
+
+      <main class="flex items-center justify-center h-[80vh]">
+        <div class="content-card bg-white p-6 rounded-lg shadow-md w-full max-w-md text-center">
+          <h1 class="text-2xl font-bold text-gray-800 mb-6">Admin Details</h1>
+
+          <form id="profile-form" class="space-y-5">
+            <div>
+              <label class="profile-label text-left">Username</label>
+              <input id="username" class="profile-field" readonly>
+            </div>
+
+            <div>
+              <label class="profile-label text-left">Email</label>
+              <input id="email" class="profile-field" readonly>
+            </div>
+
+            <div class="profile-actions pt-4">
+              <button id="backToDashboard"
+                      class="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded transition duration-200"
+                      type="button">
+                Back to Dashboard
+              </button>
+            </div>
+          </form>
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <div id="toast" aria-hidden="true"></div>
+
+  <script src="/Ecommerce_Website/Jquery/AdminProfile.js"></script>
+</body>
+</html>
