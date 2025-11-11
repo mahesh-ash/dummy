@@ -1,0 +1,1204 @@
+package dao;
+
+import utils.DBUtils;
+import utils.LoggerUtil;
+import org.apache.log4j.Logger;
+
+import java.sql.*;
+import java.util.*;
+
+public class UnblockRequestDao {
+    private static final Logger logger = LoggerUtil.getLogger(UnblockRequestDao.class);
+
+    /**
+     * Get all pending unblock requests
+     */
+    public List<Map<String, Object>> getPendingRequests() throws SQLException {
+        List<Map<String, Object>> requests = new ArrayList<>();
+        String sql = "SELECT ur.request_id, ur.user_id, ur.username, ur.email, ur.reason, " +
+                     "ur.request_date, ur.status, u.fullname, u.phone " +
+                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
+                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
+                     "WHERE ur.status = 'pending' " +
+                     "ORDER BY ur.request_date DESC";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                Map<String, Object> req = new HashMap<>();
+                req.put("requestId", rs.getInt("request_id"));
+                req.put("userId", rs.getInt("user_id"));
+                req.put("username", rs.getString("username"));
+                req.put("email", rs.getString("email"));
+                req.put("reason", rs.getString("reason"));
+                req.put("requestDate", rs.getTimestamp("request_date"));
+                req.put("status", rs.getString("status"));
+                req.put("fullname", rs.getString("fullname"));
+                req.put("phone", rs.getString("phone"));
+                requests.add(req);
+            }
+        }
+        return requests;
+    }
+
+    /**
+     * Approve unblock request - activates user and updates request status
+     */
+    public boolean approveRequest(int requestId, String adminNotes) throws SQLException {
+        String updateRequestSql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
+                                  "SET status = 'approved', admin_notes = ?, processed_date = GETDATE() " +
+                                  "WHERE request_id = ?";
+        
+        String activateUserSql = "UPDATE Ecommerce_Website.M_S_USER " +
+                                "SET is_active = 1, deactivation_message = NULL, deactivated_at = NULL " +
+                                "WHERE user_id = (SELECT user_id FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS WHERE request_id = ?)";
+
+        Connection conn = null;
+        try {
+            conn = DBUtils.getConnection();
+            conn.setAutoCommit(false);
+
+            // Update request status
+            try (PreparedStatement ps = conn.prepareStatement(updateRequestSql)) {
+                ps.setString(1, adminNotes);
+                ps.setInt(2, requestId);
+                ps.executeUpdate();
+            }
+
+            // Activate user
+            try (PreparedStatement ps = conn.prepareStatement(activateUserSql)) {
+                ps.setInt(1, requestId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            logger.info("Approved unblock request: " + requestId);
+            return true;
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    logger.error("Rollback failed", ex);
+                }
+            }
+            logger.error("Failed to approve request", e);
+            throw e;
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    logger.error("Connection close failed", e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Reject unblock request
+     */
+    public boolean rejectRequest(int requestId, String adminNotes) throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
+                     "SET status = 'rejected', admin_notes = ?, processed_date = GETDATE() " +
+                     "WHERE request_id = ?";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, adminNotes);
+            ps.setInt(2, requestId);
+            int updated = ps.executeUpdate();
+            logger.info("Rejected unblock request: " + requestId);
+            return updated > 0;
+        }
+    }
+
+    /**
+     * Get request details by ID
+     */
+    public Map<String, Object> getRequestById(int requestId) throws SQLException {
+        String sql = "SELECT ur.*, u.fullname, u.phone, u.address, u.is_active " +
+                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
+                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
+                     "WHERE ur.request_id = ?";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, requestId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Map<String, Object> req = new HashMap<>();
+                    req.put("requestId", rs.getInt("request_id"));
+                    req.put("userId", rs.getInt("user_id"));
+                    req.put("username", rs.getString("username"));
+                    req.put("email", rs.getString("email"));
+                    req.put("reason", rs.getString("reason"));
+                    req.put("requestDate", rs.getTimestamp("request_date"));
+                    req.put("status", rs.getString("status"));
+                    req.put("adminNotes", rs.getString("admin_notes"));
+                    req.put("processedDate", rs.getTimestamp("processed_date"));
+                    req.put("fullname", rs.getString("fullname"));
+                    req.put("phone", rs.getString("phone"));
+                    req.put("address", rs.getString("address"));
+                    req.put("isActive", rs.getInt("is_active"));
+                    return req;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if user has pending request
+     */
+    public boolean hasPendingRequest(int userId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
+                     "WHERE user_id = ? AND status = 'pending'";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
+    }
+}
+
+---------------------------------------------
+
+package servlets;
+
+import com.google.gson.Gson;
+import dao.UnblockRequestDao;
+import utils.EmailUtil;
+import utils.LoggerUtil;
+import org.apache.log4j.Logger;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.*;
+
+@WebServlet("/UnblockManagementServlet")
+public class UnblockManagementServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private static final Logger logger = LoggerUtil.getLogger(UnblockManagementServlet.class);
+    private final Gson gson = new Gson();
+    private final UnblockRequestDao dao = new UnblockRequestDao();
+
+    /**
+     * Check if user is admin
+     */
+    private boolean isAdmin(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session == null) return false;
+        Boolean isAdmin = (Boolean) session.getAttribute("isAdmin");
+        return Boolean.TRUE.equals(isAdmin);
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        if (!isAdmin(request)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+
+        String action = request.getParameter("action");
+
+        try {
+            if ("listPendingRequests".equals(action)) {
+                List<Map<String, Object>> requests = dao.getPendingRequests();
+                response.getWriter().write(gson.toJson(requests));
+            } 
+            else if ("getRequestDetails".equals(action)) {
+                int requestId = Integer.parseInt(request.getParameter("requestId"));
+                Map<String, Object> requestData = dao.getRequestById(requestId);
+                if (requestData != null) {
+                    response.getWriter().write(gson.toJson(requestData));
+                } else {
+                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    response.getWriter().write("{\"error\":\"Request not found\"}");
+                }
+            }
+            else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("{\"error\":\"Unknown action\"}");
+            }
+
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+        } catch (NumberFormatException e) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid request ID\"}");
+        }
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        if (!isAdmin(request)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+
+        String action = request.getParameter("action");
+
+        try {
+            if ("approveRequest".equals(action)) {
+                handleApproveRequest(request, response);
+            } 
+            else if ("rejectRequest".equals(action)) {
+                handleRejectRequest(request, response);
+            }
+            else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("{\"error\":\"Unknown action\"}");
+            }
+
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+        } catch (NumberFormatException e) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid input\"}");
+        }
+    }
+
+    private void handleApproveRequest(HttpServletRequest request, HttpServletResponse response)
+            throws SQLException, IOException {
+        
+        int requestId = Integer.parseInt(request.getParameter("requestId"));
+        String adminNotes = request.getParameter("adminNotes");
+
+        // Get request details before approval
+        Map<String, Object> requestData = dao.getRequestById(requestId);
+        if (requestData == null) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().write("{\"error\":\"Request not found\"}");
+            return;
+        }
+
+        // Approve the request
+        boolean success = dao.approveRequest(requestId, adminNotes);
+
+        if (success) {
+            // Send email to user
+            String userEmail = (String) requestData.get("email");
+            String username = (String) requestData.get("username");
+            
+            if (userEmail != null && !userEmail.trim().isEmpty()) {
+                String subject = "Account Reactivation Approved";
+                String body = EmailUtil.getUnblockApprovedTemplate(username != null ? username : "User");
+                EmailUtil.sendHtmlEmail(userEmail, subject, body);
+            }
+
+            logger.info("Unblock request approved: " + requestId);
+            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request approved successfully\"}");
+        } else {
+            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to approve request\"}");
+        }
+    }
+
+    private void handleRejectRequest(HttpServletRequest request, HttpServletResponse response)
+            throws SQLException, IOException {
+        
+        int requestId = Integer.parseInt(request.getParameter("requestId"));
+        String adminNotes = request.getParameter("adminNotes");
+
+        if (adminNotes == null || adminNotes.trim().isEmpty()) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Admin notes required for rejection\"}");
+            return;
+        }
+
+        // Get request details before rejection
+        Map<String, Object> requestData = dao.getRequestById(requestId);
+        if (requestData == null) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().write("{\"error\":\"Request not found\"}");
+            return;
+        }
+
+        // Reject the request
+        boolean success = dao.rejectRequest(requestId, adminNotes);
+
+        if (success) {
+            // Send email to user
+            String userEmail = (String) requestData.get("email");
+            String username = (String) requestData.get("username");
+            
+            if (userEmail != null && !userEmail.trim().isEmpty()) {
+                String subject = "Account Reactivation Request Update";
+                String body = EmailUtil.getUnblockRejectedTemplate(
+                    username != null ? username : "User", 
+                    adminNotes
+                );
+                EmailUtil.sendHtmlEmail(userEmail, subject, body);
+            }
+
+            logger.info("Unblock request rejected: " + requestId);
+            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request rejected\"}");
+        } else {
+            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to reject request\"}");
+        }
+    }
+}
+
+------------------------------------------------------------------------------
+
+
+// After successful insert in UnblockRequestServlet.java
+if (rows > 0) {
+    logger.info("Unblock request submitted for user: " + username + " (ID: " + userId + ")");
+    
+    // Send confirmation email to user
+    String userSubject = "Unblock Request Received";
+    String userBody = EmailUtil.getUnblockRequestReceivedTemplate(username);
+    EmailUtil.sendHtmlEmail(email.trim(), userSubject, userBody);
+    
+    // Send notification to admin
+    String adminEmail = "admin@yourcompany.com"; // Configure this
+    String adminSubject = "New Unblock Request - Action Required";
+    String adminBody = EmailUtil.getAdminUnblockNotificationTemplate(username, email, reason.trim());
+    EmailUtil.sendHtmlEmail(adminEmail, adminSubject, adminBody);
+    
+    json.addProperty("status", "success");
+    json.addProperty("message", "Your request has been submitted successfully");
+}
+
+--------------------------------------------------------------------------
+
+<div class="nav-item sidebar-btn" data-target="unblock-requests" role="button">Unblock Requests</div>
+
+----------------------------------------------------------------------------------
+
+
+<section id="view-unblock-requests" class="panel hidden mt-6">
+  <div class="page-head">
+    <div>
+      <h2>Unblock Requests</h2>
+      <div class="muted">Review and manage user reactivation requests</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <table id="unblockRequestsTable" class="display stripe hover" style="width:100%">
+      <thead>
+        <tr>
+          <th>Request ID</th>
+          <th>User</th>
+          <th>Email</th>
+          <th>Request Date</th>
+          <th>Reason</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</section>
+
+--------------------------------------------------------------------------------------
+
+// Initialize unblock requests table
+let unblockRequestsTable = $('#unblockRequestsTable').DataTable({
+    ajax: {
+        url: '/Ecommerce_Website/UnblockManagementServlet',
+        type: 'GET',
+        data: { action: 'listPendingRequests' },
+        dataSrc: ''
+    },
+    columns: [
+        { data: 'requestId' },
+        { data: 'username' },
+        { data: 'email' },
+        {
+            data: 'requestDate',
+            render: function(d) {
+                try { return new Date(d).toLocaleString(); } 
+                catch(e) { return d; }
+            }
+        },
+        {
+            data: 'reason',
+            render: function(d) {
+                return d.length > 50 ? d.substring(0, 50) + '...' : d;
+            }
+        },
+        {
+            data: null,
+            orderable: false,
+            render: function(r) {
+                return '<button class="approve-request-btn bg-green-500 text-white px-3 py-1 rounded mr-2" data-id="' + r.requestId + '">Approve</button>' +
+                       '<button class="reject-request-btn bg-red-500 text-white px-3 py-1 rounded" data-id="' + r.requestId + '">Reject</button>';
+            }
+        }
+    ],
+    pageLength: 10
+});
+
+// Handle approve request
+$(document).on('click', '.approve-request-btn', function() {
+    const requestId = $(this).data('id');
+    
+    Swal.fire({
+        title: 'Approve Request',
+        input: 'textarea',
+        inputLabel: 'Admin Notes (Optional)',
+        inputPlaceholder: 'Enter any notes about this approval...',
+        showCancelButton: true,
+        confirmButtonText: 'Approve',
+        confirmButtonColor: '#10b981'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.post('/Ecommerce_Website/UnblockManagementServlet', {
+                action: 'approveRequest',
+                requestId: requestId,
+                adminNotes: result.value || ''
+            }, function(res) {
+                if (res && res.status === 'ok') {
+                    Swal.fire('Approved!', 'User account has been reactivated.', 'success');
+                    unblockRequestsTable.ajax.reload();
+                    usersTable.ajax.reload();
+                } else {
+                    Swal.fire('Error', 'Failed to approve request', 'error');
+                }
+            }, 'json').fail(function() {
+                Swal.fire('Error', 'Server error', 'error');
+            });
+        }
+    });
+});
+
+// Handle reject request
+$(document).on('click', '.reject-request-btn', function() {
+    const requestId = $(this).data('id');
+    
+    Swal.fire({
+        title: 'Reject Request',
+        input: 'textarea',
+        inputLabel: 'Reason for Rejection (Required)',
+        inputPlaceholder: 'Please provide a reason for rejection...',
+        showCancelButton: true,
+        confirmButtonText: 'Reject',
+        confirmButtonColor: '#ef4444',
+        inputValidator: (value) => {
+            if (!value || value.trim().length < 10) {
+                return 'Please provide a detailed reason (at least 10 characters)';
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            $.post('/Ecommerce_Website/UnblockManagementServlet', {
+                action: 'rejectRequest',
+                requestId: requestId,
+                adminNotes: result.value
+            }, function(res) {
+                if (res && res.status === 'ok') {
+                    Swal.fire('Rejected', 'Request has been rejected.', 'success');
+                    unblockRequestsTable.ajax.reload();
+                } else {
+                    Swal.fire('Error', 'Failed to reject request', 'error');
+                }
+            }, 'json').fail(function() {
+                Swal.fire('Error', 'Server error', 'error');
+            });
+        }
+    });
+});
+
+----------------------------------------------------------------------------
+
+For Discount Duplicate Prevention & Auto-Delete:
+Update AdminDao.java:
+
+// Check if product already has an active discount
+public boolean productHasActiveDiscount(int productId) throws SQLException {
+    String sql = "SELECT COUNT(*) FROM Ecommerce_Website.M_S_PRODUCT_DISCOUNTS " +
+                 "WHERE product_id = ? AND (end_date IS NULL OR end_date >= GETDATE())";
+    try (Connection conn = DBUtils.getConnection();
+         PreparedStatement ps = conn.prepareStatement(sql)) {
+        ps.setInt(1, productId);
+        try (ResultSet rs = ps.executeQuery()) {
+            if (rs.next()) {
+                return rs.getInt(1) > 0;
+            }
+        }
+    }
+    return false;
+}
+
+// Delete expired discounts
+public int deleteExpiredDiscounts() throws SQLException {
+    String sql = "DELETE FROM Ecommerce_Website.M_S_PRODUCT_DISCOUNTS " +
+                 "WHERE end_date IS NOT NULL AND end_date < GETDATE()";
+    try (Connection conn = DBUtils.getConnection();
+         PreparedStatement ps = conn.prepareStatement(sql)) {
+        return ps.executeUpdate();
+    }
+}
+--------------------------------------------------------------------------------
+Update Admin.js discount form submission:
+
+$('#discountForm').on('submit', function(e) {
+    e.preventDefault();
+    const productId = $('#discountProductSelect').val();
+    
+    // Check for existing discount before adding
+    $.get('/Ecommerce_Website/AdminServlet', {
+        action: 'checkExistingDiscount',
+        productId: productId
+    }, function(res) {
+        if (res && res.hasDiscount) {
+            Swal.fire({
+                title: 'Discount Already Exists',
+                text: 'This product already has an active discount. Would you like to edit it instead?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonText: 'Edit Existing',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Load existing discount for editing
+                    loadExistingDiscount(productId);
+                }
+            });
+        } else {
+            // Proceed with adding new discount
+            submitDiscountForm();
+        }
+    }, 'json');
+});
+-----------------------------------------------------------------
+
+Create a scheduled task for auto-deletion (add to web.xml):
+
+<listener>
+    <listener-class>listeners.DiscountCleanupListener</listener-class>
+</listener>
+----------------------------------------------------------------------
+
+package listeners;
+
+import dao.AdminDao;
+import utils.LoggerUtil;
+import javax.servlet.ServletContextEvent;
+import javax.servlet.ServletContextListener;
+import java.util.Timer;
+import java.util.TimerTask;
+
+public class DiscountCleanupListener implements ServletContextListener {
+    private Timer timer;
+
+    @Override
+    public void contextInitialized(ServletContextEvent sce) {
+        timer = new Timer(true);
+        // Run daily at midnight
+        timer.scheduleAtFixedRate(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    AdminDao dao = new AdminDao();
+                    int deleted = dao.deleteExpiredDiscounts();
+                    LoggerUtil.info("Deleted " + deleted + " expired discounts");
+                } catch (Exception e) {
+                    LoggerUtil.error("Error deleting expired discounts", e);
+                }
+            }
+        }, 0, 24 * 60 * 60 * 1000); // Run every 24 hours
+    }
+
+    @Override
+    public void contextDestroyed(ServletContextEvent sce) {
+        if (timer != null) {
+            timer.cancel();
+        }
+    }
+}
+---------------------------------------------------------------------------------
+CREATE TABLE Ecommerce_Website.D_D_UNBLOCK_REQUESTS (
+    request_id INT IDENTITY(1,1) PRIMARY KEY,
+    user_id INT NOT NULL,
+    username NVARCHAR(255),
+    email NVARCHAR(255) NOT NULL,
+    reason NVARCHAR(MAX) NOT NULL,
+    request_date DATETIME DEFAULT GETDATE(),
+    status NVARCHAR(20) DEFAULT 'pending', -- pending, approved, rejected
+    admin_notes NVARCHAR(MAX),
+    processed_date DATETIME,
+    FOREIGN KEY (user_id) REFERENCES Ecommerce_Website.M_S_USER(user_id)
+);
+
+---------------------------------------------------------------------------------
+package utils;
+
+import javax.mail.*;
+import javax.mail.internet.*;
+import java.util.Properties;
+
+public class EmailUtil {
+
+    /**
+     * Send email notification
+     */
+    public static boolean sendEmail(String toEmail, String subject, String body) {
+        String smtpHost = System.getenv("SMTP_HOST");
+        String smtpPort = System.getenv("SMTP_PORT");
+        String smtpUser = System.getenv("SMTP_USER");
+        String smtpPass = System.getenv("SMTP_PASS");
+        String from = System.getenv("SMTP_FROM");
+
+        if (smtpHost == null || smtpUser == null || smtpPass == null || smtpPort == null) {
+            LoggerUtil.warn("SMTP configuration not found - email not sent");
+            return false;
+        }
+
+        if (from == null || from.trim().isEmpty()) {
+            from = smtpUser;
+        }
+
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.host", smtpHost);
+        props.put("mail.smtp.port", smtpPort);
+        props.put("mail.smtp.ssl.trust", smtpHost);
+
+        final String finalFrom = from;
+        final String finalUser = smtpUser;
+        final String finalPass = smtpPass;
+
+        Session mailSession = Session.getInstance(props, new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(finalUser, finalPass);
+            }
+        });
+
+        try {
+            Message message = new MimeMessage(mailSession);
+            message.setFrom(new InternetAddress(finalFrom));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
+            message.setSubject(subject);
+            message.setText(body);
+
+            Transport.send(message);
+            LoggerUtil.info("Email sent successfully to: " + toEmail);
+            return true;
+
+        } catch (MessagingException e) {
+            LoggerUtil.error("Failed to send email: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Send HTML email
+     */
+    public static boolean sendHtmlEmail(String toEmail, String subject, String htmlBody) {
+        String smtpHost = System.getenv("SMTP_HOST");
+        String smtpPort = System.getenv("SMTP_PORT");
+        String smtpUser = System.getenv("SMTP_USER");
+        String smtpPass = System.getenv("SMTP_PASS");
+        String from = System.getenv("SMTP_FROM");
+
+        if (smtpHost == null || smtpUser == null || smtpPass == null || smtpPort == null) {
+            LoggerUtil.warn("SMTP configuration not found - email not sent");
+            return false;
+        }
+
+        if (from == null || from.trim().isEmpty()) {
+            from = smtpUser;
+        }
+
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.host", smtpHost);
+        props.put("mail.smtp.port", smtpPort);
+        props.put("mail.smtp.ssl.trust", smtpHost);
+
+        final String finalFrom = from;
+        final String finalUser = smtpUser;
+        final String finalPass = smtpPass;
+
+        Session mailSession = Session.getInstance(props, new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(finalUser, finalPass);
+            }
+        });
+
+        try {
+            Message message = new MimeMessage(mailSession);
+            message.setFrom(new InternetAddress(finalFrom));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
+            message.setSubject(subject);
+            message.setContent(htmlBody, "text/html; charset=utf-8");
+
+            Transport.send(message);
+            LoggerUtil.info("HTML Email sent successfully to: " + toEmail);
+            return true;
+
+        } catch (MessagingException e) {
+            LoggerUtil.error("Failed to send HTML email: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Email templates
+     */
+    public static String getUnblockRequestReceivedTemplate(String username) {
+        return "<html><body>" +
+               "<h2>Unblock Request Received</h2>" +
+               "<p>Dear " + username + ",</p>" +
+               "<p>We have received your request to reactivate your account.</p>" +
+               "<p>Our admin team will review your request and get back to you within 24-48 hours.</p>" +
+               "<p>Thank you for your patience.</p>" +
+               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
+               "</body></html>";
+    }
+
+    public static String getUnblockApprovedTemplate(String username) {
+        return "<html><body>" +
+               "<h2 style='color: #10b981;'>Account Activated!</h2>" +
+               "<p>Dear " + username + ",</p>" +
+               "<p>Good news! Your account reactivation request has been <strong>approved</strong>.</p>" +
+               "<p>You can now log in to your account and continue shopping.</p>" +
+               "<p><a href='[YOUR_LOGIN_URL]' style='background-color: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Login Now</a></p>" +
+               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
+               "</body></html>";
+    }
+
+    public static String getUnblockRejectedTemplate(String username, String reason) {
+        return "<html><body>" +
+               "<h2 style='color: #ef4444;'>Account Reactivation Request</h2>" +
+               "<p>Dear " + username + ",</p>" +
+               "<p>Unfortunately, your account reactivation request has been declined.</p>" +
+               "<p><strong>Reason:</strong> " + reason + "</p>" +
+               "<p>If you have any questions, please contact our support team.</p>" +
+               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
+               "</body></html>";
+    }
+
+    public static String getAccountDeactivatedTemplate(String username, String reason) {
+        return "<html><body>" +
+               "<h2 style='color: #f59e0b;'>Account Deactivated</h2>" +
+               "<p>Dear " + username + ",</p>" +
+               "<p>Your account has been deactivated by an administrator.</p>" +
+               "<p><strong>Reason:</strong> " + reason + "</p>" +
+               "<p>If you believe this was done in error, you can submit an unblock request.</p>" +
+               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
+               "</body></html>";
+    }
+
+    public static String getAdminUnblockNotificationTemplate(String username, String userEmail, String reason) {
+        return "<html><body>" +
+               "<h2>New Unblock Request</h2>" +
+               "<p>A user has submitted an account reactivation request:</p>" +
+               "<p><strong>User:</strong> " + username + "</p>" +
+               "<p><strong>Email:</strong> " + userEmail + "</p>" +
+               "<p><strong>Reason:</strong> " + reason + "</p>" +
+               "<p>Please review this request in the admin panel.</p>" +
+               "</body></html>";
+    }
+}
+
+------------------------------------------------------------------------------
+package servlets;
+
+import com.google.gson.Gson;
+import dao.UnblockRequestDao;
+import utils.EmailUtil;
+import utils.LoggerUtil;
+import org.apache.log4j.Logger;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.*;
+
+@WebServlet("/UnblockManagementServlet")
+public class UnblockManagementServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private static final Logger logger = LoggerUtil.getLogger(UnblockManagementServlet.class);
+    private final Gson gson = new Gson();
+    private final UnblockRequestDao dao = new UnblockRequestDao();
+
+    /**
+     * Check if user is admin
+     */
+    private boolean isAdmin(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session == null) return false;
+        Boolean isAdmin = (Boolean) session.getAttribute("isAdmin");
+        return Boolean.TRUE.equals(isAdmin);
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        if (!isAdmin(request)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+
+        String action = request.getParameter("action");
+
+        try {
+            if ("listPendingRequests".equals(action)) {
+                List<Map<String, Object>> requests = dao.getPendingRequests();
+                response.getWriter().write(gson.toJson(requests));
+            } 
+            else if ("getRequestDetails".equals(action)) {
+                int requestId = Integer.parseInt(request.getParameter("requestId"));
+                Map<String, Object> requestData = dao.getRequestById(requestId);
+                if (requestData != null) {
+                    response.getWriter().write(gson.toJson(requestData));
+                } else {
+                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                    response.getWriter().write("{\"error\":\"Request not found\"}");
+                }
+            }
+            else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("{\"error\":\"Unknown action\"}");
+            }
+
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+        } catch (NumberFormatException e) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid request ID\"}");
+        }
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        if (!isAdmin(request)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+            return;
+        }
+
+        String action = request.getParameter("action");
+
+        try {
+            if ("approveRequest".equals(action)) {
+                handleApproveRequest(request, response);
+            } 
+            else if ("rejectRequest".equals(action)) {
+                handleRejectRequest(request, response);
+            }
+            else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("{\"error\":\"Unknown action\"}");
+            }
+
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
+        } catch (NumberFormatException e) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid input\"}");
+        }
+    }
+
+    private void handleApproveRequest(HttpServletRequest request, HttpServletResponse response)
+            throws SQLException, IOException {
+        
+        int requestId = Integer.parseInt(request.getParameter("requestId"));
+        String adminNotes = request.getParameter("adminNotes");
+
+        // Get request details before approval
+        Map<String, Object> requestData = dao.getRequestById(requestId);
+        if (requestData == null) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().write("{\"error\":\"Request not found\"}");
+            return;
+        }
+
+        // Approve the request
+        boolean success = dao.approveRequest(requestId, adminNotes);
+
+        if (success) {
+            // Send email to user
+            String userEmail = (String) requestData.get("email");
+            String username = (String) requestData.get("username");
+            
+            if (userEmail != null && !userEmail.trim().isEmpty()) {
+                String subject = "Account Reactivation Approved";
+                String body = EmailUtil.getUnblockApprovedTemplate(username != null ? username : "User");
+                EmailUtil.sendHtmlEmail(userEmail, subject, body);
+            }
+
+            logger.info("Unblock request approved: " + requestId);
+            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request approved successfully\"}");
+        } else {
+            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to approve request\"}");
+        }
+    }
+
+    private void handleRejectRequest(HttpServletRequest request, HttpServletResponse response)
+            throws SQLException, IOException {
+        
+        int requestId = Integer.parseInt(request.getParameter("requestId"));
+        String adminNotes = request.getParameter("adminNotes");
+
+        if (adminNotes == null || adminNotes.trim().isEmpty()) {
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Admin notes required for rejection\"}");
+            return;
+        }
+
+        // Get request details before rejection
+        Map<String, Object> requestData = dao.getRequestById(requestId);
+        if (requestData == null) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().write("{\"error\":\"Request not found\"}");
+            return;
+        }
+
+        // Reject the request
+        boolean success = dao.rejectRequest(requestId, adminNotes);
+
+        if (success) {
+            // Send email to user
+            String userEmail = (String) requestData.get("email");
+            String username = (String) requestData.get("username");
+            
+            if (userEmail != null && !userEmail.trim().isEmpty()) {
+                String subject = "Account Reactivation Request Update";
+                String body = EmailUtil.getUnblockRejectedTemplate(
+                    username != null ? username : "User", 
+                    adminNotes
+                );
+                EmailUtil.sendHtmlEmail(userEmail, subject, body);
+            }
+
+            logger.info("Unblock request rejected: " + requestId);
+            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request rejected\"}");
+        } else {
+            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to reject request\"}");
+        }
+    }
+}
+
+------------------------------------------------------------------------------------
+package dao;
+
+import utils.DBUtils;
+import utils.LoggerUtil;
+import org.apache.log4j.Logger;
+
+import java.sql.*;
+import java.util.*;
+
+public class UnblockRequestDao {
+    private static final Logger logger = LoggerUtil.getLogger(UnblockRequestDao.class);
+
+    /**
+     * Get all pending unblock requests
+     */
+    public List<Map<String, Object>> getPendingRequests() throws SQLException {
+        List<Map<String, Object>> requests = new ArrayList<>();
+        String sql = "SELECT ur.request_id, ur.user_id, ur.username, ur.email, ur.reason, " +
+                     "ur.request_date, ur.status, u.fullname, u.phone " +
+                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
+                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
+                     "WHERE ur.status = 'pending' " +
+                     "ORDER BY ur.request_date DESC";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                Map<String, Object> req = new HashMap<>();
+                req.put("requestId", rs.getInt("request_id"));
+                req.put("userId", rs.getInt("user_id"));
+                req.put("username", rs.getString("username"));
+                req.put("email", rs.getString("email"));
+                req.put("reason", rs.getString("reason"));
+                req.put("requestDate", rs.getTimestamp("request_date"));
+                req.put("status", rs.getString("status"));
+                req.put("fullname", rs.getString("fullname"));
+                req.put("phone", rs.getString("phone"));
+                requests.add(req);
+            }
+        }
+        return requests;
+    }
+
+    /**
+     * Approve unblock request - activates user and updates request status
+     */
+    public boolean approveRequest(int requestId, String adminNotes) throws SQLException {
+        String updateRequestSql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
+                                  "SET status = 'approved', admin_notes = ?, processed_date = GETDATE() " +
+                                  "WHERE request_id = ?";
+        
+        String activateUserSql = "UPDATE Ecommerce_Website.M_S_USER " +
+                                "SET is_active = 1, deactivation_message = NULL, deactivated_at = NULL " +
+                                "WHERE user_id = (SELECT user_id FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS WHERE request_id = ?)";
+
+        Connection conn = null;
+        try {
+            conn = DBUtils.getConnection();
+            conn.setAutoCommit(false);
+
+            // Update request status
+            try (PreparedStatement ps = conn.prepareStatement(updateRequestSql)) {
+                ps.setString(1, adminNotes);
+                ps.setInt(2, requestId);
+                ps.executeUpdate();
+            }
+
+            // Activate user
+            try (PreparedStatement ps = conn.prepareStatement(activateUserSql)) {
+                ps.setInt(1, requestId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            logger.info("Approved unblock request: " + requestId);
+            return true;
+
+        } catch (SQLException e) {
+            if (conn != null) {
+                try {
+                    conn.rollback();
+                } catch (SQLException ex) {
+                    logger.error("Rollback failed", ex);
+                }
+            }
+            logger.error("Failed to approve request", e);
+            throw e;
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException e) {
+                    logger.error("Connection close failed", e);
+                }
+            }
+        }
+    }
+
+    /**
+     * Reject unblock request
+     */
+    public boolean rejectRequest(int requestId, String adminNotes) throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
+                     "SET status = 'rejected', admin_notes = ?, processed_date = GETDATE() " +
+                     "WHERE request_id = ?";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, adminNotes);
+            ps.setInt(2, requestId);
+            int updated = ps.executeUpdate();
+            logger.info("Rejected unblock request: " + requestId);
+            return updated > 0;
+        }
+    }
+
+    /**
+     * Get request details by ID
+     */
+    public Map<String, Object> getRequestById(int requestId) throws SQLException {
+        String sql = "SELECT ur.*, u.fullname, u.phone, u.address, u.is_active " +
+                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
+                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
+                     "WHERE ur.request_id = ?";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, requestId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Map<String, Object> req = new HashMap<>();
+                    req.put("requestId", rs.getInt("request_id"));
+                    req.put("userId", rs.getInt("user_id"));
+                    req.put("username", rs.getString("username"));
+                    req.put("email", rs.getString("email"));
+                    req.put("reason", rs.getString("reason"));
+                    req.put("requestDate", rs.getTimestamp("request_date"));
+                    req.put("status", rs.getString("status"));
+                    req.put("adminNotes", rs.getString("admin_notes"));
+                    req.put("processedDate", rs.getTimestamp("processed_date"));
+                    req.put("fullname", rs.getString("fullname"));
+                    req.put("phone", rs.getString("phone"));
+                    req.put("address", rs.getString("address"));
+                    req.put("isActive", rs.getInt("is_active"));
+                    return req;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Check if user has pending request
+     */
+    public boolean hasPendingRequest(int userId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
+                     "WHERE user_id = ? AND status = 'pending'";
+
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, userId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
+    }
+}
+----------------------------------------------------------------------------------
+
+
+
