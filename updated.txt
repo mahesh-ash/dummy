@@ -1,0 +1,857 @@
+-- Product Ratings Table
+CREATE TABLE Ecommerce_Website.D_D_PRODUCT_RATINGS (
+    rating_id INT IDENTITY(1,1) PRIMARY KEY,
+    product_id INT NOT NULL,
+    user_id INT NOT NULL,
+    order_id INT NOT NULL,
+    rating DECIMAL(2,1) CHECK (rating >= 1.0 AND rating <= 5.0),
+    review_text NVARCHAR(1000),
+    created_at DATETIME DEFAULT GETDATE(),
+    updated_at DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (product_id) REFERENCES Ecommerce_Website.M_S_DATAS(product_id),
+    FOREIGN KEY (user_id) REFERENCES Ecommerce_Website.M_S_USER(user_id),
+    FOREIGN KEY (order_id) REFERENCES Ecommerce_Website.D_D_ORDER(order_id),
+    CONSTRAINT UQ_User_Product_Order UNIQUE (user_id, product_id, order_id)
+);
+
+-- Add average rating and rating count to products table
+ALTER TABLE Ecommerce_Website.M_S_DATAS 
+ADD average_rating DECIMAL(3,2) DEFAULT 0.00,
+    rating_count INT DEFAULT 0;
+
+-- Create index for faster queries
+CREATE INDEX IDX_ProductRatings_Product ON Ecommerce_Website.D_D_PRODUCT_RATINGS(product_id);
+CREATE INDEX IDX_ProductRatings_User ON Ecommerce_Website.D_D_PRODUCT_RATINGS(user_id);
+
+
+
+
+--------------------------------------------------------------------------------------------------
+package servlets;
+
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import dao.RatingDao;
+import model.User;
+import utils.LoggerUtil;
+import org.apache.log4j.Logger;
+
+import javax.servlet.ServletException;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.io.IOException;
+import java.sql.SQLException;
+import java.util.List;
+import java.util.Map;
+
+@WebServlet("/RatingServlet")
+public class RatingServlet extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private static final Logger logger = LoggerUtil.getLogger(RatingServlet.class);
+    private final Gson gson = new Gson();
+    private final RatingDao ratingDao = new RatingDao();
+
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        
+        String action = request.getParameter("action");
+        
+        try {
+            if ("getProductRatings".equals(action)) {
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                List<Map<String, Object>> ratings = ratingDao.getProductRatings(productId);
+                response.getWriter().write(gson.toJson(ratings));
+                
+            } else if ("getUserRatableProducts".equals(action)) {
+                HttpSession session = request.getSession(false);
+                if (session == null || session.getAttribute("user") == null) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("{\"error\":\"Not logged in\"}");
+                    return;
+                }
+                
+                User user = (User) session.getAttribute("user");
+                List<Map<String, Object>> products = ratingDao.getUserRatableProducts(user.getId());
+                response.getWriter().write(gson.toJson(products));
+                
+            } else if ("checkUserRating".equals(action)) {
+                HttpSession session = request.getSession(false);
+                if (session == null || session.getAttribute("user") == null) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("{\"error\":\"Not logged in\"}");
+                    return;
+                }
+                
+                User user = (User) session.getAttribute("user");
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                int orderId = Integer.parseInt(request.getParameter("orderId"));
+                
+                Map<String, Object> rating = ratingDao.getUserRating(user.getId(), productId, orderId);
+                response.getWriter().write(gson.toJson(rating));
+                
+            } else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("{\"error\":\"Invalid action\"}");
+            }
+            
+        } catch (NumberFormatException e) {
+            logger.error("Invalid parameter format", e);
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid parameter format\"}");
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"error\":\"Database error\"}");
+        }
+    }
+
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        
+        HttpSession session = request.getSession(false);
+        if (session == null || session.getAttribute("user") == null) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.getWriter().write("{\"error\":\"Not logged in\"}");
+            return;
+        }
+        
+        User user = (User) session.getAttribute("user");
+        String action = request.getParameter("action");
+        
+        try {
+            if ("submitRating".equals(action)) {
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                int orderId = Integer.parseInt(request.getParameter("orderId"));
+                double rating = Double.parseDouble(request.getParameter("rating"));
+                String reviewText = request.getParameter("reviewText");
+                
+                // Validate rating
+                if (rating < 1.0 || rating > 5.0) {
+                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                    response.getWriter().write("{\"error\":\"Rating must be between 1 and 5\"}");
+                    return;
+                }
+                
+                // Check if order belongs to user and is delivered
+                if (!ratingDao.canUserRateProduct(user.getId(), productId, orderId)) {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write("{\"error\":\"You can only rate products from your delivered orders\"}");
+                    return;
+                }
+                
+                boolean success = ratingDao.submitRating(user.getId(), productId, orderId, rating, reviewText);
+                
+                if (success) {
+                    // Update product average rating
+                    ratingDao.updateProductAverageRating(productId);
+                    
+                    JsonObject json = new JsonObject();
+                    json.addProperty("status", "ok");
+                    json.addProperty("message", "Rating submitted successfully");
+                    response.getWriter().write(json.toString());
+                } else {
+                    response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to submit rating\"}");
+                }
+                
+            } else if ("updateRating".equals(action)) {
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                int orderId = Integer.parseInt(request.getParameter("orderId"));
+                double rating = Double.parseDouble(request.getParameter("rating"));
+                String reviewText = request.getParameter("reviewText");
+                
+                if (rating < 1.0 || rating > 5.0) {
+                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                    response.getWriter().write("{\"error\":\"Rating must be between 1 and 5\"}");
+                    return;
+                }
+                
+                boolean success = ratingDao.updateRating(user.getId(), productId, orderId, rating, reviewText);
+                
+                if (success) {
+                    ratingDao.updateProductAverageRating(productId);
+                    
+                    JsonObject json = new JsonObject();
+                    json.addProperty("status", "ok");
+                    json.addProperty("message", "Rating updated successfully");
+                    response.getWriter().write(json.toString());
+                } else {
+                    response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to update rating\"}");
+                }
+                
+            } else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("{\"error\":\"Invalid action\"}");
+            }
+            
+        } catch (NumberFormatException e) {
+            logger.error("Invalid parameter format", e);
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid parameter format\"}");
+        } catch (SQLException e) {
+            logger.error("Database error", e);
+            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+            response.getWriter().write("{\"error\":\"Database error\"}");
+        }
+    }
+}
+-----------------------------------------------------------------------------------------------------------
+package dao;
+
+import utils.DBUtils;
+import utils.LoggerUtil;
+import org.apache.log4j.Logger;
+
+import java.sql.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+public class RatingDao {
+    private static final Logger logger = LoggerUtil.getLogger(RatingDao.class);
+
+    /**
+     * Get all ratings for a product
+     */
+    public List<Map<String, Object>> getProductRatings(int productId) throws SQLException {
+        List<Map<String, Object>> ratings = new ArrayList<>();
+        String sql = "SELECT r.rating_id, r.rating, r.review_text, r.created_at, " +
+                     "u.fullname AS username, u.user_id " +
+                     "FROM Ecommerce_Website.D_D_PRODUCT_RATINGS r " +
+                     "JOIN Ecommerce_Website.M_S_USER u ON r.user_id = u.user_id " +
+                     "WHERE r.product_id = ? " +
+                     "ORDER BY r.created_at DESC";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, productId);
+            
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> rating = new HashMap<>();
+                    rating.put("ratingId", rs.getInt("rating_id"));
+                    rating.put("rating", rs.getDouble("rating"));
+                    rating.put("reviewText", rs.getString("review_text"));
+                    rating.put("createdAt", rs.getTimestamp("created_at"));
+                    rating.put("username", rs.getString("username"));
+                    rating.put("userId", rs.getInt("user_id"));
+                    ratings.add(rating);
+                }
+            }
+        }
+        
+        return ratings;
+    }
+
+    /**
+     * Get products that user can rate (from delivered orders, not yet rated)
+     */
+    public List<Map<String, Object>> getUserRatableProducts(int userId) throws SQLException {
+        List<Map<String, Object>> products = new ArrayList<>();
+        String sql = "SELECT DISTINCT ol.product_id, p.product_name, o.order_id, o.orderdate " +
+                     "FROM Ecommerce_Website.D_D_ORDER o " +
+                     "JOIN Ecommerce_Website.D_D_ORDERLOGS ol ON o.order_id = ol.order_id " +
+                     "JOIN Ecommerce_Website.M_S_DATAS p ON ol.product_id = p.product_id " +
+                     "WHERE o.user_id = ? " +
+                     "AND o.status = 'Paid' " +
+                     "AND NOT EXISTS ( " +
+                     "    SELECT 1 FROM Ecommerce_Website.D_D_PRODUCT_RATINGS r " +
+                     "    WHERE r.user_id = o.user_id " +
+                     "    AND r.product_id = ol.product_id " +
+                     "    AND r.order_id = o.order_id " +
+                     ") " +
+                     "ORDER BY o.orderdate DESC";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> product = new HashMap<>();
+                    product.put("productId", rs.getInt("product_id"));
+                    product.put("productName", rs.getString("product_name"));
+                    product.put("orderId", rs.getInt("order_id"));
+                    product.put("orderDate", rs.getTimestamp("orderdate"));
+                    products.add(product);
+                }
+            }
+        }
+        
+        return products;
+    }
+
+    /**
+     * Check if user can rate a specific product from an order
+     */
+    public boolean canUserRateProduct(int userId, int productId, int orderId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM Ecommerce_Website.D_D_ORDER o " +
+                     "JOIN Ecommerce_Website.D_D_ORDERLOGS ol ON o.order_id = ol.order_id " +
+                     "WHERE o.user_id = ? AND o.order_id = ? AND ol.product_id = ? " +
+                     "AND o.status = 'Paid'";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            ps.setInt(2, orderId);
+            ps.setInt(3, productId);
+            
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Get user's rating for a specific product and order
+     */
+    public Map<String, Object> getUserRating(int userId, int productId, int orderId) throws SQLException {
+        String sql = "SELECT rating_id, rating, review_text, created_at, updated_at " +
+                     "FROM Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "WHERE user_id = ? AND product_id = ? AND order_id = ?";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            ps.setInt(2, productId);
+            ps.setInt(3, orderId);
+            
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Map<String, Object> rating = new HashMap<>();
+                    rating.put("ratingId", rs.getInt("rating_id"));
+                    rating.put("rating", rs.getDouble("rating"));
+                    rating.put("reviewText", rs.getString("review_text"));
+                    rating.put("createdAt", rs.getTimestamp("created_at"));
+                    rating.put("updatedAt", rs.getTimestamp("updated_at"));
+                    return rating;
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Submit a new rating
+     */
+    public boolean submitRating(int userId, int productId, int orderId, double rating, String reviewText) 
+            throws SQLException {
+        String sql = "INSERT INTO Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "(user_id, product_id, order_id, rating, review_text) " +
+                     "VALUES (?, ?, ?, ?, ?)";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            ps.setInt(2, productId);
+            ps.setInt(3, orderId);
+            ps.setDouble(4, rating);
+            ps.setString(5, reviewText);
+            
+            int rows = ps.executeUpdate();
+            logger.info("Rating submitted: user=" + userId + " product=" + productId + " rating=" + rating);
+            return rows > 0;
+        }
+    }
+
+    /**
+     * Update an existing rating
+     */
+    public boolean updateRating(int userId, int productId, int orderId, double rating, String reviewText) 
+            throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "SET rating = ?, review_text = ?, updated_at = GETDATE() " +
+                     "WHERE user_id = ? AND product_id = ? AND order_id = ?";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setDouble(1, rating);
+            ps.setString(2, reviewText);
+            ps.setInt(3, userId);
+            ps.setInt(4, productId);
+            ps.setInt(5, orderId);
+            
+            int rows = ps.executeUpdate();
+            logger.info("Rating updated: user=" + userId + " product=" + productId + " rating=" + rating);
+            return rows > 0;
+        }
+    }
+
+    /**
+     * Update product's average rating and rating count
+     */
+    public void updateProductAverageRating(int productId) throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.M_S_DATAS " +
+                     "SET average_rating = ( " +
+                     "    SELECT AVG(CAST(rating AS FLOAT)) " +
+                     "    FROM Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "    WHERE product_id = ? " +
+                     "), " +
+                     "rating_count = ( " +
+                     "    SELECT COUNT(*) " +
+                     "    FROM Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "    WHERE product_id = ? " +
+                     ") " +
+                     "WHERE product_id = ?";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, productId);
+            ps.setInt(2, productId);
+            ps.setInt(3, productId);
+            
+            ps.executeUpdate();
+            logger.info("Updated average rating for product: " + productId);
+        }
+    }
+}
+----------------------------------------------------------------------------------------------------------
+4. Update ProductServlet to include ratings
+In your ProductServlet.java, update the doGet method to include rating information:
+
+// Add this to your product map generation
+Map<String, Object> map = productToMap(p);
+// ... existing code ...
+
+// Add rating information
+try {
+    double avgRating = p.getAverageRating(); // or fetch from DB
+    int ratingCount = p.getRatingCount();
+    map.put("averageRating", avgRating);
+    map.put("ratingCount", ratingCount);
+    map.put("stars", Math.round(avgRating * 10.0) / 10.0); // for display
+} catch (Exception e) {
+    map.put("averageRating", 0.0);
+    map.put("ratingCount", 0);
+    map.put("stars", 0.0);
+}
+
+---------------------------------------------------------------------------------------------
+
+5. Update navbar.js to display dynamic ratings
+Update the buildProductCardHtml function in navbar.js:
+
+
+function buildProductCardHtml(p) {
+  const id = p.productId ?? p.id ?? p.product_id;
+  const name = p.productName ?? p.name ?? p.product_name ?? "Unnamed";
+  
+  // Get rating data
+  const avgRating = p.averageRating ?? p.average_rating ?? p.stars ?? 0;
+  const ratingCount = p.ratingCount ?? p.rating_count ?? 0;
+  
+  // ... existing image code ...
+  
+  const stars = renderStars(avgRating);
+  const ratingDisplay = ratingCount > 0 
+    ? `<div class="flex justify-center items-center mb-2">
+         ${stars}
+         <span class="ml-2 text-yellow-600 font-semibold">${avgRating.toFixed(1)}</span>
+         <span class="ml-1 text-xs text-gray-500">(${ratingCount})</span>
+       </div>`
+    : `<div class="flex justify-center items-center mb-2 text-gray-400 text-sm">No ratings yet</div>`;
+  
+  // ... rest of card HTML with ratingDisplay inserted ...
+}
+
+-----------------------------------------------------------------------------------
+
+<!-- Add this modal to your orderhistory.html before closing </body> -->
+
+<!-- Rating Modal -->
+<div id="ratingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50" style="display:none;">
+  <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+    <h3 class="text-xl font-bold mb-4">Rate This Product</h3>
+    
+    <div id="ratingProductInfo" class="mb-4 p-3 bg-gray-50 rounded">
+      <p class="font-semibold" id="ratingProductName"></p>
+      <p class="text-sm text-gray-600" id="ratingOrderInfo"></p>
+    </div>
+    
+    <form id="ratingForm">
+      <input type="hidden" id="ratingProductId" name="productId">
+      <input type="hidden" id="ratingOrderId" name="orderId">
+      <input type="hidden" id="ratingValue" name="rating" value="5">
+      
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-2">Your Rating</label>
+        <div class="flex items-center space-x-2">
+          <div id="starRating" class="flex space-x-1">
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="1" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="2" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+          </div>
+          <span id="ratingText" class="text-lg font-semibold text-gray-700">5.0</span>
+        </div>
+      </div>
+      
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-2">Review (Optional)</label>
+        <textarea id="reviewText" name="reviewText" rows="4" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-yellow-400" placeholder="Share your experience with this product..."></textarea>
+      </div>
+      
+      <div class="flex space-x-3">
+        <button type="submit" class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg">
+          Submit Rating
+        </button>
+        <button type="button" id="closeRatingModal" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 rounded-lg">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// Add this to OrderHistory.js
+
+// Star rating functionality
+$(document).on('mouseenter', '#starRating .star', function() {
+  const rating = $(this).data('rating');
+  $('#starRating .star').each(function(index) {
+    if (index < rating) {
+      $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+    } else {
+      $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+    }
+  });
+});
+
+$(document).on('mouseleave', '#starRating', function() {
+  const currentRating = parseInt($('#ratingValue').val());
+  $('#starRating .star').each(function(index) {
+    if (index < currentRating) {
+      $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+    } else {
+      $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+    }
+  });
+});
+
+$(document).on('click', '#starRating .star', function() {
+  const rating = $(this).data('rating');
+  $('#ratingValue').val(rating);
+  $('#ratingText').text(rating + '.0');
+  
+  $('#starRating .star').each(function(index) {
+    if (index < rating) {
+      $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+    } else {
+      $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+    }
+  });
+});
+
+// Open rating modal
+function openRatingModal(productId, productName, orderId, orderDate) {
+  $('#ratingProductId').val(productId);
+  $('#ratingOrderId').val(orderId);
+  $('#ratingProductName').text(productName);
+  $('#ratingOrderInfo').text('Order #' + orderId + ' - ' + new Date(orderDate).toLocaleDateString());
+  
+  // Check if user already rated this product
+  $.get('http://localhost:8080/Ecommerce_Website/RatingServlet', {
+    action: 'checkUserRating',
+    productId: productId,
+    orderId: orderId
+  }, function(rating) {
+    if (rating && rating.rating) {
+      // Pre-fill with existing rating
+      $('#ratingValue').val(rating.rating);
+      $('#ratingText').text(rating.rating.toFixed(1));
+      $('#reviewText').val(rating.reviewText || '');
+      
+      // Set stars
+      $('#starRating .star').each(function(index) {
+        if (index < Math.floor(rating.rating)) {
+          $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+        } else {
+          $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+        }
+      });
+    } else {
+      // Reset to default
+      $('#ratingValue').val(5);
+      $('#ratingText').text('5.0');
+      $('#reviewText').val('');
+      $('#starRating .star').addClass('text-yellow-400').removeClass('text-gray-300');
+    }
+  });
+  
+  $('#ratingModal').removeClass('hidden').css('display', 'flex');
+}
+
+// Close rating modal
+$(document).on('click', '#closeRatingModal', function() {
+  $('#ratingModal').addClass('hidden').css('display', 'none');
+});
+
+// Submit rating
+$(document).on('submit', '#ratingForm', function(e) {
+  e.preventDefault();
+  
+  const formData = $(this).serialize() + '&action=submitRating';
+  
+  $.post('http://localhost:8080/Ecommerce_Website/RatingServlet', formData, function(response) {
+    if (response && response.status === 'ok') {
+      toast('Rating submitted successfully!', 1500);
+      $('#ratingModal').addClass('hidden').css('display', 'none');
+      loadOrderHistory(); // Reload to show rating button state
+    } else {
+      alert(response.message || 'Failed to submit rating');
+    }
+  }, 'json').fail(function() {
+    alert('Error submitting rating. Please try again.');
+  });
+});
+
+// Update renderOrders to include rating button
+function renderOrders(orders) {
+  if (!orders || orders.length === 0) {
+    $('#order-history-container').html('<p class="text-center text-gray-500">You have no previous orders.</p>');
+    return;
+  }
+
+  let html = '';
+  orders.forEach(order => {
+    html += '<div class="bg-white rounded-lg shadow-md order-card overflow-hidden">';
+    html += '  <div class="flex justify-between items-center p-4 order-summary">';
+    html += '    <div>';
+    html += `      <h2 class="font-semibold text-lg text-gray-800">Order #${order.orderId}</h2>`;
+    html += `      <p class="text-gray-600 text-sm">Placed on: ${new Date(order.orderDate).toLocaleDateString()}</p>`;
+    html += `      <p class="text-gray-700 font-bold mt-1 text-lg">Total: ₹${order.totalAmount}</p>`;
+    html += '    </div>';
+    html += '    <button class="view-details bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">View Details</button>';
+    html += '  </div>';
+    html += '  <div class="order-details mt-0 hidden">';
+    html += '    <h3 class="font-semibold text-gray-800 mb-3">Items in this order:</h3>';
+    html += '    <div class="space-y-2">';
+
+    html += order.items.map(item => {
+      return `
+        <div class="flex justify-between items-center p-2 rounded bg-white shadow-sm">
+          <div>
+            <p class="font-medium text-gray-700">${item.productName}</p>
+            <p class="text-gray-500 text-sm">Qty: ${item.quantity}</p>
+          </div>
+          <div class="text-right">
+            <p class="font-semibold text-gray-800">₹${item.price}</p>
+            <button class="rate-product-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded mt-1" 
+                    data-product-id="${item.productId}" 
+                    data-product-name="${item.productName}"
+                    data-order-id="${order.orderId}"
+                    data-order-date="${order.orderDate}">
+              ⭐ Rate
+            </button>
+          </div>
+        </div>`;
+    }).join('');
+
+    html += '    </div>';
+    html += '    <div class="mt-4 flex justify-end">';
+    html += `      <button class="reorder-btn bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded" data-order-id="${order.orderId}">Reorder</button>`;
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+  });
+
+  $('#order-history-container').html(html);
+}
+
+// Handle rate product button click
+$(document).on('click', '.rate-product-btn', function() {
+  const productId = $(this).data('product-id');
+  const productName = $(this).data('product-name');
+  const orderId = $(this).data('order-id');
+  const orderDate = $(this).data('order-date');
+  
+  openRatingModal(productId, productName, orderId, orderDate);
+});
+</script>
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+package model;
+
+import java.util.Base64;
+
+public class Product {
+    private int productId;
+    private int categoryId;
+    private String productName;
+    private String description;
+    private double price;
+    private int stock;
+    private String imageUrl;
+    private byte[] imageData;
+    private String categoryname;
+    
+    // Rating fields
+    private double averageRating;
+    private int ratingCount;
+
+    public Product() {
+        this.averageRating = 0.0;
+        this.ratingCount = 0;
+    }
+
+    public Product(int categoryId, String productName, String description, double price, int stock, byte[] imageData) {
+        this.categoryId = categoryId;
+        this.productName = productName;
+        this.description = description;
+        this.price = price;
+        this.stock = stock;
+        this.imageData = imageData;
+        this.averageRating = 0.0;
+        this.ratingCount = 0;
+    }
+
+    public Product(int productId, int categoryId, String productName, String description, double price, int stock, byte[] imageData) {
+        this.productId = productId;
+        this.categoryId = categoryId;
+        this.productName = productName;
+        this.description = description;
+        this.price = price;
+        this.stock = stock;
+        this.imageData = imageData;
+        this.averageRating = 0.0;
+        this.ratingCount = 0;
+    }
+
+    // Existing getters and setters
+    
+    public int getProductId() {
+        return productId;
+    }
+
+    public void setProductId(int productId) {
+        this.productId = productId;
+    }
+
+    public int getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(int categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+
+    public void setPrice(double price) {
+        this.price = price;
+    }
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
+    }
+
+    public byte[] getImageData() {
+        return imageData;
+    }
+
+    public void setImageData(byte[] imageData) {
+        this.imageData = imageData;
+    }
+
+    public String getCategoryname() {
+        return categoryname;
+    }
+
+    public void setCategoryname(String categoryname) {
+        this.categoryname = categoryname;
+    }
+
+    public String getImageBase64() {
+        if (imageData == null) return "";
+        return Base64.getEncoder().encodeToString(imageData);
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    // NEW: Rating getters and setters
+    
+    public double getAverageRating() {
+        return averageRating;
+    }
+
+    public void setAverageRating(double averageRating) {
+        this.averageRating = averageRating;
+    }
+
+    public int getRatingCount() {
+        return ratingCount;
+    }
+
+    public void setRatingCount(int ratingCount) {
+        this.ratingCount = ratingCount;
+    }
+    
+    // Helper method to get rounded rating for display
+    public double getStars() {
+        return Math.round(averageRating * 10.0) / 10.0;
+    }
+}
+
+
+--------------------------------------------------------------------------------------------------------------------------------
