@@ -3,8 +3,23 @@
 export default function ChannelList() {
   const [channels, setChannels] = useState([]);
 
-  // Fetching dummy JSON API data
+  // Load 10 dummy records
   useEffect(() => {
+    const data = [
+      { id: 1, title: "Mediocre Association", subtitle: "Message from Tommaso", date: "2025-01-01", avatar: "https://i.pravatar.cc/150?img=1", unread: 0 },
+      { id: 2, title: "Distant Beer", subtitle: "You: Scroll to very top", date: "2025-01-02", avatar: "https://i.pravatar.cc/150?img=2", unread: 1 },
+      { id: 3, title: "Red Hit", subtitle: "New updates available", date: "2025-01-03", avatar: "https://i.pravatar.cc/150?img=3", unread: 3 },
+      { id: 4, title: "Blue Ocean Team", subtitle: "Project meeting at 4 pm", date: "2025-01-04", avatar: "https://i.pravatar.cc/150?img=4", unread: 0 },
+      { id: 5, title: "Night Owls", subtitle: "New task assigned", date: "2025-01-05", avatar: "https://i.pravatar.cc/150?img=5", unread: 2 },
+      { id: 6, title: "Happy Coders", subtitle: "Bug fix completed", date: "2025-01-06", avatar: "https://i.pravatar.cc/150?img=6", unread: 5 },
+      { id: 7, title: "Early Birds Group", subtitle: "Standup at 10am", date: "2025-01-07", avatar: "https://i.pravatar.cc/150?img=7", unread: 0 },
+      { id: 8, title: "Design Studio", subtitle: "New mockups shared", date: "2025-01-08", avatar: "https://i.pravatar.cc/150?img=8", unread: 6 },
+      { id: 9, title: "QA Warriors", subtitle: "Tests running…", date: "2025-01-09", avatar: "https://i.pravatar.cc/150?img=9", unread: 1 },
+      { id: 10, title: "Support Team", subtitle: "Ticket #234 updated", date: "2025-01-10", avatar: "https://i.pravatar.cc/150?img=10", unread: 0 }
+    ];
+
+    setChannels(data);
+  }, []);(() => {
     fetch("https://jsonplaceholder.typicode.com/users")
       .then((res) => res.json())
       .then((data) => {
@@ -61,4 +76,3 @@ export default function ChannelList() {
     </div>
   );
 }
-       
