@@ -1,0 +1,769 @@
+import React, { useEffect, useMemo, useState } from "react";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
+import { useToast } from "@/hooks/use-toast";
+import { createAuthHeaders } from "@/lib/legacyUtils";
+import { API_CONFIG } from "@/lib/constants";
+import { prismStorage } from "@/lib/prismStorage";
+
+
+
+type TaskItem = {
+  taskId: string;
+  taskName?: string;
+  taskComment?: string;
+  taskDate?: string; 
+  taskAssignedName?: string;
+  taskAssignedId?: string;
+  taskType?: string;
+  taskStatus?: string;
+  contacts?: string[]; 
+  
+};
+
+type ContactResult = {
+  contact_cust_id: string;
+  contact_name: string;
+  account_name?: string;
+};
+
+type ReassignResult = {
+  EMP_ID: string;
+  reassign_name: string;
+  role_name?: string;
+};
+
+export default function TasksWidget() {
+  const { toast } = useToast();
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  // Modal state (Add / Edit)
+  const [isModalOpen, setModalOpen] = useState(false);
+  const [editTask, setEditTask] = useState<TaskItem | null>(null);
+
+  // Form state (for add/edit)
+  const [subject, setSubject] = useState("");
+  const [assignedTo, setAssignedTo] = useState(""); // user id
+  const [taskType, setTaskType] = useState("");
+  const [status, setStatus] = useState("");
+  const [contacts, setContacts] = useState<string[]>([]);
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState<Date | null>(new Date());
+  const [timeStr, setTimeStr] = useState("10:00");
+
+  // For typeahead
+  const [contactQuery, setContactQuery] = useState("");
+  const [contactOptions, setContactOptions] = useState<ContactResult[]>([]);
+  const [contactLoading, setContactLoading] = useState(false);
+
+  const [reassignQuery, setReassignQuery] = useState("");
+  const [reassignOptions, setReassignOptions] = useState<ReassignResult[]>([]);
+  const [reassignLoading, setReassignLoading] = useState(false);
+
+  // reminders per task (simple local state to reflect UI while manipulating)
+  const [remindersByTask, setRemindersByTask] = useState<Record<string, { id?: string; date: string; time: string }[]>>({});
+
+  // fetch tasks (maps to getTasks -> task/getTask)
+  async function fetchTasks() {
+    setLoading(true);
+    try {
+      const summaryFilter = prismStorage.get("summaryFilter") || JSON.stringify({ filter: [] });
+      const body = new URLSearchParams({ summaryFilter }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: "POST",
+        headers: createAuthHeaders({
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+        }),
+        body,
+        credentials: "include",
+      });
+      const data = await res.json();
+      // your original code treats status 1 as success, 0/others as no-data
+      if (data?.status === 1) {
+        setTasks(Array.isArray(data.data) ? data.data : []);
+        // Build local reminders map if backend returns reminders
+        const rmap: Record<string, { id?: string; date: string; time: string }[]> = {};
+        (data.data || []).forEach((t: any) => {
+          if (t.reminders && Array.isArray(t.reminders)) {
+            rmap[t.taskId] = t.reminders.map((r: any) => {
+              // expect r has date/time or reminder id
+              const dt = new Date(r.reminder); // adapt as per server shape
+              return {
+                id: r.id,
+                date: dt.toISOString().slice(0, 10),
+                time: dt.toTimeString().slice(0, 5),
+              };
+            });
+          }
+        });
+        setRemindersByTask(rmap);
+      } else {
+        setTasks([]);
+        // show message optionally
+      }
+    } catch (err) {
+      console.error("fetchTasks error", err);
+      toast({ title: "Error", description: "Failed to fetch tasks" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks();
+  }, []);
+
+  // task add (maps to your addTask / addTask endpoint)
+  async function handleAddTask() {
+    try {
+      if (!subject.trim()) {
+        toast({ title: "Validation", description: "Subject required" });
+        return;
+      }
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : "";
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`;
+
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts,
+        contactName: contacts || [],
+        assignedTo,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: "Task",
+        reminder: [],
+        action: "Save",
+      };
+
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
+
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: "POST",
+        headers: createAuthHeaders({
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+        }),
+        body: encoded,
+        credentials: "include",
+      });
+
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Success", description: "Task Added Successfully" });
+        setModalOpen(false);
+        resetForm();
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to add task" });
+      }
+    } catch (err) {
+      console.error("handleAddTask", err);
+      toast({ title: "Error", description: "Failed to add task" });
+    }
+  }
+
+  // task update (similar shape)
+  async function handleUpdateTask() {
+    try {
+      if (!editTask) return;
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : "";
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`;
+
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts,
+        contactName: contacts || [],
+        assignedTo,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: "Task",
+        reminder: [],
+        action: "Update",
+        taskId: editTask.taskId,
+      };
+
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
+
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: "POST",
+        headers: createAuthHeaders({
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+        }),
+        body: encoded,
+        credentials: "include",
+      });
+
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Success", description: "Task Updated Successfully" });
+        setModalOpen(false);
+        setEditTask(null);
+        resetForm();
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to update task" });
+      }
+    } catch (err) {
+      console.error("handleUpdateTask", err);
+      toast({ title: "Error", description: "Failed to update task" });
+    }
+  }
+
+  // open edit modal with values (maps to openEdit)
+  function openEditModal(task: TaskItem) {
+    setEditTask(task);
+    setSubject(task.taskName || "");
+    setDescription(task.taskComment || "");
+    setAssignedTo(task.taskAssignedId || "");
+    setTaskType(task.taskType || "");
+    setStatus(task.taskStatus || "");
+    // parse task.taskDate into dueDate & time
+    if (task.taskDate) {
+      // server sample: "YYYY-MM-DD hh:mm:ss" or similar
+      const iso = task.taskDate.replace(" ", "T");
+      const dt = new Date(iso);
+      if (!isNaN(dt.getTime())) {
+        setDueDate(dt);
+        const hh = dt.getHours().toString().padStart(2, "0");
+        const mm = dt.getMinutes().toString().padStart(2, "0");
+        setTimeStr(`${hh}:${mm}`);
+      } else {
+        setDueDate(new Date());
+        setTimeStr("10:00");
+      }
+    } else {
+      setDueDate(new Date());
+    }
+    setContacts(task.contacts || []);
+    setModalOpen(true);
+  }
+
+  // delete task (maps to activities/commonDelete in your TSX earlier or to task/addTask dismiss)
+  async function deleteTask(taskId: string) {
+    try {
+      const payload = { deleteJson: JSON.stringify({ rowId: taskId, type: "Task" }) };
+      const res = await fetch(`${API_CONFIG.fullUrl || API_CONFIG.baseUrl}/activities/commonDelete`, {
+        method: "POST",
+        headers: createAuthHeaders({
+          "Content-Type": "application/json",
+          Accept: "application/json, text/javascript, */*; q=0.01",
+        }),
+        body: JSON.stringify(payload),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Deleted", description: "Task Deleted Successfully" });
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Delete failed" });
+      }
+    } catch (err) {
+      console.error("deleteTask", err);
+      toast({ title: "Error", description: "Delete failed" });
+    }
+  }
+
+  // set due date for a task (maps to task/setDueDate)
+  async function setDueDateForTask(taskId: string, dateStr: string, time: string) {
+    try {
+      const payload = new URLSearchParams({
+        dueDate: `${dateStr} ${time}`,
+        taskId,
+      }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/setDueDate`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: payload,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Success", description: "Due date updated" });
+        // update UI
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to update due date" });
+      }
+    } catch (err) {
+      console.error("setDueDateForTask", err);
+      toast({ title: "Error", description: "Failed to update due date" });
+    }
+  }
+
+  // add reminder (task/addMultiReminder)
+  async function addReminder(taskId: string, dateStr: string, time: string, indexer?: string) {
+    try {
+      const payload = new URLSearchParams({
+        taskId,
+        reminder: `${dateStr} ${time}`,
+        taskName: "", // optional - your jQuery passed taskName
+      }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addMultiReminder`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: payload,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        // server returns reminder id maybe -> append to local list
+        const rem = { id: data.reminder?.id || undefined, date: dateStr, time };
+        setRemindersByTask((prev) => {
+          const next = { ...prev };
+          next[taskId] = next[taskId] ? [...next[taskId], rem] : [rem];
+          return next;
+        });
+        toast({ title: "Success", description: "Reminder added" });
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to add reminder" });
+      }
+    } catch (err) {
+      console.error("addReminder", err);
+      toast({ title: "Error", description: "Failed to add reminder" });
+    }
+  }
+
+  // delete reminder (task/deleteMultiReminder)
+  async function deleteReminder(taskId: string, reminderId?: string, index?: number) {
+    try {
+      const payload = new URLSearchParams({ reminderId: reminderId || "" }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/deleteMultiReminder`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: payload,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        setRemindersByTask((prev) => {
+          const next = { ...prev };
+          if (!next[taskId]) return next;
+          if (typeof index === "number") next[taskId] = next[taskId].filter((_, i) => i !== index);
+          else next[taskId] = next[taskId].filter((r) => r.id !== reminderId);
+          return next;
+        });
+        toast({ title: "Deleted", description: "Reminder deleted" });
+      } else {
+        toast({ title: "Error", description: data?.message || "Delete failed" });
+      }
+    } catch (err) {
+      console.error("deleteReminder", err);
+      toast({ title: "Error", description: "Delete failed" });
+    }
+  }
+
+  // set follow up (task/setTaskFollowUpActivity or setTaskFollowUp)
+  async function setFollowUp(taskId: string, followupDateTime: string) {
+    try {
+      const payload = new URLSearchParams({
+        taskId,
+        followUpDate: followupDateTime,
+      }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/setTaskFollowUp`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: payload,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Success", description: "Follow-up set" });
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to set follow-up" });
+      }
+    } catch (err) {
+      console.error("setFollowUp", err);
+      toast({ title: "Error", description: "Failed to set follow-up" });
+    }
+  }
+
+  // contact search (typeahead). backend: Summary/searchContact
+  async function fetchContactOptions(query: string) {
+    if (!query || query.length < 2) return setContactOptions([]);
+    setContactLoading(true);
+    try {
+      const res = await fetch(`${API_CONFIG.baseUrl}/Summary/searchContact`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: new URLSearchParams({ Name: query }).toString(),
+        credentials: "include",
+      });
+      const data = await res.json();
+      setContactOptions(data?.data || []);
+    } catch (err) {
+      console.error("fetchContactOptions", err);
+      setContactOptions([]);
+    } finally {
+      setContactLoading(false);
+    }
+  }
+
+  // assign contact (task/taskSetContact)
+  async function setTaskContact(taskId: string, contact: ContactResult) {
+    try {
+      const payload = new URLSearchParams({ taskId, contactId: contact.contact_cust_id }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/taskSetContact`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: payload,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Success", description: "Contact added to task" });
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to add contact" });
+      }
+    } catch (err) {
+      console.error("setTaskContact", err);
+      toast({ title: "Error", description: "Failed to add contact" });
+    }
+  }
+
+  // reassign search
+  async function fetchReassignOptions(query: string) {
+    if (!query || query.length < 2) return setReassignOptions([]);
+    setReassignLoading(true);
+    try {
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/searchReAssign`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: new URLSearchParams({ Name: query }).toString(),
+        credentials: "include",
+      });
+      const data = await res.json();
+      setReassignOptions(data?.data || []);
+    } catch (err) {
+      console.error("fetchReassignOptions", err);
+      setReassignOptions([]);
+    } finally {
+      setReassignLoading(false);
+    }
+  }
+
+  // reassign an existing task
+  async function setReassignTask(taskId: string, empId: string) {
+    try {
+      const payload = new URLSearchParams({ taskId, assignedTo: empId }).toString();
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/reAssign`, {
+        method: "POST",
+        headers: createAuthHeaders({ "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }),
+        body: payload,
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (data?.status === 1) {
+        toast({ title: "Success", description: "Task reassigned" });
+        fetchTasks();
+      } else {
+        toast({ title: "Error", description: data?.message || "Failed to reassign" });
+      }
+    } catch (err) {
+      console.error("setReassignTask", err);
+      toast({ title: "Error", description: "Failed to reassign" });
+    }
+  }
+
+  // helper: reset Add/Edit form
+  function resetForm() {
+    setSubject("");
+    setAssignedTo("");
+    setTaskType("");
+    setStatus("");
+    setContacts([]);
+    setDescription("");
+    setDueDate(new Date());
+    setTimeStr("10:00");
+  }
+
+  // calculate time difference display (like cal_time)
+  const calcTimeDiff = (due: string | undefined) => {
+    if (!due) return null;
+    const dueDate = new Date(due);
+    const now = new Date();
+    const diffMs = dueDate.getTime() - now.getTime();
+    const abs = Math.abs(diffMs);
+    const days = Math.floor(abs / 86400000);
+    const hours = Math.floor((abs % 86400000) / 3600000);
+    const mins = Math.floor(((abs % 86400000) % 3600000) / 60000);
+    if (days > 0) return `${days} Day(s)`;
+    if (hours > 0) return `${hours} Hour(s)`;
+    if (mins > 0) return `${mins} Min(s)`;
+    return "0 Min(s)";
+  };
+
+  // small debounce for contact search
+  useEffect(() => {
+    const id = setTimeout(() => fetchContactOptions(contactQuery), 300);
+    return () => clearTimeout(id);
+  }, [contactQuery]);
+
+  useEffect(() => {
+    const id = setTimeout(() => fetchReassignOptions(reassignQuery), 300);
+    return () => clearTimeout(id);
+  }, [reassignQuery]);
+
+
+  return (
+    <div className="p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="mb-3 text-xl font-semibold">Task List</h2>
+        <button
+          onClick={() => {
+            setEditTask(null);
+            resetForm();
+            setModalOpen(true);
+          }}
+          className="rounded bg-blue-600 px-4 py-2 text-white"
+        >
+          Add Task
+        </button>
+      </div>
+
+      {loading ? (
+        <div>Loading...</div>
+      ) : tasks.length === 0 ? (
+        <p>No tasks found</p>
+      ) : (
+        <ul className="space-y-3">
+          {tasks.map((t) => {
+            const due = t.taskDate;
+            return (
+              <li key={t.taskId} className="rounded border bg-gray-50 p-3 shadow-sm relative">
+                <h3 className="font-bold">{t.taskName}</h3>
+                <p>{t.taskComment}</p>
+                <p className="text-sm text-gray-600">
+                  Due: {due} | Status: {t.taskStatus} | Assignee: {t.taskAssignedName}
+                </p>
+
+                {t.taskDate && (
+                  <small className="absolute top-2 right-4 bg-red-500 text-white px-2 py-1 rounded text-xs">
+                    {calcTimeDiff(t.taskDate)}
+                  </small>
+                )}
+
+                <div className="mt-2 flex gap-3">
+                  <button className="rounded bg-yellow-600 px-3 py-1 text-white" onClick={() => openEditModal(t)}>
+                    Edit
+                  </button>
+
+                  <button className="rounded bg-red-600 px-3 py-1 text-white" onClick={() => deleteTask(t.taskId)}>
+                    Delete
+                  </button>
+
+                  <button
+                    className="rounded bg-indigo-600 px-3 py-1 text-white"
+                    onClick={() => {
+                      // quick dismiss example (like taskreact -> sets status to Dismiss)
+                      (async () => {
+                        try {
+                          const payloadObj = {
+                            subject: t.taskName,
+                            dueDate: t.taskDate,
+                            dueTime: t.taskDate ? t.taskDate.split(" ")[1].slice(0, 5) : "00:00",
+                            contacts: t.contacts || [],
+                            contactName: t.contacts || [],
+                            assignedTo: t.taskAssignedId || "",
+                            clienttimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                            status: "Dismiss",
+                            taskType: t.taskType,
+                            taskComments: t.taskComment,
+                            module_name: "Task",
+                            action: "Dismiss",
+                            taskId: t.taskId,
+                          };
+                          const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
+                          const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+                            method: "POST",
+                            headers: createAuthHeaders({
+                              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                            }),
+                            body: encoded,
+                            credentials: "include",
+                          });
+                          const d = await res.json();
+                          if (d?.status === 1) {
+                            toast({ title: "Success", description: d.message || "Dismissed" });
+                            fetchTasks();
+                          } else {
+                            toast({ title: "Error", description: d.message || "Failed" });
+                          }
+                        } catch (err) {
+                          console.error("dismiss err", err);
+                          toast({ title: "Error", description: "Failed to dismiss" });
+                        }
+                      })();
+                    }}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+
+                {/* Reminders list */}
+                <div className="mt-3">
+                  <div className="text-sm font-semibold">Reminders</div>
+                  {(remindersByTask[t.taskId] || []).map((r, idx) => (
+                    <div key={r.id || idx} className="flex items-center gap-2">
+                      <div>{r.date} {r.time}</div>
+                      <button
+                        className="text-red-600 text-sm"
+                        onClick={() => deleteReminder(t.taskId, r.id, idx)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                  <div className="mt-2 flex gap-2">
+                    <input type="date" className="rounded border p-1" id={`remdate-${t.taskId}`} />
+                    <input type="time" className="rounded border p-1" id={`remtime-${t.taskId}`} />
+                    <button
+                      className="bg-green-600 text-white px-2 rounded"
+                      onClick={() => {
+                        const dInput = (document.getElementById(`remdate-${t.taskId}`) as HTMLInputElement).value;
+                        const tm = (document.getElementById(`remtime-${t.taskId}`) as HTMLInputElement).value;
+                        if (!dInput || !tm) {
+                          toast({ title: "Error", description: "Please pick date & time" });
+                          return;
+                        }
+                        addReminder(t.taskId, dInput, tm);
+                      }}
+                    >
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {/* Simple contact search */}
+                <div className="mt-3">
+                  <div className="text-sm font-semibold">Add Contact to Task</div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      className="rounded border p-1"
+                      placeholder="Search contact..."
+                      value={contactQuery}
+                      onChange={(e) => setContactQuery(e.target.value)}
+                    />
+                    <div>
+                      {contactLoading ? <span>Loading...</span> : null}
+                      {contactOptions.length > 0 && (
+                        <ul className="bg-white border rounded mt-1 max-h-40 overflow-auto">
+                          {contactOptions.map((c) => (
+                            <li
+                              key={c.contact_cust_id}
+                              className="p-2 hover:bg-gray-100 cursor-pointer"
+                              onClick={() => setTaskContact(t.taskId, c)}
+                            >
+                              <div className="font-semibold">{c.contact_name}</div>
+                              <div className="text-xs text-gray-500">{c.account_name}</div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* reassign quick */}
+                <div className="mt-3">
+                  <div className="text-sm font-semibold">Reassign</div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      className="rounded border p-1"
+                      placeholder="Search user..."
+                      onChange={(e) => setReassignQuery(e.target.value)}
+                    />
+                    {reassignOptions.length > 0 && (
+                      <div className="bg-white border rounded mt-1 max-h-40 overflow-auto">
+                        {reassignOptions.map((r) => (
+                          <div key={r.EMP_ID} className="p-2 hover:bg-gray-100 cursor-pointer" onClick={() => setReassignTask(t.taskId, r.EMP_ID)}>
+                            <div className="font-semibold">{r.reassign_name}</div>
+                            <div className="text-xs text-gray-500">{r.role_name}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-40">
+          <div className="relative w-[700px] rounded-lg bg-white p-5 z-50">
+            <button className="absolute right-2 top-2" onClick={() => setModalOpen(false)}>X</button>
+            <h2 className="mb-4 text-xl font-semibold">{editTask ? "Update Task" : "Add Task"}</h2>
+
+            <label>Assign To</label>
+            <input type="text" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="mb-3 w-full rounded border p-2" />
+
+            <label>Due Date</label>
+            <DatePicker selected={dueDate} onChange={(d) => setDueDate(d)} className="mb-3 w-full rounded border p-2" />
+
+            <label>Time</label>
+            <input type="time" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} className="mb-3 w-full rounded border p-2" />
+
+            <label>Task Type</label>
+            <select value={taskType} onChange={(e) => setTaskType(e.target.value)} className="mb-3 w-full rounded border p-2">
+              <option value="">-- Select --</option>
+              <option value="Call Back1">Call Back1</option>
+              <option value="Action items">Action Items</option>
+              <option value="Others">Others</option>
+              <option value="Schedule Meeting">Schedule Meeting</option>
+            </select>
+
+            <label>Status</label>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="mb-3 w-full rounded border p-2">
+              <option value="">-- Select --</option>
+              <option value="Not Started">Not Started</option>
+              <option value="Completed">Completed</option>
+              <option value="In Progress">In Progress</option>
+            </select>
+
+            <label>Subject</label>
+            <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className="mb-3 w-full rounded border p-2" />
+
+            <label>Contacts (comma separated IDs)</label>
+            <input type="text" value={contacts.join(", ")} onChange={(e) => setContacts(e.target.value.split(",").map(s => s.trim()).filter(Boolean))} className="mb-3 w-full rounded border p-2" />
+
+            <label>Description</label>
+            <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mb-3 w-full rounded border p-2" />
+
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (editTask) handleUpdateTask();
+                  else handleAddTask();
+                }}
+                className="w-full rounded bg-green-600 py-2 text-white"
+              >
+                {editTask ? "Update Task" : "Save Task"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
