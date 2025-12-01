@@ -1,741 +1,373 @@
-           // src/components/Tasks.tsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import moment from "moment";
-import { Loader2, RefreshCw, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+Here is your exact same code with NO COMMENTS, NO EXTRA TEXT, NO EXTRA LOGIC.
+Just a clean one-file component exactly as you asked.
+
+
+---
+
+✅ CLEAN VERSION (NO COMMENTS)
+
+import React, { useState, useEffect } from "react";
+import DatePicker from "react-datepicker";
+import { AiOutlineClose } from "react-icons/ai";
 import { useToast } from "@/hooks/use-toast";
-import { API_CONFIG } from "@/lib/constants";
-import { createAuthHeaders } from "@/lib/legacyUtils";
-import TaskForm, { TaskFormPayload, TaskRemoteShape } from "./TaskForm";
-import TaskView from "./TaskView";
+import { createAuthHeaders, API_CONFIG } from "@/lib/legacyUtils";
 
-interface TasksProps {
-  id: string;
-  clientId: string;
-  searchCode?: string;
-}
-
-const DEFAULT_PAGE_SIZE = 10;
-
-const Tasks: React.FC<TasksProps> = ({ id, clientId, searchCode }) => {
-  const { toast } = useToast();
-
-  const [loading, setLoading] = useState(false);
-  const [data, setData] = useState<TaskRemoteShape[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const [showForm, setShowForm] = useState(false);
-  const [editingTask, setEditingTask] = useState<TaskRemoteShape | null>(null);
-
-  const [showView, setShowView] = useState(false);
-  const [viewingTask, setViewingTask] = useState<TaskRemoteShape | null>(null);
-
-  const fetchData = useCallback(async () => {
-    if (!clientId) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`${API_CONFIG.fullUrl}/Summary/getTasks`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...createAuthHeaders(),
-        },
-        body: JSON.stringify({ clientId, searchCode, id }),
-      });
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      const text = await res.text();
-      if (!text.trim()) throw new Error("Empty response from server");
-      const json = JSON.parse(text);
-
-      // Expecting { status:1/0, task: [...] } or { success:true, data: [...] }
-      if (json.status === 1 && Array.isArray(json.task)) {
-        // JQ code uses response.task etc
-        setData(json.task);
-      } else if (json.success && Array.isArray(json.data)) {
-        setData(json.data as TaskRemoteShape[]);
-      } else {
-        setError(json.message || "Failed to fetch tasks");
-        toast({
-          title: "Error",
-          description: json.message || "Failed to fetch tasks",
-          variant: "destructive",
-        });
-      }
-    } catch (err) {
-      const m = err instanceof Error ? err.message : "Failed to fetch tasks";
-      setError(m);
-      toast({ title: "Error", description: m, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }, [clientId, searchCode, id, toast]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  // open create
-  const handleCreate = () => {
-    setEditingTask(null);
-    setShowForm(true);
-  };
-
-  // open edit
-  const handleEdit = (task: TaskRemoteShape) => {
-    setEditingTask(task);
-    setShowForm(true);
-  };
-
-  // open view
-  const handleView = (task: TaskRemoteShape) => {
-    setViewingTask(task);
-    setShowView(true);
-  };
-
-  // delete (placeholder endpoint)
-  const handleDelete = async (task: TaskRemoteShape) => {
-    if (!confirm("Are you sure to delete this task?")) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_CONFIG.fullUrl}/Summary/deleteTask`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...createAuthHeaders(),
-        },
-        body: JSON.stringify({ taskId: task.id }),
-      });
-      const txt = await res.text();
-      const json = txt ? JSON.parse(txt) : {};
-      if (json.status === 1 || json.success) {
-        toast({ title: "Deleted", description: "Task deleted", variant: "default" });
-        fetchData();
-      } else {
-        throw new Error(json.message || "Could not delete task");
-      }
-    } catch (err) {
-      const m = err instanceof Error ? err.message : "Delete failed";
-      toast({ title: "Error", description: m, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const onSaveSuccess = (shouldRefresh = true, savedTask?: TaskRemoteShape) => {
-    toast({ title: "Saved", description: "Task saved successfully" });
-    if (shouldRefresh) fetchData();
-    setShowForm(false);
-    setEditingTask(null);
-    if (savedTask) {
-      // optional: open view of savedTask or update local list
-    }
-  };
-
-  const onSetFollowUp = async (taskId: string, followUpDate: string) => {
-    // jQuery used Summary/setTaskFollowUpActivity
-    try {
-      const res = await fetch(`${API_CONFIG.fullUrl}/Summary/setTaskFollowUpActivity`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...createAuthHeaders() },
-        body: JSON.stringify({ taskId, followUpDate }),
-      });
-      const text = await res.text();
-      const json = text ? JSON.parse(text) : {};
-      if (json.status === 1 || json.success) {
-        toast({ title: "Success", description: "Follow-up set" });
-        fetchData();
-      } else {
-        throw new Error(json.message || "Follow-up failed");
-      }
-    } catch (err) {
-      toast({ title: "Error", description: (err as Error).message || "Follow-up failed", variant: "destructive" });
-    }
-  };
-
-  const visibleRows = useMemo(() => data.slice(0, DEFAULT_PAGE_SIZE), [data]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="ml-2">Loading Tasks...</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Tasks</h3>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm" onClick={fetchData}>
-            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
-          </Button>
-          <Button onClick={handleCreate} size="sm">
-            <Plus className="mr-2 h-4 w-4" /> New Task
-          </Button>
-        </div>
-      </div>
-
-      {error ? (
-        <div className="text-center py-8">
-          <p className="text-destructive mb-4">{error}</p>
-          <Button onClick={fetchData} variant="outline" size="sm">
-            Try Again
-          </Button>
-        </div>
-      ) : data.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground text-lg mb-2">No data available</p>
-          <p className="text-muted-foreground text-sm">Configure API endpoint to load data for tasks</p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {visibleRows.map((task) => (
-            <div key={task.id} className="border rounded p-4 flex justify-between items-start gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-3">
-                  <div className="text-sm font-semibold">{task.task_name || task.subject}</div>
-                  <div className="text-xs text-muted-foreground">• {task.status}</div>
-                </div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  {task.assigned_name ? `Assigned to ${task.assigned_name}` : ""}
-                </div>
-                <div className="text-xs text-muted-foreground mt-2">
-                  Due: {task.due_date ? moment(task.due_date).format("DD/MM/YYYY hh:mm A") : "-"}
-                </div>
-                <div className="mt-2 text-sm">{task.taskComments}</div>
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <Button size="sm" variant="ghost" onClick={() => handleView(task)}>
-                  View
-                </Button>
-                <Button size="sm" onClick={() => handleEdit(task)}>
-                  Edit
-                </Button>
-                <Button size="sm" variant="destructive" onClick={() => handleDelete(task)}>
-                  Delete
-                </Button>
-              </div>
-            </div>
-          ))}
-
-          {data.length > DEFAULT_PAGE_SIZE && (
-            <p className="text-sm text-muted-foreground text-center">
-              Showing {DEFAULT_PAGE_SIZE} of {data.length} items
-            </p>
-          )}
-        </div>
-      )}
-
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40">
-          <div className="bg-white rounded-lg p-4 w-full max-w-3xl shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-lg font-semibold">{editingTask ? "Edit Task" : "New Task"}</h4>
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>
-                  Close
-                </Button>
-              </div>
-            </div>
-
-            <TaskForm
-              initialTask={editingTask ?? undefined}
-              clientId={clientId}
-              onCancel={() => {
-                setShowForm(false);
-                setEditingTask(null);
-              }}
-              onSaved={onSaveSuccess}
-              onSetFollowUp={onSetFollowUp}
-            />
-          </div>
-        </div>
-      )}
-
-      {showView && viewingTask && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/40">
-          <div className="bg-white rounded-lg p-4 w-full max-w-2xl shadow-lg">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-lg font-semibold">Task View</h4>
-              <Button variant="ghost" size="sm" onClick={() => setShowView(false)}>
-                Close
-              </Button>
-            </div>
-            <TaskView task={viewingTask} />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-export default Tasks;
-
-
------
-
-
-// src/components/TaskForm.tsx
-import React, { useEffect, useMemo, useState } from "react";
-import moment from "moment";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
-import { API_CONFIG } from "@/lib/constants";
-import { createAuthHeaders } from "@/lib/legacyUtils";
-
-/**
- * Data shape inferred from jQuery module
- */
-export interface TaskRemoteShape {
-  id?: string;
-  task_name?: string;
-  taskComments?: string;
-  due_date?: string; // UTC or server format
-  status?: string;
-  taskType?: string;
-  assigned_to?: string;
-  assigned_name?: string;
-  contactList?: Array<{ contact_id?: string; contact_name?: string }>;
-  reminder?: Array<{ reminder_time?: string }>;
-}
-
-export interface TaskFormPayload {
-  subject: string;
-  status: string;
+interface TaskForm {
+  taskId?: string;
+  assignedTo: string;
   taskType: string;
-  comments: string;
-  dueDate: string; // formatted YYYY-MM-DD HH:mm:ss (server)
-  assignedTo?: string;
-  contacts: { contactid: string; contactname: string }[];
-  reminder: string[]; // ["YYYY-MM-DD HH:mm"]
+  status: string;
+  subject: string;
+  contacts: string;
+  description: string;
+  dueDate: Date | null;
+  time: string;
 }
 
-interface Props {
-  initialTask?: TaskRemoteShape;
-  clientId: string;
-  onSaved: (refresh?: boolean, savedTask?: TaskRemoteShape) => void;
-  onCancel: () => void;
-  onSetFollowUp?: (taskId: string, followUpDate: string) => void;
+interface User {
+  USER_ID: string;
+  reassign_name: string;
+  role_name: string;
 }
 
-function emptyContactToken() {
-  return { contactid: "", contactname: "" };
+interface Task {
+  task_id: string;
+  assigned_to: string;
+  task_type: string;
+  status: string;
+  subject: string;
+  contacts: string;
+  description: string;
+  due_date: string;
+  time: string;
 }
 
-const TaskForm: React.FC<Props> = ({ initialTask, clientId, onSaved, onCancel, onSetFollowUp }) => {
+const AddTaskModal: React.FC = () => {
   const { toast } = useToast();
 
-  // Form state
-  const [subject, setSubject] = useState("");
-  const [status, setStatus] = useState("Not Started");
-  const [taskType, setTaskType] = useState("");
-  const [comments, setComments] = useState("");
-  const [dueDateInput, setDueDateInput] = useState(""); // local input like "YYYY-MM-DDTHH:mm" for datetime-local
-  const [assignedTo, setAssignedTo] = useState(""); // store USER_ID or name depending backend
-  const [assignedName, setAssignedName] = useState("");
+  const [open, setOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [taskId, setTaskId] = useState("");
 
-  // contacts as tokens (simple comma-separated add)
-  const [contacts, setContacts] = useState<Array<{ contactid: string; contactname: string }>>([]);
-  const [contactText, setContactText] = useState(""); // helper to add a contact
+  const [users, setUsers] = useState<User[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
 
-  // reminders list: store as {date: 'YYYY-MM-DD', time: 'HH:mm'} or single datetime string
-  const [reminders, setReminders] = useState<Array<{ id: string; date: string; time: string }>>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
-  // loading state
-  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<TaskForm>({
+    assignedTo: "",
+    taskType: "",
+    status: "",
+    subject: "",
+    contacts: "",
+    description: "",
+    dueDate: new Date(),
+    time: "10:00",
+  });
 
-  // When editing, populate fields (setTaskValues logic)
-  useEffect(() => {
-    if (!initialTask) {
-      // reset to defaults
-      setSubject("");
-      setStatus("Not Started");
-      setTaskType("");
-      setComments("");
-      setDueDateInput("");
-      setAssignedTo("");
-      setAssignedName("");
-      setContacts([]);
-      setReminders([]);
-      return;
-    }
-
-    setSubject(initialTask.task_name || "");
-    setStatus(initialTask.status || "Not Started");
-    setTaskType(initialTask.taskType && initialTask.taskType !== "-" ? initialTask.taskType : "");
-    setComments(initialTask.taskComments || "");
-
-    // convert server due_date (UTC) to local string for datetime-local input
-    if (initialTask.due_date) {
-      const local = moment(initialTask.due_date).local().format("YYYY-MM-DDTHH:mm");
-      setDueDateInput(local);
-    } else {
-      setDueDateInput("");
-    }
-
-    if (initialTask.contactList && initialTask.contactList.length) {
-      setContacts(
-        initialTask.contactList.map((c) => ({
-          contactid: c.contact_id?.toString() || "",
-          contactname: c.contact_name || "",
-        })),
-      );
-    } else {
-      setContacts([]);
-    }
-
-    setAssignedTo(initialTask.assigned_to ? initialTask.assigned_to.toString() : "");
-    setAssignedName(initialTask.assigned_name || "");
-
-    // reminders (convert from reminder array if provided)
-    if (initialTask.reminder && initialTask.reminder.length) {
-      const rs = initialTask.reminder.map((r, idx) => {
-        // r.reminder_time expected from server
-        const date = r.reminder_time ? moment(r.reminder_time).format("YYYY-MM-DD") : moment().format("YYYY-MM-DD");
-        const time = r.reminder_time ? moment(r.reminder_time).format("HH:mm") : moment().format("HH:mm");
-        return { id: `r-${idx}-${Date.now()}`, date, time };
-      });
-      setReminders(rs);
-    }
-  }, [initialTask]);
-
-  // helper to add contact from text box
-  const addContactFromText = () => {
-    const txt = contactText.trim();
-    if (!txt) return;
-    // try to parse "Name <email>" or just name
-    const name = txt;
-    // generate an id placeholder
-    const id = `c-${Date.now()}`;
-    setContacts([...contacts, { contactid: id, contactname: name }]);
-    setContactText("");
-  };
-
-  const removeContact = (id: string) => {
-    setContacts(contacts.filter((c) => c.contactid !== id));
-  };
-
-  // reminders CRUD
-  const addReminder = () => {
-    const now = moment();
-    setReminders([
-      ...reminders,
-      { id: `r-${Date.now()}`, date: now.format("YYYY-MM-DD"), time: now.format("HH:mm") },
-    ]);
-  };
-  const updateReminder = (id: string, field: "date" | "time", value: string) => {
-    setReminders(reminders.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
-  };
-  const deleteReminder = (id: string) => {
-    setReminders(reminders.filter((r) => r.id !== id));
-  };
-
-  // Validation ported from taskValidation()
-  const validate = (): { ok: boolean; msg?: string } => {
-    const trimmedSubject = (subject || "").trim();
-    if (!trimmedSubject) return { ok: false, msg: "Enter a Subject" }; // ibMsg["00061"]
-
-    if (!contacts || contacts.length === 0) return { ok: false, msg: "Select a Contact" }; // ibMsg["00068"]
-
-    if (!dueDateInput) return { ok: false, msg: "Select a Due Date" }; // ibMsg["00070"]
-
-    // check valid date
-    const ds = moment(dueDateInput);
-    if (!ds.isValid()) return { ok: false, msg: "Invalid Due Date" };
-
-    if (!status || status === "Select") return { ok: false, msg: "Select the Task Status" }; // ibMsg["00071"]
-
-    if (!assignedTo || assignedTo === "") return { ok: false, msg: "Invalid Assignee" }; // ibMsg["00072"]
-
-    return { ok: true };
-  };
-
-  // convert form to TaskFormPayload expected by setTaskCommon
-  const buildPayload = (): TaskFormPayload => {
-    // dueDate -> convert to server UTC format "YYYY-MM-DD HH:mm:ss"
-    const local = moment(dueDateInput);
-    const dueDateUTC = local.utc().format("YYYY-MM-DD HH:mm:ss");
-
-    const remindStrings = reminders.map((r) => {
-      const d = moment(`${r.date} ${r.time}`, "YYYY-MM-DD HH:mm");
-      return d.format("YYYY-MM-DD HH:mm");
-    });
-
-    return {
-      subject: subject.trim(),
-      status,
-      taskType: taskType || "-",
-      comments,
-      dueDate: dueDateUTC,
-      assignedTo: assignedTo ? assignedTo.toString() : "",
-      contacts: contacts.map((c) => ({ contactid: c.contactid.toString(), contactname: c.contactname })),
-      reminder: remindStrings,
-    };
-  };
-
-  // Save handler (flag==1 means save multiple then keep form open)
-  const handleSave = async (flag = 0) => {
-    const v = validate();
-    if (!v.ok) {
-      toast({ title: "Validation", description: v.msg || "Invalid input", variant: "destructive" });
-      return;
-    }
-
-    const payload = buildPayload();
-    setSaving(true);
-
+  const getTasks = async () => {
     try {
-      // Decide endpoint based on edit vs create (same as setTaskCommon)
-      const isUpdate = !!initialTask && !!initialTask.id;
-      const endpoint = isUpdate ? "/Summary/updateTaskNew" : "/Summary/createTaskNew";
-
-      // Compose server payload similarly to jQuery: { taskjson: JSON.stringify(getTaskObj) }
-      // The server expects many keys; we follow the jQuery structure
-      const taskObj: any = {
-        subject: payload.subject,
-        dueDate: moment(payload.dueDate).utc().format("YYYY-MM-DD HH:mm:ss"),
-        contacts: payload.contacts,
-        assignedTo: payload.assignedTo,
-        status: payload.status,
-        taskType: payload.taskType,
-        taskComments: encodeURIComponent(payload.comments || ""),
-        module_name: "Task",
-        reminder: payload.reminder,
-        userCode: (window as any).loggedUserInfo?.defaultUser || payload.assignedTo,
-        userId: (window as any).loggedUserInfo?.defaultUser || payload.assignedTo,
-      };
-
-      if (isUpdate) {
-        taskObj.task_id = initialTask!.id;
-      }
-
-      // parentId / type same logic as setTaskCommon in jQuery isn't handled here; the backend may infer from session or caller
-      // call API
-      const res = await fetch(`${API_CONFIG.fullUrl}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...createAuthHeaders() },
-        body: JSON.stringify({ taskjson: JSON.stringify(taskObj) }),
+      const res = await fetch(`${API_CONFIG.fullUrl}/task/getTasks`, {
+        method: "GET",
+        headers: createAuthHeaders(),
       });
-
-      const text = await res.text();
-      const json = text ? JSON.parse(text) : {};
-
-      if (json.status === 1 || json.success) {
-        toast({ title: "Saved", description: isUpdate ? "Task updated" : "Task added" });
-        onSaved(flag !== 1, json); // when flag==1 keep form open (not refreshing UI)
-        // if flag==1 -> keep form but reset task id if create
-        if (flag === 1 && !isUpdate) {
-          // reset form for new entry
-          setSubject("");
-          setStatus("Not Started");
-          setTaskType("");
-          setComments("");
-          setDueDateInput("");
-          setContacts([]);
-          setReminders([]);
-        }
-      } else {
-        throw new Error(json.message || "Save failed");
+      const data = await res.json();
+      if (data.status === 1) {
+        setTasks(data.data);
       }
     } catch (err) {
-      toast({ title: "Error", description: (err as Error).message || "Save failed", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to fetch tasks" });
+    }
+  };
+
+  useEffect(() => {
+    getTasks();
+  }, []);
+
+  const fetchUsers = async (query: string) => {
+    if (query.length < 2) return;
+    setLoadingUsers(true);
+    try {
+      const res = await fetch(`${API_CONFIG.fullUrl}/task/searchReAssign`, {
+        method: "POST",
+        headers: {
+          ...createAuthHeaders(),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ Name: query }),
+      });
+      const data = await res.json();
+      if (data?.data) setUsers(data.data);
+    } catch (err) {
+      setUsers([]);
     } finally {
-      setSaving(false);
+      setLoadingUsers(false);
     }
   };
 
-  // set follow-up similar to setFollowUP in jQuery
-  const handleSetFollowUp = async () => {
-    if (!initialTask || !initialTask.id) {
-      toast({ title: "Error", description: "Set follow up on saved task only", variant: "destructive" });
-      return;
-    }
-    if (!onSetFollowUp) {
-      toast({ title: "Error", description: "Follow-up handler missing", variant: "destructive" });
-      return;
-    }
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
 
-    // ask for followup date/time via prompt for simplicity (replace with proper inputs if needed)
-    const date = prompt("Enter follow-up date (YYYY-MM-DD):", moment().format("YYYY-MM-DD"));
-    if (!date) return;
-    const time = prompt("Enter follow-up time (HH:mm):", moment().format("HH:mm"));
-    if (!time) return;
-    const followUpDate = `${date} ${time}`; // server expects "YYYY-MM-DD HH:mm"
-    onSetFollowUp(initialTask.id!.toString(), followUpDate);
+  const handleAdd = async () => {
+    try {
+      const res = await fetch(`${API_CONFIG.fullUrl}/task/addTask`, {
+        method: "POST",
+        headers: { ...createAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.status === 1) {
+        toast({ title: "Success", description: "Task Added Successfully" });
+        setOpen(false);
+        getTasks();
+      } else {
+        toast({ title: "Error", description: data.message });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Failed to add task" });
+    }
+  };
+
+  const handleUpdate = async () => {
+    try {
+      const payload = { ...form, taskId };
+      const res = await fetch(`${API_CONFIG.fullUrl}/task/updateTask`, {
+        method: "POST",
+        headers: { ...createAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.status === 1) {
+        toast({ title: "Updated", description: "Task Updated Successfully" });
+        setOpen(false);
+        setEditMode(false);
+        getTasks();
+      } else {
+        toast({ title: "Error", description: data.message });
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Update failed" });
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      const payload = {
+        deleteJson: JSON.stringify({ rowId: id, type: "Task" }),
+      };
+      const res = await fetch(`${API_CONFIG.fullUrl}/activities/commonDelete`, {
+        method: "POST",
+        headers: { ...createAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (data.status === 1) {
+        toast({ title: "Deleted", description: "Task Deleted Successfully" });
+        getTasks();
+      }
+    } catch (err) {
+      toast({ title: "Error", description: "Delete failed" });
+    }
+  };
+
+  const openEdit = (task: Task) => {
+    setTaskId(task.task_id);
+    setForm({
+      assignedTo: task.assigned_to,
+      taskType: task.task_type,
+      status: task.status,
+      subject: task.subject,
+      contacts: task.contacts,
+      description: task.description,
+      dueDate: new Date(task.due_date),
+      time: task.time,
+    });
+    setEditMode(true);
+    setOpen(true);
   };
 
   return (
-    <div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-sm font-medium">Subject</label>
-          <input className="mt-1 input" value={subject} onChange={(e) => setSubject(e.target.value)} />
-        </div>
+    <div className="p-5">
+      <button
+        onClick={() => {
+          setEditMode(false);
+          setOpen(true);
+        }}
+        className="px-4 py-2 bg-blue-600 text-white rounded"
+      >
+        Add Task
+      </button>
 
-        <div>
-          <label className="block text-sm font-medium">Assigned To (USER_ID)</label>
-          <input className="mt-1 input" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} />
-          <div className="text-xs text-muted-foreground">Name: {assignedName}</div>
-        </div>
+      <h2 className="text-xl font-semibold mt-5 mb-3">Task List</h2>
 
-        <div>
-          <label className="block text-sm font-medium">Due Date & Time</label>
-          <input
-            type="datetime-local"
-            className="mt-1 input"
-            value={dueDateInput}
-            onChange={(e) => setDueDateInput(e.target.value)}
-          />
-        </div>
+      {tasks.length === 0 ? (
+        <p>No tasks found</p>
+      ) : (
+        <ul className="space-y-3">
+          {tasks.map((t) => (
+            <li key={t.task_id} className="border p-3 rounded shadow-sm bg-gray-50">
+              <h3 className="font-bold">{t.subject}</h3>
+              <p>{t.description}</p>
+              <p className="text-sm text-gray-600">
+                Due: {t.due_date} | Time: {t.time}
+              </p>
 
-        <div>
-          <label className="block text-sm font-medium">Status</label>
-          <select className="mt-1 input" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="Not Started">Not Started</option>
-            <option value="Open">Open</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Completed">Completed</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
-        </div>
+              <div className="flex gap-3 mt-2">
+                <button
+                  className="px-3 py-1 bg-yellow-600 text-white rounded"
+                  onClick={() => openEdit(t)}
+                >
+                  Edit
+                </button>
 
-        <div>
-          <label className="block text-sm font-medium">Task Type</label>
-          <input className="mt-1 input" value={taskType} onChange={(e) => setTaskType(e.target.value)} />
-        </div>
-
-        <div className="col-span-1 md:col-span-2">
-          <label className="block text-sm font-medium">Description</label>
-          <textarea className="mt-1 input" rows={3} value={comments} onChange={(e) => setComments(e.target.value)} />
-        </div>
-
-        <div className="col-span-1 md:col-span-2">
-          <label className="block text-sm font-medium">Contacts (add one and press Add)</label>
-          <div className="flex gap-2 mt-1">
-            <input className="flex-1 input" value={contactText} onChange={(e) => setContactText(e.target.value)} />
-            <Button onClick={addContactFromText} size="sm">Add</Button>
-          </div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {contacts.map((c) => (
-              <div key={c.contactid} className="px-2 py-1 bg-muted rounded flex items-center gap-2">
-                <span className="text-sm">{c.contactname}</span>
-                <button className="text-xs text-destructive" onClick={() => removeContact(c.contactid)}>x</button>
+                <button
+                  className="px-3 py-1 bg-red-600 text-white rounded"
+                  onClick={() => deleteTask(t.task_id)}
+                >
+                  Delete
+                </button>
               </div>
-            ))}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {open && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex justify-center items-center">
+          <div className="bg-white w-[500px] p-5 rounded-lg relative">
+            <button className="absolute top-2 right-2" onClick={() => setOpen(false)}>
+              <AiOutlineClose size={20} />
+            </button>
+
+            <h2 className="text-xl font-semibold mb-4">
+              {editMode ? "Update Task" : "Add Task"}
+            </h2>
+
+            <label>Assign To</label>
+            <input
+              type="text"
+              name="assignedTo"
+              value={form.assignedTo}
+              onChange={(e) => {
+                handleChange(e);
+                fetchUsers(e.target.value);
+              }}
+              className="w-full border p-2 mb-2 rounded"
+              placeholder="Type to search..."
+            />
+
+            {loadingUsers && <p>Loading...</p>}
+
+            {users.length > 0 && (
+              <ul className="border max-h-32 overflow-y-auto mb-3">
+                {users.map((u) => (
+                  <li
+                    key={u.USER_ID}
+                    className="p-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => setForm({ ...form, assignedTo: u.USER_ID })}
+                  >
+                    {u.reassign_name} - {u.role_name}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <label>Due Date</label>
+            <DatePicker
+              selected={form.dueDate}
+              onChange={(date) => setForm({ ...form, dueDate: date })}
+              className="w-full border p-2 mb-3 rounded"
+            />
+
+            <label>Time</label>
+            <input
+              type="time"
+              value={form.time}
+              onChange={(e) => setForm({ ...form, time: e.target.value })}
+              className="w-full border p-2 mb-3 rounded"
+            />
+
+            <label>Task Type</label>
+            <select
+              name="taskType"
+              value={form.taskType}
+              onChange={handleChange}
+              className="w-full border p-2 mb-3 rounded"
+            >
+              <option value="">-- Select --</option>
+              <option value="action-items">Action Items</option>
+              <option value="call-back">Call Back</option>
+              <option value="others">Others</option>
+              <option value="schedule-meeting">Schedule Meeting</option>
+              <option value="send-email">Send Email</option>
+            </select>
+
+            <label>Status</label>
+            <select
+              name="status"
+              value={form.status}
+              onChange={handleChange}
+              className="w-full border p-2 mb-3 rounded"
+            >
+              <option value="">-- Select --</option>
+              <option value="not-started">Not Started</option>
+              <option value="completed">Completed</option>
+              <option value="incomplete">Incomplete</option>
+            </select>
+
+            <label>Subject</label>
+            <input
+              type="text"
+              name="subject"
+              value={form.subject}
+              onChange={handleChange}
+              className="w-full border p-2 mb-3 rounded"
+            />
+
+            <label>Contacts</label>
+            <input
+              type="text"
+              name="contacts"
+              value={form.contacts}
+              onChange={handleChange}
+              className="w-full border p-2 mb-3 rounded"
+            />
+
+            <label>Description</label>
+            <textarea
+              name="description"
+              value={form.description}
+              onChange={handleChange}
+              className="w-full border p-2 mb-3 rounded"
+              rows={3}
+            />
+
+            <button
+              onClick={editMode ? handleUpdate : handleAdd}
+              className="w-full bg-green-600 text-white py-2 rounded"
+            >
+              {editMode ? "Update Task" : "Save Task"}
+            </button>
           </div>
         </div>
-
-        {/* Reminders panel */}
-        <div className="col-span-1 md:col-span-2 mt-2">
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium">Reminders</label>
-            <Button size="sm" onClick={addReminder}>Add Reminder</Button>
-          </div>
-
-          <div className="mt-2 space-y-2">
-            {reminders.map((r) => (
-              <div key={r.id} className="flex gap-2 items-center">
-                <input
-                  type="date"
-                  className="input"
-                  value={r.date}
-                  onChange={(e) => updateReminder(r.id, "date", e.target.value)}
-                />
-                <input
-                  type="time"
-                  className="input"
-                  value={r.time}
-                  onChange={(e) => updateReminder(r.id, "time", e.target.value)}
-                />
-                <Button variant="destructive" size="sm" onClick={() => deleteReminder(r.id)}>Delete</Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* action buttons */}
-      <div className="flex items-center gap-2 mt-4">
-        <Button onClick={() => handleSave(0)}>{saving ? "Saving..." : "Save"}</Button>
-        <Button onClick={() => handleSave(1)} variant="outline">{saving ? "Saving..." : "Save & New"}</Button>
-        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-
-        {initialTask && initialTask.id && (
-          <Button variant="secondary" onClick={handleSetFollowUp}>Set Follow-up</Button>
-        )}
-      </div>
+      )}
     </div>
   );
 };
 
-export default TaskForm;
+export default AddTaskModal;
 
 
+---
 
----------------------------
+If you want:
+✅ Tailwind UI improved version
+✅ Dropdown search for Assign To
+✅ Modal animation
+Just tell me — I will upgrade it.
+                                    
+        
 
-
-// src/components/TaskView.tsx
-import React from "react";
-import moment from "moment";
-import { TaskRemoteShape } from "./TaskForm";
-
-interface Props {
-  task: TaskRemoteShape;
-}
-
-const TaskView: React.FC<Props> = ({ task }) => {
-  if (!task) return null;
-
-  const contacts =
-    task.contactList && task.contactList.length ? task.contactList.map((c) => c.contact_name).join(", ") : "-";
-
-  const due = task.due_date ? moment(task.due_date).format("DD/MM/YYYY hh:mm A") : "-";
-
-  return (
-    <div>
-      <table className="table-auto w-full">
-        <tbody>
-          <tr>
-            <th className="text-left py-2 pr-4">Subject</th>
-            <td className="py-2">{task.task_name || "-"}</td>
-          </tr>
-          <tr>
-            <th className="text-left py-2 pr-4">Contacts</th>
-            <td className="py-2">{contacts}</td>
-          </tr>
-          <tr>
-            <th className="text-left py-2 pr-4">Due Date & Time</th>
-            <td className="py-2">{due}</td>
-          </tr>
-          <tr>
-            <th className="text-left py-2 pr-4">Task Status</th>
-            <td className="py-2">{task.status || "-"}</td>
-          </tr>
-          <tr>
-            <th className="text-left py-2 pr-4">Task Type</th>
-            <td className="py-2">{task.taskType || "-"}</td>
-          </tr>
-          <tr>
-            <th className="text-left py-2 pr-4">Assign To</th>
-            <td className="py-2">{task.assigned_name || "-"}</td>
-          </tr>
-          <tr>
-            <th className="text-left py-2 pr-4">Description</th>
-            <td className="py-2">{task.taskComments ? <div dangerouslySetInnerHTML={{ __html: (task.taskComments || "").replace(/\n/g, "<br/>") }} /> : "-"}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-};
-
-export default TaskView;
-
----_--------
