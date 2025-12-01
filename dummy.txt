@@ -38,13 +38,12 @@ export default function TasksWidget() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Modal state (Add / Edit)
   const [isModalOpen, setModalOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskItem | null>(null);
 
-  // Form state (for add/edit)
+
   const [subject, setSubject] = useState("");
-  const [assignedTo, setAssignedTo] = useState(""); // user id
+  const [assignedTo, setAssignedTo] = useState(""); 
   const [taskType, setTaskType] = useState("");
   const [status, setStatus] = useState("");
   const [contacts, setContacts] = useState<string[]>([]);
@@ -52,7 +51,6 @@ export default function TasksWidget() {
   const [dueDate, setDueDate] = useState<Date | null>(new Date());
   const [timeStr, setTimeStr] = useState("10:00");
 
-  // For typeahead
   const [contactQuery, setContactQuery] = useState("");
   const [contactOptions, setContactOptions] = useState<ContactResult[]>([]);
   const [contactLoading, setContactLoading] = useState(false);
@@ -61,10 +59,10 @@ export default function TasksWidget() {
   const [reassignOptions, setReassignOptions] = useState<ReassignResult[]>([]);
   const [reassignLoading, setReassignLoading] = useState(false);
 
-  // reminders per task (simple local state to reflect UI while manipulating)
+
   const [remindersByTask, setRemindersByTask] = useState<Record<string, { id?: string; date: string; time: string }[]>>({});
 
-  // fetch tasks (maps to getTasks -> task/getTask)
+
   async function fetchTasks() {
     setLoading(true);
     try {
@@ -80,16 +78,13 @@ export default function TasksWidget() {
         credentials: "include",
       });
       const data = await res.json();
-      // your original code treats status 1 as success, 0/others as no-data
       if (data?.status === 1) {
         setTasks(Array.isArray(data.data) ? data.data : []);
-        // Build local reminders map if backend returns reminders
         const rmap: Record<string, { id?: string; date: string; time: string }[]> = {};
         (data.data || []).forEach((t: any) => {
           if (t.reminders && Array.isArray(t.reminders)) {
             rmap[t.taskId] = t.reminders.map((r: any) => {
-              // expect r has date/time or reminder id
-              const dt = new Date(r.reminder); // adapt as per server shape
+              const dt = new Date(r.reminder);
               return {
                 id: r.id,
                 date: dt.toISOString().slice(0, 10),
@@ -101,7 +96,6 @@ export default function TasksWidget() {
         setRemindersByTask(rmap);
       } else {
         setTasks([]);
-        // show message optionally
       }
     } catch (err) {
       console.error("fetchTasks error", err);
@@ -115,7 +109,7 @@ export default function TasksWidget() {
     fetchTasks();
   }, []);
 
-  // task add (maps to your addTask / addTask endpoint)
+
   async function handleAddTask() {
     try {
       if (!subject.trim()) {
@@ -169,7 +163,6 @@ export default function TasksWidget() {
     }
   }
 
-  // task update (similar shape)
   async function handleUpdateTask() {
     try {
       if (!editTask) return;
@@ -222,7 +215,6 @@ export default function TasksWidget() {
     }
   }
 
-  // open edit modal with values (maps to openEdit)
   function openEditModal(task: TaskItem) {
     setEditTask(task);
     setSubject(task.taskName || "");
@@ -230,9 +222,7 @@ export default function TasksWidget() {
     setAssignedTo(task.taskAssignedId || "");
     setTaskType(task.taskType || "");
     setStatus(task.taskStatus || "");
-    // parse task.taskDate into dueDate & time
     if (task.taskDate) {
-      // server sample: "YYYY-MM-DD hh:mm:ss" or similar
       const iso = task.taskDate.replace(" ", "T");
       const dt = new Date(iso);
       if (!isNaN(dt.getTime())) {
@@ -251,7 +241,6 @@ export default function TasksWidget() {
     setModalOpen(true);
   }
 
-  // delete task (maps to activities/commonDelete in your TSX earlier or to task/addTask dismiss)
   async function deleteTask(taskId: string) {
     try {
       const payload = { deleteJson: JSON.stringify({ rowId: taskId, type: "Task" }) };
@@ -277,7 +266,6 @@ export default function TasksWidget() {
     }
   }
 
-  // set due date for a task (maps to task/setDueDate)
   async function setDueDateForTask(taskId: string, dateStr: string, time: string) {
     try {
       const payload = new URLSearchParams({
@@ -293,7 +281,6 @@ export default function TasksWidget() {
       const data = await res.json();
       if (data?.status === 1) {
         toast({ title: "Success", description: "Due date updated" });
-        // update UI
         fetchTasks();
       } else {
         toast({ title: "Error", description: data?.message || "Failed to update due date" });
@@ -303,14 +290,12 @@ export default function TasksWidget() {
       toast({ title: "Error", description: "Failed to update due date" });
     }
   }
-
-  // add reminder (task/addMultiReminder)
   async function addReminder(taskId: string, dateStr: string, time: string, indexer?: string) {
     try {
       const payload = new URLSearchParams({
         taskId,
         reminder: `${dateStr} ${time}`,
-        taskName: "", // optional - your jQuery passed taskName
+        taskName: "",
       }).toString();
       const res = await fetch(`${API_CONFIG.baseUrl}/task/addMultiReminder`, {
         method: "POST",
@@ -320,7 +305,6 @@ export default function TasksWidget() {
       });
       const data = await res.json();
       if (data?.status === 1) {
-        // server returns reminder id maybe -> append to local list
         const rem = { id: data.reminder?.id || undefined, date: dateStr, time };
         setRemindersByTask((prev) => {
           const next = { ...prev };
@@ -336,8 +320,6 @@ export default function TasksWidget() {
       toast({ title: "Error", description: "Failed to add reminder" });
     }
   }
-
-  // delete reminder (task/deleteMultiReminder)
   async function deleteReminder(taskId: string, reminderId?: string, index?: number) {
     try {
       const payload = new URLSearchParams({ reminderId: reminderId || "" }).toString();
@@ -366,7 +348,6 @@ export default function TasksWidget() {
     }
   }
 
-  // set follow up (task/setTaskFollowUpActivity or setTaskFollowUp)
   async function setFollowUp(taskId: string, followupDateTime: string) {
     try {
       const payload = new URLSearchParams({
@@ -392,7 +373,7 @@ export default function TasksWidget() {
     }
   }
 
-  // contact search (typeahead). backend: Summary/searchContact
+
   async function fetchContactOptions(query: string) {
     if (!query || query.length < 2) return setContactOptions([]);
     setContactLoading(true);
@@ -413,7 +394,7 @@ export default function TasksWidget() {
     }
   }
 
-  // assign contact (task/taskSetContact)
+
   async function setTaskContact(taskId: string, contact: ContactResult) {
     try {
       const payload = new URLSearchParams({ taskId, contactId: contact.contact_cust_id }).toString();
@@ -436,7 +417,6 @@ export default function TasksWidget() {
     }
   }
 
-  // reassign search
   async function fetchReassignOptions(query: string) {
     if (!query || query.length < 2) return setReassignOptions([]);
     setReassignLoading(true);
@@ -457,7 +437,6 @@ export default function TasksWidget() {
     }
   }
 
-  // reassign an existing task
   async function setReassignTask(taskId: string, empId: string) {
     try {
       const payload = new URLSearchParams({ taskId, assignedTo: empId }).toString();
@@ -480,7 +459,7 @@ export default function TasksWidget() {
     }
   }
 
-  // helper: reset Add/Edit form
+
   function resetForm() {
     setSubject("");
     setAssignedTo("");
@@ -492,7 +471,7 @@ export default function TasksWidget() {
     setTimeStr("10:00");
   }
 
-  // calculate time difference display (like cal_time)
+
   const calcTimeDiff = (due: string | undefined) => {
     if (!due) return null;
     const dueDate = new Date(due);
@@ -508,7 +487,7 @@ export default function TasksWidget() {
     return "0 Min(s)";
   };
 
-  // small debounce for contact search
+
   useEffect(() => {
     const id = setTimeout(() => fetchContactOptions(contactQuery), 300);
     return () => clearTimeout(id);
@@ -570,7 +549,6 @@ export default function TasksWidget() {
                   <button
                     className="rounded bg-indigo-600 px-3 py-1 text-white"
                     onClick={() => {
-                      // quick dismiss example (like taskreact -> sets status to Dismiss)
                       (async () => {
                         try {
                           const payloadObj = {
@@ -615,7 +593,6 @@ export default function TasksWidget() {
                   </button>
                 </div>
 
-                {/* Reminders list */}
                 <div className="mt-3">
                   <div className="text-sm font-semibold">Reminders</div>
                   {(remindersByTask[t.taskId] || []).map((r, idx) => (
@@ -649,7 +626,6 @@ export default function TasksWidget() {
                   </div>
                 </div>
 
-                {/* Simple contact search */}
                 <div className="mt-3">
                   <div className="text-sm font-semibold">Add Contact to Task</div>
                   <div className="flex gap-2 items-center">
@@ -680,7 +656,6 @@ export default function TasksWidget() {
                   </div>
                 </div>
 
-                {/* reassign quick */}
                 <div className="mt-3">
                   <div className="text-sm font-semibold">Reassign</div>
                   <div className="flex gap-2 items-center">
@@ -708,7 +683,6 @@ export default function TasksWidget() {
         </ul>
       )}
 
-      {/* Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-40">
           <div className="relative w-[700px] rounded-lg bg-white p-5 z-50">
