@@ -728,3 +728,594 @@ export default function TasksWidget() {
     </div>
   );
 }
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+import React, { useEffect, useState } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
+import { useToast } from '@/hooks/use-toast'
+import { createAuthHeaders } from '@/lib/legacyUtils'
+import { API_CONFIG } from '@/lib/constants'
+import { prismStorage } from '@/lib/prismStorage'
+
+type TaskItem = {
+  taskId: string
+  taskName?: string
+  taskComment?: string
+  taskDate?: string
+  taskAssignedName?: string
+  taskAssignedId?: string
+  taskType?: string
+  taskStatus?: string
+  contacts?: string[]
+  contactName?: string[]
+  taskComments?: string
+  reminder?: any[]
+}
+
+type ContactResult = {
+  contact_cust_id: string
+  contact_name: string
+  account_name?: string
+}
+
+type ReassignResult = {
+  EMP_ID: string
+  reassign_name: string
+  role_name?: string
+}
+
+export default function TasksWidget() {
+  const { toast } = useToast()
+  const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [isModalOpen, setModalOpen] = useState(false)
+  const [editTask, setEditTask] = useState<TaskItem | null>(null)
+  const [subject, setSubject] = useState('')
+  const [assignedTo, setAssignedTo] = useState('')
+  const [taskType, setTaskType] = useState('')
+  const [status, setStatus] = useState('')
+  const [contacts, setContacts] = useState<string[]>([])
+  const [contactNames, setContactNames] = useState<string[]>([])
+  const [description, setDescription] = useState('')
+  const [dueDate, setDueDate] = useState<Date | null>(new Date())
+  const [timeStr, setTimeStr] = useState('10:00')
+  const [contactQuery, setContactQuery] = useState('')
+  const [contactOptions, setContactOptions] = useState<ContactResult[]>([])
+  const [contactLoading, setContactLoading] = useState(false)
+  const [reassignQuery, setReassignQuery] = useState('')
+  const [reassignOptions, setReassignOptions] = useState<ReassignResult[]>([])
+  const [reassignLoading, setReassignLoading] = useState(false)
+  const [remindersByTask, setRemindersByTask] = useState<
+    Record<string, { id?: string; date: string; time: string }[]>
+  >({})
+
+  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
+
+  async function fetchTasks() {
+    setLoading(true)
+    try {
+      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
+      const body = new URLSearchParams({ summaryFilter }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        setTasks(Array.isArray(data.data) ? data.data : [])
+
+        const rawTasks = Array.isArray(data.data) ? data.data : []
+        const normalizedTasks = rawTasks.map((task: any) => {
+          const contactIds = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
+            : []
+
+          const contactNames = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_name)
+            : []
+
+          return {
+            ...task,
+
+            contacts: contactIds,
+            contactName: contactNames,
+          }
+        })
+
+        setTasks(normalizedTasks)
+      } else {
+        setTasks([])
+      }
+    } catch (err) {
+      console.error('fetchTasks error', err)
+      toast({ title: 'Error', description: 'Failed to fetch tasks' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchTaskDetails(taskId: string) {
+    try {
+      const body = new URLSearchParams({ taskId }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        if (Array.isArray(data.data) && data.data.length > 0) return data.data[0]
+        return data.data || null
+      }
+      return null
+    } catch (err) {
+      return null
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks()
+  }, [])
+
+  async function handleAddTask() {
+    try {
+      if (!subject.trim()) {
+        toast({ title: 'Validation', description: 'Subject required' })
+        return
+      }
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts,
+        contactName: contactNames,
+        assignedTo,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        reminder: [],
+        action: 'Save',
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Added Successfully' })
+        setModalOpen(false)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
+      }
+    } catch (err) {
+      console.error('handleAddTask', err)
+      toast({ title: 'Error', description: 'Failed to add task' })
+    }
+  }
+
+  async function handleUpdateTask() {
+    try {
+      if (!editTask) return
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts,
+        contactName: contactNames,
+        assignedTo,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        reminder: [],
+        action: 'Update',
+        taskId: editTask.taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Updated Successfully' })
+        setModalOpen(false)
+        setEditTask(null)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
+      }
+    } catch (err) {
+      console.error('handleUpdateTask', err)
+      toast({ title: 'Error', description: 'Failed to update task' })
+    }
+  }
+
+  async function openEditModal(task: TaskItem) {
+    let tdata: any = task
+    const missingContacts =
+      !tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
+    const missingName = !tdata.taskName && !tdata.subject
+
+    if ((missingContacts || missingName) && tdata.taskId) {
+      const full = await fetchTaskDetails(tdata.taskId)
+      if (full) tdata = { ...tdata, ...full }
+    }
+
+    setEditTask(tdata)
+    setSubject(tdata.taskName || tdata.subject || '')
+    setDescription(tdata.taskComment || tdata.taskComments || '')
+    setAssignedTo(tdata.taskAssignedId || tdata.assignedTo || '')
+    setTaskType(tdata.taskType || '')
+    setStatus(tdata.taskStatus || '')
+
+    if (tdata.taskDate) {
+      const iso = String(tdata.taskDate).replace(' ', 'T')
+      const dt = new Date(iso)
+      if (!isNaN(dt.getTime())) {
+        setDueDate(dt)
+        const hh = dt.getHours().toString().padStart(2, '0')
+        const mm = dt.getMinutes().toString().padStart(2, '0')
+        setTimeStr(`${hh}:${mm}`)
+      } else {
+        setDueDate(new Date())
+        setTimeStr('10:00')
+      }
+    } else {
+      setDueDate(new Date())
+      setTimeStr('10:00')
+    }
+
+    // const incomingContactNames = normalizeToArray(tdata.contacts || tdata.contactName || tdata.contactNames || []);
+
+    const selectedIdsForUI = normalizeToArray(tdata.contacts)
+    const selectedNamesForAPI: string[] = []
+
+    if (availableContacts && availableContacts.length > 0) {
+      selectedIdsForUI.forEach((idFromTask) => {
+        // Iterate over IDs now
+        const foundContact = availableContacts.find((contact) => contact.id === idFromTask)
+
+        if (foundContact) {
+          selectedNamesForAPI.push(foundContact.name)
+        }
+      })
+    }
+
+    setContacts(selectedIdsForUI)
+
+    setContactNames(selectedNamesForAPI)
+
+    console.log('openEditModal IDs set:', selectedIdsForUI)
+    console.log('openEditModal Names set:', selectedNamesForAPI)
+
+    setModalOpen(true)
+  }
+
+  async function deleteTask(taskId: string, originalTaskData: any) {
+    // debugger;
+    try {
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const dueDateStr = dueDate
+        ? dueDate.toISOString().slice(0, 10)
+        : originalTaskData?.taskDate
+          ? originalTaskData.taskDate.split(' ')[0]
+          : ''
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
+      const payload = {
+        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts: originalTaskData?.contacts || [],
+        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
+        clienttimezone,
+        status: 'Dismiss',
+        taskType: originalTaskData?.taskType || '',
+        taskComments:
+          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
+        module_name: 'Task',
+        action: 'Dismiss',
+        taskId: taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
+      //  const dum={"subject":"Tasks","dueDate":"2025-12-02+04:30:00","dueTime":"20:30","contacts":["10029"],"assignedTo":"y00143","clienttimezone":"Asia%2FCalcutta","status":"Dismiss","taskType":"Action+items","taskComments":"begvr","module_name":"Task","action":"Dismiss","taskId":"86"}
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+
+      if (data?.status === 1) {
+        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Delete failed' })
+      }
+    } catch (err) {
+      console.error('deleteTask', err)
+      toast({ title: 'Error', description: 'Delete failed' })
+    }
+  }
+
+  function resetForm() {
+    setSubject('')
+    setAssignedTo('')
+    setTaskType('')
+    setStatus('')
+    setContacts([])
+    setContactNames([])
+    setDescription('')
+    const now = new Date();
+    setDueDate(now);
+    const hh = now.getHours().toString().padStart(2, "0"); 
+    const mm = now.getMinutes().toString().padStart(2, "0");
+    const currentTimeString = `${hh}:${mm}`;
+    setTimeStr(currentTimeString);
+  }
+
+  const calcTimeDiff = (due: string | undefined) => {
+    if (!due) return null
+    const dueDate = new Date(due)
+    const now = new Date()
+    const diffMs = dueDate.getTime() - now.getTime()
+    const abs = Math.abs(diffMs)
+    const days = Math.floor(abs / 86400000)
+    const hours = Math.floor((abs % 86400000) / 3600000)
+    const mins = Math.floor(((abs % 86400000) % 3600000) / 60000)
+    if (days > 0) return `${days} Day(s)`
+    if (hours > 0) return `${hours} Hour(s)`
+    if (mins > 0) return `${mins} Min(s)`
+    return '0 Min(s)'
+  }
+
+  const handleAssigneeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setAssignedTo(e.target.value)
+  }
+
+  const availableContacts = [
+    {
+      id: '10029',
+      name: 'David Roberts < droberts@angelogordon.com > Angelo Gordon & Co., L.P.',
+    },
+
+    {
+      id: '10030',
+      name: 'Sarah Connor < sconnor@example.com > T-800 Corp.',
+    },
+    {
+      id: '10031',
+      name: 'John Doe < jdoe@example.com > Generic Inc.',
+    },
+  ]
+
+  const handleContactChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedOptions = Array.from(e.target.selectedOptions)
+    const selectedIds = selectedOptions.map((option) => option.value)
+    const selectedNames = selectedOptions.map((option) => option.text)
+    setContacts(selectedIds)
+    setContactNames(selectedNames)
+  }
+
+  return (
+    <div className="p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="mb-3 text-xl font-semibold">Task List</h2>
+        <button
+          onClick={() => {
+            setEditTask(null)
+            resetForm()
+            setModalOpen(true)
+          }}
+          className="rounded bg-blue-600 px-4 py-2 text-white"
+        >
+          Add Task
+        </button>
+      </div>
+
+      {loading ? (
+        <div>Loading...</div>
+      ) : tasks.length === 0 ? (
+        <p>No tasks found</p>
+      ) : (
+        <ul className="space-y-3">
+          {tasks.map((t) => {
+            const due = t.taskDate
+            return (
+              <li key={t.taskId} className="relative rounded border bg-gray-50 p-3 shadow-sm">
+                <h3 className="font-bold">{t.taskName}</h3>
+                <p>{t.taskComment}</p>
+                <p className="text-sm text-gray-600">
+                  Due: {due} | Status: {t.taskStatus} | Assignee: {t.taskAssignedName}
+                </p>
+
+                {t.taskDate && (
+                  <small className="absolute right-4 top-2 rounded bg-red-500 px-2 py-1 text-xs text-white">
+                    {calcTimeDiff(t.taskDate)}
+                  </small>
+                )}
+
+                <div className="mt-2 flex gap-3">
+                  <button
+                    className="rounded bg-yellow-600 px-3 py-1 text-white"
+                    onClick={() => openEditModal(t)}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    className="rounded bg-red-600 px-3 py-1 text-white"
+                    onClick={() => deleteTask(t.taskId, t)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="relative z-50 w-[700px] rounded-lg bg-white p-5">
+            <button className="absolute right-2 top-2" onClick={() => setModalOpen(false)}>
+              X
+            </button>
+            <h2 className="mb-4 text-xl font-semibold">{editTask ? 'Update Task' : 'Add Task'}</h2>
+
+            <label htmlFor="assignTo" className="mb-2 block">
+              Assign To
+            </label>
+
+            <select
+              id="assignTo"
+              value={assignedTo}
+              onChange={handleAssigneeChange}
+              className="mb-3 w-full rounded border p-2"
+            >
+              <option value="">-- Select an assignee --</option>
+              <option value="y00103">SABARISH Sanjeevi</option>
+              <option value="y00143">Ajay Balu</option>
+            </select>
+
+            <label>Due Date</label>
+            <DatePicker
+              selected={dueDate}
+              onChange={(d: Date | null) => setDueDate(d)}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <label>Time</label>
+            <input
+              type="time"
+              value={timeStr}
+              onChange={(e) => setTimeStr(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <label>Task Type</label>
+            <select
+              value={taskType}
+              onChange={(e) => setTaskType(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            >
+              <option value="">-- Select --</option>
+              <option value="Call Back1">Call Back1</option>
+              <option value="Action items">Action Items</option>
+              <option value="Others">Others</option>
+              <option value="Schedule Meeting">Schedule Meeting</option>
+            </select>
+
+            <label>Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            >
+              <option value="">-- Select --</option>
+              <option value="Not Started">Not Started</option>
+              <option value="Completed">Completed</option>
+              <option value="In Progress">In Progress</option>
+            </select>
+
+            <label>Subject</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <label htmlFor="contacts" className="mb-2 block">
+              Contacts
+            </label>
+
+            <select
+              id="contacts"
+              multiple
+              value={contacts}
+              onChange={handleContactChange}
+              className="mb-3 h-40 w-full appearance-none overflow-y-auto rounded-lg border border-gray-300 bg-white p-3 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              style={{ MozAppearance: 'none', WebkitAppearance: 'none' }}
+            >
+              {availableContacts.map((contact) => (
+                <option key={contact.id} value={contact.id} className="p-2 hover:bg-blue-100">
+                  {contact.name}
+                </option>
+              ))}
+
+              {contacts
+                .filter((id) => !availableContacts.some((c) => c.id === id))
+                .map((id, idx) => (
+                  <option key={`missing-${id}-${idx}`} value={id} className="p-2">
+                    {contactNames[idx] || id}
+                  </option>
+                ))}
+            </select>
+
+            <label>Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (editTask) handleUpdateTask()
+                  else handleAddTask()
+                }}
+                className="w-full rounded bg-green-600 py-2 text-white"
+              >
+                {editTask ? 'Update Task' : 'Save Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
