@@ -28,6 +28,104 @@ totRecordsSecond
 : 
 0
 
+{
+  "status": 1,
+  "recordsTotal": 0,
+  "recordsFiltered": 0,
+  "totRecords": 0,
+  "totRecordsSecond": 0,
+  "totEventAttRecords": 0,
+  "message": "Task Data Available",
+  "reasons": "Task Data Available",
+  "taskId": 0,
+  "data": [
+    {
+      "contactList": [
+        {
+          "contact_name": "Sabol Keith",
+          "contact_id": "10087",
+          "account_name": "Davis Selected Advisers"
+        }
+      ],
+      "taskType": "Action items",
+      "taskComment": "",
+      "taskStatus": "In Progress",
+      "taskId": "79",
+      "taskDate": "2025-12-02 11:55:00.0",
+      "taskAssignedId": "y00103",
+      "taskAssignedName": "SABARISH Sanjeevi",
+      "taskName": "tasjs"
+    },
+    {
+      "contactList": [
+        {
+          "contact_name": "Dwight Blazin",
+          "contact_id": "10407",
+          "account_name": "Davis Selected Advisers"
+        }
+      ],
+      "taskType": "Call Back1",
+      "taskComment": "",
+      "taskStatus": "In Progress",
+      "taskId": "78",
+      "taskDate": "2025-12-02 11:55:00.0",
+      "taskAssignedId": "y00103",
+      "taskAssignedName": "SABARISH Sanjeevi",
+      "taskName": "Task"
+    },
+    {
+      "contactList": [],
+      "taskType": "Call Back1",
+      "taskComment": "fgbghtr",
+      "taskStatus": "Completed",
+      "taskId": "74",
+      "taskDate": "2025-12-01 04:15:00.0",
+      "taskAssignedId": "y00103",
+      "taskAssignedName": "SABARISH Sanjeevi",
+      "taskName": "Tasks"
+    },
+    {
+      "contactList": [
+        {
+          "contact_name": "datazoic trainee",
+          "contact_id": "D67803",
+          "account_name": "Casdin Capital, Llc"
+        },
+        {
+          "contact_name": "Chaithra R",
+          "contact_id": "D68272",
+          "account_name": "chaithra test datazoic"
+        }
+      ],
+      "taskType": "Schedule Meeting",
+      "taskComment": "Call at 3",
+      "taskStatus": "In Progress",
+      "taskId": "68",
+      "taskDate": "2025-03-29 09:43:57.0",
+      "taskAssignedId": "y00103",
+      "taskAssignedName": "SABARISH Sanjeevi",
+      "taskName": "hello"
+    },
+    {
+      "contactList": [
+        {
+          "contact_name": "ajai b",
+          "contact_id": "D87977",
+          "account_name": "Ajanta Soya Ord Shs"
+        }
+      ],
+      "taskType": "Call Back1",
+      "taskComment": "",
+      "taskStatus": "In Progress",
+      "taskId": "63",
+      "taskDate": "2024-11-05 07:40:00.0",
+      "taskAssignedId": "y00110",
+      "taskAssignedName": "Ajay Balu",
+      "taskName": "sdfsdf"
+    }
+  ]
+}
+
 
 
 
@@ -775,4 +873,5 @@ export default function TasksWidget() {
     </div>
   );
 }
+
 
