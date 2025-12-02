@@ -1,134 +1,158 @@
+// import { Loader2 } from 'lucide-react'
+// import { useState, useEffect, useCallback } from 'react'
 
-{"subject":"tasjs","dueDate":"2025-12-02+17:25:00","dueTime":"17:25","contacts":["10087"],"contactName":["Sabol+Keith+<+ksabol@dsaco.com+>\nDavis+Selected+Advisers"],"assignedTo":"y00103","clienttimezone":"Asia%2FCalcutta","status":"In+Progress","taskType":"Action+items","taskComments":"","module_name":"Task","reminder":[],"action":"Save"}
+// import { Button } from '@/components/ui/button'
+// import { useToast } from '@/hooks/use-toast'
+// import { API_CONFIG } from '@/lib/constants'
+// import { createAuthHeaders } from '@/lib/legacyUtils'
 
+// interface TasksV2Props {
+//   id: string
+//   clientId: string
+//   searchCode?: string
+// }
 
-{status: 0, recordsTotal: 0, recordsFiltered: 0, totRecords: 0, totRecordsSecond: 0,…}
-message
-: 
-"Added Or Updated ,Invalid Assignee"
-recordsFiltered
-: 
-0
-recordsTotal
-: 
-0
-status
-: 
-0
-taskId
-: 
-0
-totEventAttRecords
-: 
-0
-totRecords
-: 
-0
-totRecordsSecond
-: 
-0
+// interface TasksV2Data {
+//   [key: string]: unknown
+// }
 
-{
-  "status": 1,
-  "recordsTotal": 0,
-  "recordsFiltered": 0,
-  "totRecords": 0,
-  "totRecordsSecond": 0,
-  "totEventAttRecords": 0,
-  "message": "Task Data Available",
-  "reasons": "Task Data Available",
-  "taskId": 0,
-  "data": [
-    {
-      "contactList": [
-        {
-          "contact_name": "Sabol Keith",
-          "contact_id": "10087",
-          "account_name": "Davis Selected Advisers"
-        }
-      ],
-      "taskType": "Action items",
-      "taskComment": "",
-      "taskStatus": "In Progress",
-      "taskId": "79",
-      "taskDate": "2025-12-02 11:55:00.0",
-      "taskAssignedId": "y00103",
-      "taskAssignedName": "SABARISH Sanjeevi",
-      "taskName": "tasjs"
-    },
-    {
-      "contactList": [
-        {
-          "contact_name": "Dwight Blazin",
-          "contact_id": "10407",
-          "account_name": "Davis Selected Advisers"
-        }
-      ],
-      "taskType": "Call Back1",
-      "taskComment": "",
-      "taskStatus": "In Progress",
-      "taskId": "78",
-      "taskDate": "2025-12-02 11:55:00.0",
-      "taskAssignedId": "y00103",
-      "taskAssignedName": "SABARISH Sanjeevi",
-      "taskName": "Task"
-    },
-    {
-      "contactList": [],
-      "taskType": "Call Back1",
-      "taskComment": "fgbghtr",
-      "taskStatus": "Completed",
-      "taskId": "74",
-      "taskDate": "2025-12-01 04:15:00.0",
-      "taskAssignedId": "y00103",
-      "taskAssignedName": "SABARISH Sanjeevi",
-      "taskName": "Tasks"
-    },
-    {
-      "contactList": [
-        {
-          "contact_name": "datazoic trainee",
-          "contact_id": "D67803",
-          "account_name": "Casdin Capital, Llc"
-        },
-        {
-          "contact_name": "Chaithra R",
-          "contact_id": "D68272",
-          "account_name": "chaithra test datazoic"
-        }
-      ],
-      "taskType": "Schedule Meeting",
-      "taskComment": "Call at 3",
-      "taskStatus": "In Progress",
-      "taskId": "68",
-      "taskDate": "2025-03-29 09:43:57.0",
-      "taskAssignedId": "y00103",
-      "taskAssignedName": "SABARISH Sanjeevi",
-      "taskName": "hello"
-    },
-    {
-      "contactList": [
-        {
-          "contact_name": "ajai b",
-          "contact_id": "D87977",
-          "account_name": "Ajanta Soya Ord Shs"
-        }
-      ],
-      "taskType": "Call Back1",
-      "taskComment": "",
-      "taskStatus": "In Progress",
-      "taskId": "63",
-      "taskDate": "2024-11-05 07:40:00.0",
-      "taskAssignedId": "y00110",
-      "taskAssignedName": "Ajay Balu",
-      "taskName": "sdfsdf"
-    }
-  ]
-}
+// const TasksV2: React.FC<TasksV2Props> = ({
+//   id,
+//   clientId,
+//   searchCode
+// }) => {
+//   const { toast } = useToast()
 
+//   // State management
+//   const [loading, setLoading] = useState(false)
+//   const [data, setData] = useState<TasksV2Data[]>([])
+//   const [error, setError] = useState<string | null>(null)
 
+//   // Fetch data from API
+//   const fetchData = useCallback(async () => {
+//     if (!clientId) return
 
+//     setLoading(true)
+//     setError(null)
 
+//     try {
+//       // TODO: Replace with actual API endpoint for tasks_v2
+//       const response = await fetch(`${API_CONFIG.fullUrl}/reports/tasks_v2`, {
+//         method: 'POST',
+//         headers: createAuthHeaders(),
+//         body: JSON.stringify({
+//           clientId,
+//           searchCode,
+//           id
+//         })
+//       })
+
+//       if (!response.ok) {
+//         throw new Error(`HTTP error! status: ${response.status}`)
+//       }
+
+//       // Check if response has content and is JSON
+
+//       const contentType = response.headers.get('content-type')
+
+//       if (!contentType || !contentType.includes('application/json')) {
+
+//         throw new Error('Invalid response format - expected JSON')
+
+//       }
+
+//       const responseText = await response.text()
+
+//       if (!responseText.trim()) {
+
+//         throw new Error('Empty response from server')
+
+//       }
+
+//       let result
+
+//       try {
+
+//         result = JSON.parse(responseText)
+
+//       } catch (jsonError) {
+
+//         throw new Error('Invalid JSON response from server')
+
+//       }
+
+//       if (result.success && result.data) {
+//         setData(result.data)
+//       } else {
+//         throw new Error(result.message || 'Failed to fetch data')
+//       }
+//     } catch (err) {
+//       const errorMsg = err instanceof Error ? err.message : 'Failed to fetch tasks_v2 data'
+//       setError(errorMsg)
+//       toast({
+//         title: 'Error',
+//         description: errorMsg,
+//         variant: 'destructive'
+//       })
+//     } finally {
+//       setLoading(false)
+//     }
+//   }, [clientId, searchCode, id, toast])
+
+//   // Load data on component mount
+//   useEffect(() => {
+//     fetchData()
+//   }, [fetchData])
+
+//   if (loading) {
+//     return (
+//       <div className="flex items-center justify-center p-8">
+//         <Loader2 className="h-8 w-8 animate-spin" />
+//         <span className="ml-2">Loading TasksV2...</span>
+//       </div>
+//     )
+//   }
+
+//   return (
+//     <div>
+//       {error ? (
+//           <div className="text-center py-8">
+//             <p className="text-destructive mb-4">{error}</p>
+//             <Button onClick={fetchData} variant="outline" size="sm">
+//               Try Again
+//             </Button>
+//           </div>
+//         ) : data.length === 0 ? (
+//           <div className="text-center py-12">
+//             <p className="text-muted-foreground text-lg mb-2">No data available</p>
+//             <p className="text-muted-foreground text-sm">
+//               Configure API endpoint to load data for tasks_v2
+//             </p>
+//           </div>
+//         ) : (
+//           <div className="space-y-4">
+//             {/* TODO: Implement React-based UI components for this report */}
+//             <div className="grid gap-4">
+//               {data.slice(0, 10).map((item, _index) => (
+//                 <div key={_index}>
+//                   <pre className="text-sm text-muted-foreground overflow-auto">
+//                     {JSON.stringify(item, null, 2)}
+//                   </pre>
+//                 </div>
+//               ))}
+//               {data.length > 10 && (
+//                 <p className="text-sm text-muted-foreground text-center">
+//                   Showing 10 of {data.length} items
+//                 </p>
+//               )}
+//             </div>
+//           </div>
+//         )}
+//     </div>
+//   )
+// }
+
+// export default TasksV2
 
 import React, { useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
@@ -268,6 +292,8 @@ export default function TasksWidget() {
         action: "Save",
       };
 
+      console.log(assignedTo);
+
       const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
 
       const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
@@ -281,6 +307,7 @@ export default function TasksWidget() {
       });
 
       const data = await res.json();
+      console.log(data.status);
       if (data?.status === 1) {
         toast({ title: "Success", description: "Task Added Successfully" });
         setModalOpen(false);
@@ -373,10 +400,32 @@ export default function TasksWidget() {
     setModalOpen(true);
   }
 
-  async function deleteTask(taskId: string) {
+  async function deleteTask(taskId: string, originalTaskData: any) {
     try {
-      const payload = { deleteJson: JSON.stringify({ rowId: taskId, type: "Task" }) };
-      const res = await fetch(`${API_CONFIG.fullUrl || API_CONFIG.baseUrl}/activities/commonDelete`, {
+       const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      
+      // Note: Make sure 'dueDate' and 'timeStr' are defined in the scope where this function runs.
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : "";
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`;
+      
+      const payload = {
+       subject: originalTaskData.subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts: originalTaskData.contacts || [],
+        contactName: contacts || [],
+        assignedTo: originalTaskData.taskAssignedId || "",
+        clienttimezone,
+        status: "Dismiss", 
+        taskType: originalTaskData.taskType || "",
+        taskComments:originalTaskData.taskComments || "",
+        module_name: "Task",
+        reminder: originalTaskData.reminder || [],
+        action: "Dismiss",
+        type: "Task",
+        taskId: taskId,
+      };
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
         method: "POST",
         headers: createAuthHeaders({
           "Content-Type": "application/json",
@@ -630,6 +679,39 @@ export default function TasksWidget() {
     return () => clearTimeout(id);
   }, [reassignQuery]);
 
+   const handleAssigneeChange = (e) => {
+    setAssignedTo(e.target.value);
+  };
+
+   const availableContacts = [
+    { 
+      id: '10029', 
+      name: 'David Roberts < droberts@angelogordon.com > Angelo Gordon & Co., L.P.' 
+    },
+    { 
+      id: '10030', 
+      name: 'Sarah Connor < sconnor@example.com > T-800 Corp.' 
+    },
+    { 
+      id: '10031', 
+      name: 'John Doe < jdoe@example.com > Generic Inc.' 
+    }
+  ];
+
+   const handleContactChange = (e) => {
+    // Get all selected options from the dropdown
+    const selectedOptions = Array.from(e.target.selectedOptions);
+    
+    // Extract just the IDs for the 'contacts' state (["10029", "10030"])
+    const selectedIds = selectedOptions.map(option => option.value);
+    
+    // Extract the full names for the 'contactName' state ([...full strings...])
+    const selectedNames = selectedOptions.map(option => option.label);
+
+    setContacts(selectedIds);
+    setContactNames(selectedNames);
+  };
+
 
   return (
     <div className="p-5">
@@ -674,11 +756,14 @@ export default function TasksWidget() {
                     Edit
                   </button>
 
-                  <button className="rounded bg-red-600 px-3 py-1 text-white" onClick={() => deleteTask(t.taskId)}>
-                    Delete
-                  </button>
+                <button 
+  className="rounded bg-red-600 px-3 py-1 text-white" 
+  onClick={() => deleteTask(t.taskId, t)} // <-- Pass 't' as the second argument
+>
+  Delete
+</button>
 
-                  <button
+                  {/* <button
                     className="rounded bg-indigo-600 px-3 py-1 text-white"
                     onClick={() => {
                       (async () => {
@@ -722,7 +807,7 @@ export default function TasksWidget() {
                     }}
                   >
                     Dismiss
-                  </button>
+                  </button> */}
                 </div>
 
                 <div className="mt-3">
@@ -788,7 +873,7 @@ export default function TasksWidget() {
                   </div>
                 </div>
 
-                <div className="mt-3">
+                {/* <div className="mt-3">
                   <div className="text-sm font-semibold">Reassign</div>
                   <div className="flex gap-2 items-center">
                     <input
@@ -808,7 +893,7 @@ export default function TasksWidget() {
                       </div>
                     )}
                   </div>
-                </div>
+                </div> */}
               </li>
             );
           })}
@@ -821,8 +906,23 @@ export default function TasksWidget() {
             <button className="absolute right-2 top-2" onClick={() => setModalOpen(false)}>X</button>
             <h2 className="mb-4 text-xl font-semibold">{editTask ? "Update Task" : "Add Task"}</h2>
 
-            <label>Assign To</label>
-            <input type="text" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} className="mb-3 w-full rounded border p-2" />
+            <label htmlFor="assignTo" className="block mb-2">Assign To</label>
+      
+
+      <select
+        id="assignTo"
+        value={assignedTo}
+        onChange={handleAssigneeChange}
+        className="mb-3 w-full rounded border p-2" // Use your existing CSS classes
+      >
+
+        <option value="">-- Select an assignee --</option>
+        <option value="y00103">SABARISH Sanjeevi</option>
+        <option value="y00143">Ajay Balu</option>
+        
+      </select>
+      
+      <p>Current Assignee: {assignedTo}</p>
 
             <label>Due Date</label>
             <DatePicker selected={dueDate} onChange={(d) => setDueDate(d)} className="mb-3 w-full rounded border p-2" />
@@ -850,8 +950,33 @@ export default function TasksWidget() {
             <label>Subject</label>
             <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className="mb-3 w-full rounded border p-2" />
 
-            <label>Contacts (comma separated IDs)</label>
-            <input type="text" value={contacts.join(", ")} onChange={(e) => setContacts(e.target.value.split(",").map(s => s.trim()).filter(Boolean))} className="mb-3 w-full rounded border p-2" />
+            <label htmlFor="contacts" className="block mb-2">Contacts</label>
+      
+
+      <select
+        id="contacts"
+        multiple
+        value={contacts}
+        onChange={handleContactChange}
+        className="
+          mb-3 w-full h-40
+          rounded-lg border border-gray-300 bg-white
+          text-gray-900 focus:ring-blue-500 focus:border-blue-500
+          p-3 shadow-sm appearance-none
+          overflow-y-auto
+        "
+        style={{ MozAppearance: 'none', WebkitAppearance: 'none' }}
+      >
+
+        {availableContacts.map((contact) => (
+          <option key={contact.id} value={contact.id} className="p-2 hover:bg-blue-100">
+            {contact.name} 
+          </option>
+        ))}
+      </select>
+      
+  
+
 
             <label>Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mb-3 w-full rounded border p-2" />
@@ -873,5 +998,3 @@ export default function TasksWidget() {
     </div>
   );
 }
-
-
