@@ -1,3 +1,37 @@
+
+{"subject":"tasjs","dueDate":"2025-12-02+17:25:00","dueTime":"17:25","contacts":["10087"],"contactName":["Sabol+Keith+<+ksabol@dsaco.com+>\nDavis+Selected+Advisers"],"assignedTo":"y00103","clienttimezone":"Asia%2FCalcutta","status":"In+Progress","taskType":"Action+items","taskComments":"","module_name":"Task","reminder":[],"action":"Save"}
+
+
+{status: 0, recordsTotal: 0, recordsFiltered: 0, totRecords: 0, totRecordsSecond: 0,…}
+message
+: 
+"Added Or Updated ,Invalid Assignee"
+recordsFiltered
+: 
+0
+recordsTotal
+: 
+0
+status
+: 
+0
+taskId
+: 
+0
+totEventAttRecords
+: 
+0
+totRecords
+: 
+0
+totRecordsSecond
+: 
+0
+
+
+
+
+
 import React, { useEffect, useMemo, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -741,3 +775,4 @@ export default function TasksWidget() {
     </div>
   );
 }
+
