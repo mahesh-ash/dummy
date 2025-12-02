@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { useToast } from "@/hooks/use-toast";
@@ -6,19 +6,19 @@ import { createAuthHeaders } from "@/lib/legacyUtils";
 import { API_CONFIG } from "@/lib/constants";
 import { prismStorage } from "@/lib/prismStorage";
 
-
-
 type TaskItem = {
   taskId: string;
   taskName?: string;
   taskComment?: string;
-  taskDate?: string; 
+  taskDate?: string;
   taskAssignedName?: string;
   taskAssignedId?: string;
   taskType?: string;
   taskStatus?: string;
-  contacts?: string[]; 
-  
+  contacts?: string[];
+  contactName?: string[];
+  taskComments?: string;
+  reminder?: any[];
 };
 
 type ContactResult = {
@@ -37,31 +37,24 @@ export default function TasksWidget() {
   const { toast } = useToast();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loading, setLoading] = useState(false);
-
   const [isModalOpen, setModalOpen] = useState(false);
   const [editTask, setEditTask] = useState<TaskItem | null>(null);
-
-
   const [subject, setSubject] = useState("");
-  const [assignedTo, setAssignedTo] = useState(""); 
+  const [assignedTo, setAssignedTo] = useState("");
   const [taskType, setTaskType] = useState("");
   const [status, setStatus] = useState("");
   const [contacts, setContacts] = useState<string[]>([]);
+  const [contactNames, setContactNames] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState<Date | null>(new Date());
   const [timeStr, setTimeStr] = useState("10:00");
-
   const [contactQuery, setContactQuery] = useState("");
   const [contactOptions, setContactOptions] = useState<ContactResult[]>([]);
   const [contactLoading, setContactLoading] = useState(false);
-
   const [reassignQuery, setReassignQuery] = useState("");
   const [reassignOptions, setReassignOptions] = useState<ReassignResult[]>([]);
   const [reassignLoading, setReassignLoading] = useState(false);
-
-
   const [remindersByTask, setRemindersByTask] = useState<Record<string, { id?: string; date: string; time: string }[]>>({});
-
 
   async function fetchTasks() {
     setLoading(true);
@@ -109,7 +102,6 @@ export default function TasksWidget() {
     fetchTasks();
   }, []);
 
-
   async function handleAddTask() {
     try {
       if (!subject.trim()) {
@@ -119,13 +111,12 @@ export default function TasksWidget() {
       const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
       const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : "";
       const formattedDateTime = `${dueDateStr} ${timeStr}:00`;
-
       const payloadObj = {
         subject,
         dueDate: formattedDateTime,
         dueTime: timeStr,
         contacts,
-        contactName: contacts || [],
+        contactName: contactNames,
         assignedTo,
         clienttimezone,
         status,
@@ -135,11 +126,7 @@ export default function TasksWidget() {
         reminder: [],
         action: "Save",
       };
-
-      console.log(assignedTo);
-
       const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
-
       const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
         method: "POST",
         headers: createAuthHeaders({
@@ -149,9 +136,7 @@ export default function TasksWidget() {
         body: encoded,
         credentials: "include",
       });
-
       const data = await res.json();
-      console.log(data.status);
       if (data?.status === 1) {
         toast({ title: "Success", description: "Task Added Successfully" });
         setModalOpen(false);
@@ -172,13 +157,12 @@ export default function TasksWidget() {
       const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
       const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : "";
       const formattedDateTime = `${dueDateStr} ${timeStr}:00`;
-
       const payloadObj = {
         subject,
         dueDate: formattedDateTime,
         dueTime: timeStr,
         contacts,
-        contactName: contacts || [],
+        contactName: contactNames,
         assignedTo,
         clienttimezone,
         status,
@@ -189,9 +173,7 @@ export default function TasksWidget() {
         action: "Update",
         taskId: editTask.taskId,
       };
-
       const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
-
       const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
         method: "POST",
         headers: createAuthHeaders({
@@ -201,7 +183,6 @@ export default function TasksWidget() {
         body: encoded,
         credentials: "include",
       });
-
       const data = await res.json();
       if (data?.status === 1) {
         toast({ title: "Success", description: "Task Updated Successfully" });
@@ -221,7 +202,7 @@ export default function TasksWidget() {
   function openEditModal(task: TaskItem) {
     setEditTask(task);
     setSubject(task.taskName || "");
-    setDescription(task.taskComment || "");
+    setDescription(task.taskComment || task.taskComments || "");
     setAssignedTo(task.taskAssignedId || "");
     setTaskType(task.taskType || "");
     setStatus(task.taskStatus || "");
@@ -239,32 +220,31 @@ export default function TasksWidget() {
       }
     } else {
       setDueDate(new Date());
+      setTimeStr("10:00");
     }
     setContacts(task.contacts || []);
+    setContactNames(task.contactName || task.contactName || []);
     setModalOpen(true);
   }
 
   async function deleteTask(taskId: string, originalTaskData: any) {
     try {
-       const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-      
-      // Note: Make sure 'dueDate' and 'timeStr' are defined in the scope where this function runs.
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : "";
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : (originalTaskData?.taskDate ? originalTaskData.taskDate.split(" ")[0] : "");
       const formattedDateTime = `${dueDateStr} ${timeStr}:00`;
-      
       const payload = {
-       subject: originalTaskData.subject,
+        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
         dueDate: formattedDateTime,
         dueTime: timeStr,
-        contacts: originalTaskData.contacts || [],
-        contactName: contacts || [],
-        assignedTo: originalTaskData.taskAssignedId || "",
+        contacts: originalTaskData?.contacts || [],
+        contactName: originalTaskData?.contactName || [],
+        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || "",
         clienttimezone,
-        status: "Dismiss", 
-        taskType: originalTaskData.taskType || "",
-        taskComments:originalTaskData.taskComments || "",
+        status: "Dismiss",
+        taskType: originalTaskData?.taskType || "",
+        taskComments: originalTaskData?.taskComments || originalTaskData?.taskComment || description,
         module_name: "Task",
-        reminder: originalTaskData.reminder || [],
+        reminder: originalTaskData?.reminder || [],
         action: "Dismiss",
         type: "Task",
         taskId: taskId,
@@ -315,6 +295,7 @@ export default function TasksWidget() {
       toast({ title: "Error", description: "Failed to update due date" });
     }
   }
+
   async function addReminder(taskId: string, dateStr: string, time: string, indexer?: string) {
     try {
       const payload = new URLSearchParams({
@@ -345,6 +326,7 @@ export default function TasksWidget() {
       toast({ title: "Error", description: "Failed to add reminder" });
     }
   }
+
   async function deleteReminder(taskId: string, reminderId?: string, index?: number) {
     try {
       const payload = new URLSearchParams({ reminderId: reminderId || "" }).toString();
@@ -398,7 +380,6 @@ export default function TasksWidget() {
     }
   }
 
-
   async function fetchContactOptions(query: string) {
     if (!query || query.length < 2) return setContactOptions([]);
     setContactLoading(true);
@@ -418,7 +399,6 @@ export default function TasksWidget() {
       setContactLoading(false);
     }
   }
-
 
   async function setTaskContact(taskId: string, contact: ContactResult) {
     try {
@@ -484,18 +464,17 @@ export default function TasksWidget() {
     }
   }
 
-
   function resetForm() {
     setSubject("");
     setAssignedTo("");
     setTaskType("");
     setStatus("");
     setContacts([]);
+    setContactNames([]);
     setDescription("");
     setDueDate(new Date());
     setTimeStr("10:00");
   }
-
 
   const calcTimeDiff = (due: string | undefined) => {
     if (!due) return null;
@@ -512,7 +491,6 @@ export default function TasksWidget() {
     return "0 Min(s)";
   };
 
-
   useEffect(() => {
     const id = setTimeout(() => fetchContactOptions(contactQuery), 300);
     return () => clearTimeout(id);
@@ -523,37 +501,32 @@ export default function TasksWidget() {
     return () => clearTimeout(id);
   }, [reassignQuery]);
 
-   const handleAssigneeChange = (e) => {
+  const handleAssigneeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setAssignedTo(e.target.value);
   };
 
-   const availableContacts = [
-    { 
-      id: '10029', 
-      name: 'David Roberts < droberts@angelogordon.com > Angelo Gordon & Co., L.P.' 
+  const availableContacts = [
+    {
+      id: "10029",
+      name: "David Roberts < droberts@angelogordon.com > Angelo Gordon & Co., L.P.",
     },
-    { 
-      id: '10030', 
-      name: 'Sarah Connor < sconnor@example.com > T-800 Corp.' 
+    {
+      id: "10030",
+      name: "Sarah Connor < sconnor@example.com > T-800 Corp.",
     },
-    { 
-      id: '10031', 
-      name: 'John Doe < jdoe@example.com > Generic Inc.' 
-    }
+    {
+      id: "10031",
+      name: "John Doe < jdoe@example.com > Generic Inc.",
+    },
   ];
 
-   const handleContactChange = (e) => {
+  const handleContactChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedOptions = Array.from(e.target.selectedOptions);
-    
-
-    const selectedIds = selectedOptions.map(option => option.value);
-    
-    const selectedNames = selectedOptions.map(option => option.label);
-
+    const selectedIds = selectedOptions.map((option) => option.value);
+    const selectedNames = selectedOptions.map((option) => option.text);
     setContacts(selectedIds);
-    setContacts(selectedNames);
+    setContactNames(selectedNames);
   };
-
 
   return (
     <div className="p-5">
@@ -598,69 +571,19 @@ export default function TasksWidget() {
                     Edit
                   </button>
 
-                <button 
-  className="rounded bg-red-600 px-3 py-1 text-white" 
-  onClick={() => deleteTask(t.taskId, t)} // <-- Pass 't' as the second argument
->
-  Delete
-</button>
-
-                  {/* <button
-                    className="rounded bg-indigo-600 px-3 py-1 text-white"
-                    onClick={() => {
-                      (async () => {
-                        try {
-                          const payloadObj = {
-                            subject: t.taskName,
-                            dueDate: t.taskDate,
-                            dueTime: t.taskDate ? t.taskDate.split(" ")[1].slice(0, 5) : "00:00",
-                            contacts: t.contacts || [],
-                            contactName: t.contacts || [],
-                            assignedTo: t.taskAssignedId || "",
-                            clienttimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                            status: "Dismiss",
-                            taskType: t.taskType,
-                            taskComments: t.taskComment,
-                            module_name: "Task",
-                            action: "Dismiss",
-                            taskId: t.taskId,
-                          };
-                          const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
-                          const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-                            method: "POST",
-                            headers: createAuthHeaders({
-                              "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-                            }),
-                            body: encoded,
-                            credentials: "include",
-                          });
-                          const d = await res.json();
-                          if (d?.status === 1) {
-                            toast({ title: "Success", description: d.message || "Dismissed" });
-                            fetchTasks();
-                          } else {
-                            toast({ title: "Error", description: d.message || "Failed" });
-                          }
-                        } catch (err) {
-                          console.error("dismiss err", err);
-                          toast({ title: "Error", description: "Failed to dismiss" });
-                        }
-                      })();
-                    }}
-                  >
-                    Dismiss
-                  </button> */}
+                  <button className="rounded bg-red-600 px-3 py-1 text-white" onClick={() => deleteTask(t.taskId, t)}>
+                    Delete
+                  </button>
                 </div>
 
                 <div className="mt-3">
                   <div className="text-sm font-semibold">Reminders</div>
                   {(remindersByTask[t.taskId] || []).map((r, idx) => (
                     <div key={r.id || idx} className="flex items-center gap-2">
-                      <div>{r.date} {r.time}</div>
-                      <button
-                        className="text-red-600 text-sm"
-                        onClick={() => deleteReminder(t.taskId, r.id, idx)}
-                      >
+                      <div>
+                        {r.date} {r.time}
+                      </div>
+                      <button className="text-red-600 text-sm" onClick={() => deleteReminder(t.taskId, r.id, idx)}>
                         Delete
                       </button>
                     </div>
@@ -714,28 +637,6 @@ export default function TasksWidget() {
                     </div>
                   </div>
                 </div>
-
-                {/* <div className="mt-3">
-                  <div className="text-sm font-semibold">Reassign</div>
-                  <div className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      className="rounded border p-1"
-                      placeholder="Search user..."
-                      onChange={(e) => setReassignQuery(e.target.value)}
-                    />
-                    {reassignOptions.length > 0 && (
-                      <div className="bg-white border rounded mt-1 max-h-40 overflow-auto">
-                        {reassignOptions.map((r) => (
-                          <div key={r.EMP_ID} className="p-2 hover:bg-gray-100 cursor-pointer" onClick={() => setReassignTask(t.taskId, r.EMP_ID)}>
-                            <div className="font-semibold">{r.reassign_name}</div>
-                            <div className="text-xs text-gray-500">{r.role_name}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div> */}
               </li>
             );
           })}
@@ -745,29 +646,25 @@ export default function TasksWidget() {
       {isModalOpen && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-40">
           <div className="relative w-[700px] rounded-lg bg-white p-5 z-50">
-            <button className="absolute right-2 top-2" onClick={() => setModalOpen(false)}>X</button>
+            <button className="absolute right-2 top-2" onClick={() => setModalOpen(false)}>
+              X
+            </button>
             <h2 className="mb-4 text-xl font-semibold">{editTask ? "Update Task" : "Add Task"}</h2>
 
-            <label htmlFor="assignTo" className="block mb-2">Assign To</label>
-      
+            <label htmlFor="assignTo" className="block mb-2">
+              Assign To
+            </label>
 
-      <select
-        id="assignTo"
-        value={assignedTo}
-        onChange={handleAssigneeChange}
-        className="mb-3 w-full rounded border p-2" 
-      >
+            <select id="assignTo" value={assignedTo} onChange={handleAssigneeChange} className="mb-3 w-full rounded border p-2">
+              <option value="">-- Select an assignee --</option>
+              <option value="y00103">SABARISH Sanjeevi</option>
+              <option value="y00143">Ajay Balu</option>
+            </select>
 
-        <option value="">-- Select an assignee --</option>
-        <option value="y00103">SABARISH Sanjeevi</option>
-        <option value="y00143">Ajay Balu</option>
-        
-      </select>
-      
-      <p>Current Assignee: {assignedTo}</p>
+            <p>Current Assignee: {assignedTo}</p>
 
             <label>Due Date</label>
-            <DatePicker selected={dueDate} onChange={(d) => setDueDate(d)} className="mb-3 w-full rounded border p-2" />
+            <DatePicker selected={dueDate} onChange={(d: Date | null) => setDueDate(d)} className="mb-3 w-full rounded border p-2" />
 
             <label>Time</label>
             <input type="time" value={timeStr} onChange={(e) => setTimeStr(e.target.value)} className="mb-3 w-full rounded border p-2" />
@@ -792,33 +689,24 @@ export default function TasksWidget() {
             <label>Subject</label>
             <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className="mb-3 w-full rounded border p-2" />
 
-            <label htmlFor="contacts" className="block mb-2">Contacts</label>
-      
+            <label htmlFor="contacts" className="block mb-2">
+              Contacts
+            </label>
 
-      <select
-        id="contacts"
-        multiple
-        value={contacts}
-        onChange={handleContactChange}
-        className="
-          mb-3 w-full h-40
-          rounded-lg border border-gray-300 bg-white
-          text-gray-900 focus:ring-blue-500 focus:border-blue-500
-          p-3 shadow-sm appearance-none
-          overflow-y-auto
-        "
-        style={{ MozAppearance: 'none', WebkitAppearance: 'none' }}
-      >
-
-        {availableContacts.map((contact) => (
-          <option key={contact.id} value={contact.id} className="p-2 hover:bg-blue-100">
-            {contact.name} 
-          </option>
-        ))}
-      </select>
-      
-  
-
+            <select
+              id="contacts"
+              multiple
+              value={contacts}
+              onChange={handleContactChange}
+              className="mb-3 w-full h-40 rounded-lg border border-gray-300 bg-white text-gray-900 focus:ring-blue-500 focus:border-blue-500 p-3 shadow-sm appearance-none overflow-y-auto"
+              style={{ MozAppearance: "none", WebkitAppearance: "none" }}
+            >
+              {availableContacts.map((contact) => (
+                <option key={contact.id} value={contact.id} className="p-2 hover:bg-blue-100">
+                  {contact.name}
+                </option>
+              ))}
+            </select>
 
             <label>Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mb-3 w-full rounded border p-2" />
