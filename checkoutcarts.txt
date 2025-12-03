@@ -1,1026 +1,574 @@
-package dao;
-
-import model.Product;
-import utils.DBUtils;
-import utils.LoggerUtil;
-
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.apache.log4j.Logger;
-
-public class ProductDao  {
-    private static final Logger logger = LoggerUtil.getLogger(ProductDao.class);
-
-    public List<Product> getAllProducts() {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                Product product = mapProduct(rs);
-                products.add(product);
-            }
-        } catch (SQLException e) {
-            logger.error("getAllProducts SQL error", e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return products;
-    }
-
-    public List<Product> getProductsByCategoryId(int categoryId) {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, categoryId);
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                products.add(mapProduct(rs));
-            }
-        } catch (SQLException e) {
-            logger.error("getProductsByCategoryId SQL error for categoryId=" + categoryId, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return products;
-    }
-
-    public List<Product> searchProductsByName(String query) {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE product_name LIKE ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setString(1, "%" + query + "%");
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                products.add(mapProduct(rs));
-            }
-        } catch (SQLException e) {
-            logger.error("searchProductsByName SQL error for query=" + query, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return products;
-    }
-
-    public List<Product> searchProductsByCategoryAndName(int categoryId, String query) {
-        List<Product> products = new ArrayList<>();
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE category_id = ? AND product_name LIKE ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, categoryId);
-            ps.setString(2, "%" + query + "%");
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                products.add(mapProduct(rs));
-            }
-        } catch (SQLException e) {
-            logger.error("searchProductsByCategoryAndName SQL error for categoryId=" + categoryId + " query=" + query, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return products;
-    }
-
-    public List<Product> getFilteredProducts(Integer categoryId, String query, String filter) {
-        List<Product> products = new ArrayList<>();
-        StringBuilder sql = new StringBuilder("SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE 1=1");
-
-        if (categoryId != null) {
-            sql.append(" AND category_id = ?");
-        }
-        if (query != null && !query.isEmpty()) {
-            sql.append(" AND (LOWER(product_name) LIKE ? OR LOWER(description) LIKE ?)");
-        }
-        if (filter != null) {
-            switch (filter) {
-                case "low-high":
-                    sql.append(" ORDER BY price ASC");
-                    break;
-                case "high-low":
-                    sql.append(" ORDER BY price DESC");
-                    break;
-            }
-        }
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql.toString());
-            int i = 1;
-            if (categoryId != null) {
-                ps.setInt(i++, categoryId);
-            }
-            if (query != null && !query.isEmpty()) {
-                String like = "%" + query.toLowerCase() + "%";
-                ps.setString(i++, like);
-                ps.setString(i++, like);
-            }
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                products.add(mapProduct(rs));
-            }
-        } catch (SQLException e) {
-            logger.error("getFilteredProducts SQL error", e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return products;
-    }
-
-    /**
-     * Map a ResultSet row to Product object. Assumes 'image' column is binary (VARBINARY/BLOB).
-     */
-    private Product mapProduct(ResultSet rs) throws SQLException {
-        // getBytes returns null if DB value is SQL NULL
-        byte[] imageBytes = null;
-        try {
-            imageBytes = rs.getBytes("image"); // binary column in M_S_DATAS
-        } catch (SQLException sqle) {
-            // If column not present or not binary, fall back to null and log
-            logger.debug("Could not read 'image' as bytes from M_S_DATAS for row; falling back to null", sqle);
-            imageBytes = null;
-        }
-
-        return new Product(
-            rs.getInt("product_id"),
-            rs.getInt("category_id"),
-            rs.getString("product_name"),
-            rs.getString("description"),
-            rs.getDouble("price"),
-            rs.getInt("stock"),
-            imageBytes
-        );
-    }
-
-    public Product getProductById(int productId) {
-        String sql = "SELECT * FROM Ecommerce_Website.M_S_DATAS WHERE product_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, productId);
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                return mapProduct(rs);
-            }
-        } catch (SQLException e) {
-            logger.error("getProductById SQL error for productId=" + productId, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return null;
-    }
-
-    /**
-     * Returns up to 10 images for a product.
-     * Each returned string will be either:
-     *  - "data:image/jpeg;base64,<BASE64>" (if binary image_data found)
-     *  - or an image path/url (if image_path string exists)
-     *
-     * Notes:
-     *  - Tries to read a binary column "image_data" in M_S_PRODUCT_IMAGES.
-     *  - Falls back to "image_path" string if binary not available.
-     *  - If nothing found, falls back to the main M_S_DATAS.image column (as data URI).
-     */
-    public List<String> getImagesForProduct(int productId) {
-        List<String> imgs = new ArrayList<>();
-        String sql = "SELECT TOP (10) image_data, image_path, is_primary, id FROM Ecommerce_Website.M_S_PRODUCT_IMAGES WHERE product_id = ? ORDER BY is_primary DESC, id ASC";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-
-            ps.setInt(1, productId);
-            ps.setQueryTimeout(5);
-
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    // Try to get binary image column first
-                    byte[] imgBytes = null;
-                    try {
-                        imgBytes = rs.getBytes("image_data");
-                    } catch (SQLException sqle) {
-                        // column might not exist or be non-binary; ignore and try fallback
-                        imgBytes = null;
-                    }
-
-                    if (imgBytes != null && imgBytes.length > 0) {
-                        // produce a data URI (assume image/jpeg by default)
-                        String base64 = Base64.getEncoder().encodeToString(imgBytes);
-                        imgs.add("data:image/jpeg;base64," + base64);
-                    } else {
-                        // fallback to image_path string (if exists)
-                        String path = null;
-                        try {
-                            path = rs.getString("image_path");
-                        } catch (SQLException sqle) {
-                            path = null;
-                        }
-                        if (path != null && !path.trim().isEmpty()) {
-                            imgs.add(path.trim());
-                        }
-                    }
-                }
-            }
-        } catch (java.sql.SQLTimeoutException ste) {
-            logger.warn("getImagesForProduct timed out for productId=" + productId, ste);
-        } catch (SQLException e) {
-            logger.error("SQL error while fetching images for productId=" + productId, e);
-        } catch (Exception ex) {
-            logger.error("Unexpected error in getImagesForProduct for productId=" + productId, ex);
-        }
-
-        // If we didn't find any images in M_S_PRODUCT_IMAGES, try fallback to binary image in M_S_DATAS
-        if (imgs.isEmpty()) {
-            try {
-                String fallback = getImageFromDatas(productId);
-                if (fallback != null && !fallback.isEmpty()) {
-                    imgs.add(fallback);
-                }
-            } catch (Exception ex) {
-                logger.debug("getImageFromDatas failed for productId=" + productId, ex);
-            }
-        }
-
-        return imgs;
-    }
-
-    /**
-     * Attempts to read the binary 'image' column from M_S_DATAS and return a data URI string.
-     * Returns null if no image found.
-     */
-    private String getImageFromDatas(int productId) {
-        String sql = "SELECT image FROM Ecommerce_Website.M_S_DATAS WHERE product_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, productId);
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                byte[] imgBytes = null;
-                try {
-                    imgBytes = rs.getBytes("image");
-                } catch (SQLException sqle) {
-                    imgBytes = null;
-                }
-                if (imgBytes != null && imgBytes.length > 0) {
-                    String base64 = Base64.getEncoder().encodeToString(imgBytes);
-                    return "data:image/jpeg;base64," + base64;
-                } else {
-                    // If image column exists as text path (legacy), return it
-                    try {
-                        String path = rs.getString("image");
-                        if (path != null && !path.trim().isEmpty()) {
-                            return path.trim();
-                        }
-                    } catch (SQLException ignored) {}
-                }
-            }
-        } catch (SQLException e) {
-            logger.error("getImageFromDatas SQL error for productId=" + productId, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return null;
-    }
-
-    public double getActiveDiscountPercent(int productId) {
-        String sql = "SELECT discount_percent, start_date, end_date FROM Ecommerce_Website.M_S_PRODUCT_DISCOUNTS WHERE product_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        Timestamp now = new Timestamp(System.currentTimeMillis());
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, productId);
-            rs = ps.executeQuery();
-            while (rs.next()) {
-                double pct = rs.getDouble("discount_percent");
-                Timestamp s = rs.getTimestamp("start_date");
-                Timestamp e = rs.getTimestamp("end_date");
-                boolean active = true;
-                if (s != null && now.before(s)) active = false;
-                if (e != null && now.after(e)) active = false;
-                if (active) return pct;
-            }
-        } catch (SQLException ex) {
-            logger.error("getActiveDiscountPercent SQL error for productId=" + productId, ex);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return 0.0;
-    }
-
-    public Map<String, Object> getProductDetailsMap(int productId) {
-        Map<String, Object> out = new HashMap<>();
-        Product p = getProductById(productId);
-        if (p == null) return out;
-
-        out.put("productId", p.getProductId());
-        out.put("categoryId", p.getCategoryId());
-        out.put("productName", p.getProductName());
-        out.put("description", p.getDescription());
-        out.put("price", p.getPrice());
-        out.put("stock", p.getStock());
-
-        // Put main image as data URI if present (frontend can render it directly)
-        String mainImageBase64 = p.getImageBase64();
-        if (mainImageBase64 != null && !mainImageBase64.isEmpty()) {
-            out.put("image", "data:image/jpeg;base64," + mainImageBase64);
-        } else {
-            out.put("image", ""); // empty string if no main image
-        }
-
-        List<String> imgs = getImagesForProduct(productId);
-        out.put("images", imgs);
-
-        double disc = getActiveDiscountPercent(productId);
-        out.put("discountPercent", disc);
-        if (disc > 0.0) {
-            double discountedPrice = p.getPrice() - (p.getPrice() * disc / 100.0);
-            discountedPrice = Math.round(discountedPrice * 100.0) / 100.0;
-            out.put("discountedPrice", discountedPrice);
-        }
-
-        return out;
-    }
-
-    public int decrementStockAndGet(int productId, int qty) {
-        String sql = "UPDATE Ecommerce_Website.M_S_DATAS SET stock = stock - ? WHERE product_id = ? AND stock >= ?";
-        String select = "SELECT stock FROM Ecommerce_Website.M_S_DATAS WHERE product_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        PreparedStatement ps2 = null;
-        ResultSet rs = null;
-
-        int result = -1;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, qty);
-            ps.setInt(2, productId);
-            ps.setInt(3, qty);
-            int updated = ps.executeUpdate();
-            if (updated == 0) {
-                result = -1;
-            } else {
-                ps2 = conn.prepareStatement(select);
-                ps2.setInt(1, productId);
-                rs = ps2.executeQuery();
-                if (rs.next()) {
-                    result = rs.getInt("stock");
-                }
-            }
-        } catch (SQLException e) {
-            logger.error("decrementStockAndGet SQL error for productId=" + productId + " qty=" + qty, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps2);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return result;
-    }
-
-    public int incrementStockAndGet(int productId, int qty) {
-        String sql = "UPDATE Ecommerce_Website.M_S_DATAS SET stock = stock + ? WHERE product_id = ?";
-        String select = "SELECT stock FROM Ecommerce_Website.M_S_DATAS WHERE product_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        PreparedStatement ps2 = null;
-        ResultSet rs = null;
-
-        int result = -1;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, qty);
-            ps.setInt(2, productId);
-            int updated = ps.executeUpdate();
-            if (updated == 0) {
-                result = -1;
-            } else {
-                ps2 = conn.prepareStatement(select);
-                ps2.setInt(1, productId);
-                rs = ps2.executeQuery();
-                if (rs.next()) {
-                    result = rs.getInt("stock");
-                }
-            }
-        } catch (SQLException e) {
-            logger.error("incrementStockAndGet SQL error for productId=" + productId + " qty=" + qty, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps2);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return result;
-    }
-
-    public int getStock(int productId) {
-        String select = "SELECT stock FROM Ecommerce_Website.M_S_DATAS WHERE product_id = ?";
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-
-        int stock = -1;
-
-        try {
-            conn = DBUtils.getConnection();
-            ps = conn.prepareStatement(select);
-            ps.setInt(1, productId);
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                stock = rs.getInt("stock");
-            }
-        } catch (SQLException e) {
-            logger.error("getStock SQL error for productId=" + productId, e);
-        } finally {
-            closeQuietly(rs);
-            closeQuietly(ps);
-            closeQuietly(conn);
-        }
-
-        return stock;
-    }
-
-    // ---------------------------
-    // Utility close methods
-    // ---------------------------
-    private void closeQuietly(ResultSet rs) {
-        if (rs != null) {
-            try { rs.close(); } catch (SQLException ignored) {}
-        }
-    }
-
-    private void closeQuietly(PreparedStatement ps) {
-        if (ps != null) {
-            try { ps.close(); } catch (SQLException ignored) {}
-        }
-    }
-
-    private void closeQuietly(Connection conn) {
-        if (conn != null) {
-            try { conn.close(); } catch (SQLException ignored) {}
-        }
-    }
-}
-----------------------
-
-
-package model;
-
-import java.util.Base64;
-
-public class Product {
-    private int productId;
-    private int categoryId;
-    private String productName;
-    private String description;
-    private double price;
-    private int stock;
-
-    /**
-     * imageData holds the binary image bytes (maps to VARBINARY / BLOB in DB)
-     */
-    private byte[] imageData;
-
-    private String categoryname;
-
-    public String getCategoryname() {
-        return categoryname;
-    }
-
-    public void setCategoryname(String categoryname) {
-        this.categoryname = categoryname;
-    }
-
-    public Product() {
-    }
-
-    // Constructor for new product (no productId yet)
-    public Product(int categoryId, String productName, String description, double price, int stock, byte[] imageData) {
-        this.categoryId = categoryId;
-        this.productName = productName;
-        this.description = description;
-        this.price = price;
-        this.stock = stock;
-        this.imageData = imageData;
-    }
-
-    // Constructor with productId (e.g., from DB)
-    public Product(int productId, int categoryId, String productName, String description, double price, int stock, byte[] imageData) {
-        this.productId = productId;
-        this.categoryId = categoryId;
-        this.productName = productName;
-        this.description = description;
-        this.price = price;
-        this.stock = stock;
-        this.imageData = imageData;
-    }
-
-    public int getProductId() {
-        return productId;
-    }
-
-    public void setProductId(int productId) {
-        this.productId = productId;
-    }
-
-    public int getCategoryId() {
-        return categoryId;
-    }
-
-    public void setCategoryId(int categoryId) {
-        this.categoryId = categoryId;
-    }
-
-    public String getProductName() {
-        return productName;
-    }
-
-    public void setProductName(String productName) {
-        this.productName = productName;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public double getPrice() {
-        return price;
-    }
-
-    public void setPrice(double price) {
-        this.price = price;
-    }
-
-    public int getStock() {
-        return stock;
-    }
-
-    public void setStock(int stock) {
-        this.stock = stock;
-    }
-
-    /**
-     * Binary image getter/setter (maps to VARBINARY/BLOB in DB)
-     */
-    public byte[] getImageData() {
-        return imageData;
-    }
-
-    public void setImageData(byte[] imageData) {
-        this.imageData = imageData;
-    }
-
-    /**
-     * Helper to get Base64-encoded image (useful for embedding in HTML).
-     * Example usage in JSP/HTML:
-     * <img src="data:image/jpeg;base64,${product.imageBase64}" />
-     *
-     * Note: This method does not include MIME detection. If you need the exact
-     * content type, manage it along with the image (e.g., store imageMimeType).
-     */
-    public String getImageBase64() {
-        if (imageData == null || imageData.length == 0) return "";
-        return Base64.getEncoder().encodeToString(imageData);
-    }
+import React, { useEffect, useState } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
+import { useToast } from '@/hooks/use-toast'
+import { createAuthHeaders } from '@/lib/legacyUtils'
+import { API_CONFIG } from '@/lib/constants'
+import { prismStorage } from '@/lib/prismStorage'
+
+type TaskItem = {
+  taskId: string
+  taskName?: string
+  taskComment?: string
+  taskDate?: string
+  taskAssignedName?: string
+  taskAssignedId?: string
+  taskType?: string
+  taskStatus?: string
+  contacts?: string[]
+  contactName?: string[]
+  accountName?: string[]
+  taskComments?: string
+  reminder?: any[]
 }
 
-------------------------
-
-package servlets;
-
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-
-import org.apache.log4j.Logger;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-
-import dao.ProductDao;
-import model.Product;
-import utils.LoggerUtil;
-
-@WebServlet("/ProductServlet")
-public class ProductServlet extends HttpServlet {
-    private static final long serialVersionUID = 1L;
-
-    private static final Logger logger = LoggerUtil.getLogger(ProductServlet.class);
-
-    private ProductDao productDao;
-    private Gson gson;
-
-    @Override
-    public void init() throws ServletException {
-        this.productDao = new ProductDao();
-        this.gson = new GsonBuilder()
-                .serializeNulls()
-                .setPrettyPrinting()
-                .create();
-    }
-
-    @Override
-    protected void doGet(HttpServletRequest request,
-                         HttpServletResponse response)
-            throws ServletException, IOException {
-
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-
-        PrintWriter out = response.getWriter();
-
-        String productIdParam = request.getParameter("productId");
-        String categoryIdParam = request.getParameter("category_id");
-        String query = request.getParameter("query");
-        String filter = request.getParameter("filter");
-
-        try {
-            if (productIdParam != null && !productIdParam.isEmpty()) {
-                int pid;
-                try {
-                    pid = Integer.parseInt(productIdParam);
-                } catch (NumberFormatException nfe) {
-                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                    out.print("{\"error\":\"Invalid productId\"}");
-                    return;
-                }
-
-                Product prod = productDao.getProductById(pid);
-                if (prod == null) {
-                    out.print("{}");
-                    return;
-                }
-
-                Map<String, Object> map = productToMap(prod);
-
-                try {
-                    List<String> imgs = productDao.getImagesForProduct(pid);
-                    if (imgs != null && !imgs.isEmpty()) {
-                        map.put("images", imgs);
-                    }
-                } catch (Exception t) {
-                    logger.debug("getImagesForProduct failed", t);
-                }
-
-                try {
-                    double disc = productDao.getActiveDiscountPercent(pid);
-                    if (disc > 0.0) {
-                        map.put("discountPercent", disc);
-                        Double price = toDoubleSafe(map.get("price"));
-                        if (price != null) {
-                            double dp = Math.round((price - (price * disc / 100.0)) * 100.0) / 100.0;
-                            map.put("discountedPrice", dp);
-                        }
-                    } else {
-                        map.put("discountPercent", 0.0);
-                    }
-                } catch (Exception t) {
-                    logger.debug("getActiveDiscountPercent failed", t);
-                }
-
-                out.print(gson.toJson(map));
-                return;
-            }
-
-            Integer categoryId = null;
-            if (categoryIdParam != null && !categoryIdParam.isEmpty()) {
-                try {
-                    categoryId = Integer.parseInt(categoryIdParam);
-                } catch (NumberFormatException e) {
-                    logger.error("Invalid categoryId param", e);
-                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                    out.print("{\"error\":\"Invalid category_id\"}");
-                    return;
-                }
-            }
-
-            if (query != null) {
-                query = query.trim().replaceAll("[^a-zA-Z0-9 ]", "");
-            }
-
-            List<Product> products = productDao.getFilteredProducts(categoryId, query, filter);
-            List<Map<String, Object>> outList = new ArrayList<>(products.size());
-
-            for (Product p : products) {
-                Map<String, Object> map = productToMap(p);
-                final Integer pid = (Integer) map.get("productId");
-
-                try {
-                    List<String> imgs = productDao.getImagesForProduct(pid);
-                    if (imgs != null && !imgs.isEmpty()) {
-                        map.put("images", imgs);
-                    }
-                } catch (Exception t) {
-                    logger.debug("getImagesForProduct failed for pid=" + pid, t);
-                }
-
-                try {
-                    double disc = productDao.getActiveDiscountPercent(pid);
-                    if (disc > 0.0) {
-                        map.put("discountPercent", disc);
-                        Double price = toDoubleSafe(map.get("price"));
-                        if (price != null) {
-                            double dp = Math.round((price - (price * disc / 100.0)) * 100.0) / 100.0;
-                            map.put("discountedPrice", dp);
-                        }
-                    } else {
-                        map.put("discountPercent", 0.0);
-                    }
-                } catch (Exception t) {
-                    logger.debug("getActiveDiscountPercent failed for pid=" + pid, t);
-                }
-
-                outList.add(map);
-            }
-
-            out.print(gson.toJson(outList));
-        } catch (Exception ex) {
-            logger.error("ProductServlet error", ex);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            out.print("{\"error\":\"Internal server error\"}");
-        } finally {
-            out.flush();
-        }
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest request,
-                          HttpServletResponse response)
-            throws ServletException, IOException {
-        doGet(request, response);
-    }
-
-    private Map<String, Object> productToMap(Product p) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        try {
-            m.put("productId", safeGetInt(p, "getProductId", "getProduct_id"));
-            m.put("categoryId", safeGetInt(p, "getCategoryId", "getCategory_id", "getCatId"));
-            m.put("productName", safeGetString(p, "getProductName", "getProduct_name", "getName"));
-            m.put("description", safeGetString(p, "getDescription", "getDesc"));
-            m.put("price", safeGetDouble(p, "getPrice", "getProductPrice"));
-            m.put("stock", safeGetIntOrNull(p, "getStock", "getQty"));
-
-            // new image handling: prefer Base64/data URI or binary -> convert, else fallback to URL string
-            String image = safeGetImage(p,
-                    "getImageBase64", // if model provides base64 string
-                    "getImageData",   // if model provides byte[]; we'll convert to data URI
-                    "getImageUrl",
-                    "getImage",
-                    "getImg"
-            );
-
-            if (image != null) {
-                m.put("image", image);
-            } else {
-                m.put("image", ""); // keep key but empty so frontend receives consistent schema
-            }
-
-        } catch (Exception e) {
-            logger.debug("productToMap reflection issue", e);
-        }
-        return m;
-    }
-
-    /**
-     * Tries to resolve image from the product via reflection.
-     *
-     * Order:
-     *  1) getImageBase64() -> expects String (raw base64); returned as data URI (prefixed)
-     *  2) getImageData()   -> expects byte[]; converted to data URI (assumes jpeg unless model provides mime)
-     *  3) getImageUrl()/getImage()/getImg() -> expects String path/url returned as-is
-     *
-     * Returns a String suitable for <img src="..."> (either a data URI or URL path).
-     */
-    private String safeGetImage(Product p, String... methods) {
-        for (String m : methods) {
-            try {
-                Method method = p.getClass().getMethod(m);
-                Object v = method.invoke(p);
-                if (v == null) continue;
-
-                // If method returned a byte[] (binary image)
-                if (v instanceof byte[]) {
-                    byte[] bytes = (byte[]) v;
-                    if (bytes.length == 0) continue;
-                    String base64 = Base64.getEncoder().encodeToString(bytes);
-                    // Assume jpeg by default; if you store mime type separately, update prefix accordingly
-                    return "data:image/jpeg;base64," + base64;
-                }
-
-                // If method returned a String
-                if (v instanceof String) {
-                    String s = (String) v;
-                    if (s.trim().isEmpty()) continue;
-                    // If this method is getImageBase64 (raw base64), ensure proper data URI prefix
-                    if ("getImageBase64".equals(m)) {
-                        // If user stored base64 without prefix, add prefix
-                        if (s.startsWith("data:")) {
-                            return s;
-                        } else {
-                            return "data:image/jpeg;base64," + s;
-                        }
-                    }
-                    // For other string-returning methods assume it's a URL/path or already a data URI
-                    return s;
-                }
-
-                // If method returned something else (e.g., InputStream) - not handled here
-            } catch (NoSuchMethodException ns) {
-                continue;
-            } catch (Exception ex) {
-                logger.debug("safeGetImage invoke failed for " + m, ex);
-                continue;
-            }
-        }
-        return null;
-    }
-
-    private Integer safeGetInt(Product p, String... methods) {
-        for (String m : methods) {
-            try {
-                Method method = p.getClass().getMethod(m);
-                Object v = method.invoke(p);
-                if (v instanceof Number) {
-                    return ((Number) v).intValue();
-                }
-                if (v instanceof String) {
-                    try {
-                        return Integer.parseInt((String) v);
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            } catch (NoSuchMethodException ns) {
-                continue;
-            } catch (Exception ex) {
-                logger.debug("safeGetInt invoke failed for " + m, ex);
-            }
-        }
-        return null;
-    }
-
-    private Integer safeGetIntOrNull(Product p, String... methods) {
-        return safeGetInt(p, methods);
-    }
-
-    private Double safeGetDouble(Product p, String... methods) {
-        for (String m : methods) {
-            try {
-                Method method = p.getClass().getMethod(m);
-                Object v = method.invoke(p);
-                if (v instanceof Number) {
-                    return ((Number) v).doubleValue();
-                }
-                if (v instanceof String) {
-                    try {
-                        return Double.parseDouble((String) v);
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
-            } catch (NoSuchMethodException ns) {
-                continue;
-            } catch (Exception ex) {
-                logger.debug("safeGetDouble invoke failed for " + m, ex);
-            }
-        }
-        return null;
-    }
-
-    private String safeGetString(Product p, String... methods) {
-        for (String m : methods) {
-            try {
-                Method method = p.getClass().getMethod(m);
-                Object v = method.invoke(p);
-                if (v != null) {
-                    return String.valueOf(v);
-                }
-            } catch (NoSuchMethodException ns) {
-                continue;
-            } catch (Exception ex) {
-                logger.debug("safeGetString invoke failed for " + m, ex);
-            }
-        }
-        return null;
-    }
-
-    private Double toDoubleSafe(Object o) {
-        if (o == null) {
-            return null;
-        }
-        if (o instanceof Number) {
-            return ((Number) o).doubleValue();
-        }
-        try {
-            return Double.parseDouble(String.valueOf(o));
-        } catch (Exception e) {
-            return null;
-        }
-    }
+type ContactResult = {
+  contact_cust_id: string
+  contact_name: string
+  account_name?: string
 }
 
-----------------------------------
+type ReassignResult = {
+  EMP_ID: string
+  reassign_name: string
+  role_name?: string
+}
+
+export default function TasksWidget() {
+  const { toast } = useToast()
+  const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [isModalOpen, setModalOpen] = useState(false)
+  const [editTask, setEditTask] = useState<TaskItem | null>(null)
+  const [subject, setSubject] = useState('')
+  const [assignedTo, setAssignedTo] = useState('')
+  const [taskType, setTaskType] = useState('')
+  const [status, setStatus] = useState('')
+  const [contacts, setContacts] = useState<string[]>([])
+  const [contactNames, setContactNames] = useState<string[]>([])
+  const [description, setDescription] = useState('')
+  const [dueDate, setDueDate] = useState<Date | null>(new Date())
+  const [timeStr, setTimeStr] = useState('10:00')
+  const [contactQuery, setContactQuery] = useState('')
+  const [contactOptions, setContactOptions] = useState<ContactResult[]>([])
+  const [contactLoading, setContactLoading] = useState(false)
+  const [reassignQuery, setReassignQuery] = useState('')
+  const [reassignOptions, setReassignOptions] = useState<ReassignResult[]>([])
+  const [reassignLoading, setReassignLoading] = useState(false)
+  const [remindersByTask, setRemindersByTask] = useState<Record<string, { id?: string; date: string; time: string }[]>>({})
+
+  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
+
+  async function fetchTasks() {
+    setLoading(true)
+    try {
+      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
+      const body = new URLSearchParams({ summaryFilter }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        setTasks(Array.isArray(data.data) ? data.data : [])
+
+        const rawTasks = Array.isArray(data.data) ? data.data : []
+        const normalizedTasks = rawTasks.map((task: any) => {
+          const contactIds = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
+            : []
+
+          const contactNames = task.contactList? task.contactList.map((contactItem: any) => contactItem.contact_name): []
+          const accountNames= task.contactList? task.contactList.map((contactItem: any) => contactItem.account_name): []
+          console.log(accountNames);
+          return {
+            ...task,
+
+            contacts: contactIds,
+            contactName: contactNames,
+            accountName:accountNames,
+          }
+        })
+
+        setTasks(normalizedTasks)
+      } else {
+        setTasks([])
+      }
+    } catch (err) {
+      console.error('fetchTasks error', err)
+      toast({ title: 'Error', description: 'Failed to fetch tasks' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchTaskDetails(taskId: string) {
+    try {
+      const body = new URLSearchParams({ taskId }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        if (Array.isArray(data.data) && data.data.length > 0) return data.data[0]
+        return data.data || null
+      }
+      return null
+    } catch (err) {
+      return null
+    }
+  }
+
+  useEffect(() => {
+    fetchTasks()
+  }, [])
+
+  async function handleAddTask() {
+    try {
+      if (!subject.trim()) {
+        toast({ title: 'Validation', description: 'Subject required' })
+        return
+      }
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts,
+        contactName: contactNames,
+        assignedTo,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        action: 'Save',
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Added Successfully' })
+        setModalOpen(false)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
+      }
+    } catch (err) {
+      console.error('handleAddTask', err)
+      toast({ title: 'Error', description: 'Failed to add task' })
+    }
+  }
+
+  async function handleUpdateTask() {
+    try {
+      if (!editTask) return
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts,
+        contactName: contactNames,
+        assignedTo,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        action: 'Update',
+        taskId: editTask.taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Updated Successfully' })
+        setModalOpen(false)
+        setEditTask(null)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
+      }
+    } catch (err) {
+      console.error('handleUpdateTask', err)
+      toast({ title: 'Error', description: 'Failed to update task' })
+    }
+  }
+
+  async function openEditModal(task: TaskItem) {
+    let tdata: any = task
+    const missingContacts =
+      !tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
+    const missingName = !tdata.taskName && !tdata.subject
+
+    if ((missingContacts || missingName) && tdata.taskId) {
+      const full = await fetchTaskDetails(tdata.taskId)
+      if (full) tdata = { ...tdata, ...full }
+    }
+
+    setEditTask(tdata)
+    setSubject(tdata.taskName || tdata.subject || '')
+    setDescription(tdata.taskComment || tdata.taskComments || '')
+    setAssignedTo(tdata.taskAssignedId || tdata.assignedTo || '')
+    setTaskType(tdata.taskType || '')
+    setStatus(tdata.taskStatus || '')
+
+    if (tdata.taskDate) {
+      const iso = String(tdata.taskDate).replace(' ', 'T')
+      const dt = new Date(iso)
+      if (!isNaN(dt.getTime())) {
+        setDueDate(dt)
+        const hh = dt.getHours().toString().padStart(2, '0')
+        const mm = dt.getMinutes().toString().padStart(2, '0')
+        setTimeStr(`${hh}:${mm}`)
+      } else {
+        setDueDate(new Date())
+        setTimeStr('10:00')
+      }
+    } else {
+      setDueDate(new Date())
+      setTimeStr('10:00')
+    }
 
 
 
+    const selectedIdsForUI = normalizeToArray(tdata.contacts)
+    const selectedNamesForAPI: string[] = []
+
+    if (availableContacts && availableContacts.length > 0) {
+      selectedIdsForUI.forEach((idFromTask) => {
+        const foundContact = availableContacts.find((contact) => contact.id === idFromTask)
+
+        if (foundContact) {
+          selectedNamesForAPI.push(foundContact.name)
+        }
+      })
+    }
+
+    setContacts(selectedIdsForUI)
+    setContactNames(selectedNamesForAPI)
+
+    setModalOpen(true)
+  }
+
+  async function deleteTask(taskId: string, originalTaskData: any) {
+    try {
+      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+      const dueDateStr = dueDate? dueDate.toISOString().slice(0, 10): originalTaskData?.taskDate? originalTaskData.taskDate.split(' ')[0]: ''
+      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
+      const payload = {
+        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
+        dueDate: formattedDateTime,
+        dueTime: timeStr,
+        contacts: originalTaskData?.contacts || [],
+        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
+        clienttimezone,
+        status: 'Dismiss',
+        taskType: originalTaskData?.taskType || '',
+        taskComments:
+          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
+        module_name: 'Task',
+        action: 'Dismiss',
+        taskId: taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+
+      if (data?.status === 1) {
+        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Delete failed' })
+      }
+    } catch (err) {
+      console.error('deleteTask', err)
+      toast({ title: 'Error', description: 'Delete failed' })
+    }
+  }
+
+  function resetForm() {
+    setSubject('')
+    setAssignedTo('')
+    setTaskType('')
+    setStatus('')
+    setContacts([])
+    setContactNames([])
+    setDescription('')
+    const now = new Date();
+    setDueDate(now);
+    const hh = now.getHours().toString().padStart(2, "0"); 
+    const mm = now.getMinutes().toString().padStart(2, "0");
+    const currentTimeString = `${hh}:${mm}`;
+    setTimeStr(currentTimeString);
+  }
+
+  const calcTimeDiff = (due: string | undefined) => {
+    if (!due) return null
+    const dueDate = new Date(due)
+    const now = new Date()
+    const diffMs = dueDate.getTime() - now.getTime()
+    const abs = Math.abs(diffMs)
+    const days = Math.floor(abs / 86400000)
+    const hours = Math.floor((abs % 86400000) / 3600000)
+    const mins = Math.floor(((abs % 86400000) % 3600000) / 60000)
+    if (days > 0) return `${days} Day(s)`
+    if (hours > 0) return `${hours} Hour(s)`
+    if (mins > 0) return `${mins} Min(s)`
+    return '0 Min(s)'
+  }
+
+  const handleAssigneeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setAssignedTo(e.target.value)
+  }
+
+  const availableContacts = [
+    {
+      id: '10029',
+      name: 'David Roberts < droberts@angelogordon.com > Angelo Gordon & Co., L.P.',
+      accountName: 'Angelo Gordon & Co., L.P.'
+    },
+
+    {
+      id: '10030',
+      name: 'Sarah Connor < sconnor@example.com > T-800 Corp.',
+      accountName: 'T-800 Corp.'
+    },
+    {
+      id: '10031',
+      name: 'John Doe < jdoe@example.com > Generic Inc.',
+      accountName: 'Generic Inc.'
+    },
+  ]
+
+  const handleContactChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedOptions = Array.from(e.target.selectedOptions)
+    const selectedIds = selectedOptions.map((option) => option.value)
+    const selectedNames = selectedOptions.map((option) => option.text)
+    setContacts(selectedIds)
+    setContactNames(selectedNames)
+  }
+
+  return (
+    <div className="p-5">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => {
+            setEditTask(null)
+            resetForm()
+            setModalOpen(true)
+          }}
+          className="rounded bg-blue-600 px-4 py-2 text-white"
+        >
+          Add Task
+        </button>
+      </div>
+
+      {loading ? (
+        <div>Loading...</div>
+      ) : tasks.length === 0 ? (
+        <p>No tasks found</p>
+      ) : (
+        <ul className="space-y-3">
+          {tasks.map((t) => {
+            const due = t.taskDate
+            return (
+              <li key={t.taskId} className="relative rounded border bg-gray-50 p-3 shadow-sm">
+                <h3 className="font-bold">{t.taskName}</h3>
+                <p>{t.taskComment}</p>
+                <p className="text-sm text-gray-600">
+                  Due: {due} | Status: {t.taskStatus} | Assignee: {t.taskAssignedName}
+                </p>
+
+                {t.taskDate && (
+                  <small className="absolute right-4 top-2 rounded bg-red-500 px-2 py-1 text-xs text-white">
+                    {calcTimeDiff(t.taskDate)}
+                  </small>
+                )}
+
+                <div className="mt-2 flex gap-3">
+                  <button
+                    className="rounded bg-yellow-600 px-3 py-1 text-white"
+                    onClick={() => openEditModal(t)}
+                  >
+                    Edit
+                  </button>
+
+                  <button
+                    className="rounded bg-red-600 px-3 py-1 text-white"
+                    onClick={() => deleteTask(t.taskId, t)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="relative z-50 w-[700px] rounded-lg bg-white p-5">
+            <button className="absolute right-2 top-2" onClick={() => setModalOpen(false)}>
+              X
+            </button>
+            <h2 className="mb-4 text-xl font-semibold">{editTask ? 'Update Task' : 'Add Task'}</h2>
+
+            <label htmlFor="assignTo" className="mb-2 block">
+              Assign To
+            </label>
+
+            <select
+              id="assignTo"
+              value={assignedTo}
+              onChange={handleAssigneeChange}
+              className="mb-3 w-full rounded border p-2"
+            >
+              <option value="">-- Select an assignee --</option>
+              <option value="y00103">SABARISH Sanjeevi</option>
+              <option value="y00143">Ajay Balu</option>
+            </select>
+
+            <label>Due Date</label>
+            <DatePicker
+              selected={dueDate}
+              onChange={(d: Date | null) => setDueDate(d)}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <label>Time</label>
+            <input
+              type="time"
+              value={timeStr}
+              onChange={(e) => setTimeStr(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <label>Task Type</label>
+            <select
+              value={taskType}
+              onChange={(e) => setTaskType(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            >
+              <option value="">-- Select --</option>
+              <option value="Call Back1">Call Back1</option>
+              <option value="Action items">Action Items</option>
+              <option value="Others">Others</option>
+              <option value="Schedule Meeting">Schedule Meeting</option>
+            </select>
+
+            <label>Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            >
+              <option value="">-- Select --</option>
+              <option value="Not Started">Not Started</option>
+              <option value="Completed">Completed</option>
+              <option value="In Progress">In Progress</option>
+            </select>
+
+            <label>Subject</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <label htmlFor="contacts" className="mb-2 block">
+              Contacts
+            </label>
+
+            <select
+              id="contacts"
+              multiple
+              value={contacts}
+              onChange={handleContactChange}
+              className="mb-3 h-40 w-full appearance-none overflow-y-auto rounded-lg border border-gray-300 bg-white p-3 text-gray-900 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              style={{ MozAppearance: 'none', WebkitAppearance: 'none' }}
+            >
+              {availableContacts.map((contact) => (
+                <option key={contact.id} value={contact.id} className="p-2 hover:bg-blue-100">
+                  {contact.name}
+                </option>
+              ))}
+
+              {contacts
+                .filter((id) => !availableContacts.some((c) => c.id === id))
+                .map((id, idx) => (
+                  <option key={`missing-${id}-${idx}`} value={id} className="p-2">
+                    {contactNames[idx] || id}
+                  </option>
+                ))}
+            </select>
+
+            <label>Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="mb-3 w-full rounded border p-2"
+            />
+
+            <div className="mt-3">
+              <button
+                onClick={() => {
+                  if (editTask) handleUpdateTask()
+                  else handleAddTask()
+                }}
+                className="w-full rounded bg-green-600 py-2 text-white"
+              >
+                {editTask ? 'Update Task' : 'Save Task'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
