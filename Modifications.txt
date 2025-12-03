@@ -1,840 +1,38 @@
-package dao;
-
-import utils.DBUtils;
-import utils.LoggerUtil;
-import org.apache.log4j.Logger;
-
-import java.sql.*;
-import java.util.*;
-
-public class UnblockRequestDao {
-    private static final Logger logger = LoggerUtil.getLogger(UnblockRequestDao.class);
-
-    /**
-     * Get all pending unblock requests
-     */
-    public List<Map<String, Object>> getPendingRequests() throws SQLException {
-        List<Map<String, Object>> requests = new ArrayList<>();
-        String sql = "SELECT ur.request_id, ur.user_id, ur.username, ur.email, ur.reason, " +
-                     "ur.request_date, ur.status, u.fullname, u.phone " +
-                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
-                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
-                     "WHERE ur.status = 'pending' " +
-                     "ORDER BY ur.request_date DESC";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                Map<String, Object> req = new HashMap<>();
-                req.put("requestId", rs.getInt("request_id"));
-                req.put("userId", rs.getInt("user_id"));
-                req.put("username", rs.getString("username"));
-                req.put("email", rs.getString("email"));
-                req.put("reason", rs.getString("reason"));
-                req.put("requestDate", rs.getTimestamp("request_date"));
-                req.put("status", rs.getString("status"));
-                req.put("fullname", rs.getString("fullname"));
-                req.put("phone", rs.getString("phone"));
-                requests.add(req);
-            }
-        }
-        return requests;
-    }
-
-    /**
-     * Approve unblock request - activates user and updates request status
-     */
-    public boolean approveRequest(int requestId, String adminNotes) throws SQLException {
-        String updateRequestSql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
-                                  "SET status = 'approved', admin_notes = ?, processed_date = GETDATE() " +
-                                  "WHERE request_id = ?";
-        
-        String activateUserSql = "UPDATE Ecommerce_Website.M_S_USER " +
-                                "SET is_active = 1, deactivation_message = NULL, deactivated_at = NULL " +
-                                "WHERE user_id = (SELECT user_id FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS WHERE request_id = ?)";
-
-        Connection conn = null;
-        try {
-            conn = DBUtils.getConnection();
-            conn.setAutoCommit(false);
-
-            // Update request status
-            try (PreparedStatement ps = conn.prepareStatement(updateRequestSql)) {
-                ps.setString(1, adminNotes);
-                ps.setInt(2, requestId);
-                ps.executeUpdate();
-            }
-
-            // Activate user
-            try (PreparedStatement ps = conn.prepareStatement(activateUserSql)) {
-                ps.setInt(1, requestId);
-                ps.executeUpdate();
-            }
-
-            conn.commit();
-            logger.info("Approved unblock request: " + requestId);
-            return true;
-
-        } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    logger.error("Rollback failed", ex);
-                }
-            }
-            logger.error("Failed to approve request", e);
-            throw e;
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException e) {
-                    logger.error("Connection close failed", e);
-                }
-            }
-        }
-    }
-
-    /**
-     * Reject unblock request
-     */
-    public boolean rejectRequest(int requestId, String adminNotes) throws SQLException {
-        String sql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
-                     "SET status = 'rejected', admin_notes = ?, processed_date = GETDATE() " +
-                     "WHERE request_id = ?";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, adminNotes);
-            ps.setInt(2, requestId);
-            int updated = ps.executeUpdate();
-            logger.info("Rejected unblock request: " + requestId);
-            return updated > 0;
-        }
-    }
-
-    /**
-     * Get request details by ID
-     */
-    public Map<String, Object> getRequestById(int requestId) throws SQLException {
-        String sql = "SELECT ur.*, u.fullname, u.phone, u.address, u.is_active " +
-                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
-                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
-                     "WHERE ur.request_id = ?";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, requestId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    Map<String, Object> req = new HashMap<>();
-                    req.put("requestId", rs.getInt("request_id"));
-                    req.put("userId", rs.getInt("user_id"));
-                    req.put("username", rs.getString("username"));
-                    req.put("email", rs.getString("email"));
-                    req.put("reason", rs.getString("reason"));
-                    req.put("requestDate", rs.getTimestamp("request_date"));
-                    req.put("status", rs.getString("status"));
-                    req.put("adminNotes", rs.getString("admin_notes"));
-                    req.put("processedDate", rs.getTimestamp("processed_date"));
-                    req.put("fullname", rs.getString("fullname"));
-                    req.put("phone", rs.getString("phone"));
-                    req.put("address", rs.getString("address"));
-                    req.put("isActive", rs.getInt("is_active"));
-                    return req;
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Check if user has pending request
-     */
-    public boolean hasPendingRequest(int userId) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
-                     "WHERE user_id = ? AND status = 'pending'";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, userId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt(1) > 0;
-                }
-            }
-        }
-        return false;
-    }
-}
-
----------------------------------------------
-
-package servlets;
-
-import com.google.gson.Gson;
-import dao.UnblockRequestDao;
-import utils.EmailUtil;
-import utils.LoggerUtil;
-import org.apache.log4j.Logger;
-
-import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.*;
-import java.io.IOException;
-import java.sql.SQLException;
-import java.util.*;
-
-@WebServlet("/UnblockManagementServlet")
-public class UnblockManagementServlet extends HttpServlet {
-    private static final long serialVersionUID = 1L;
-    private static final Logger logger = LoggerUtil.getLogger(UnblockManagementServlet.class);
-    private final Gson gson = new Gson();
-    private final UnblockRequestDao dao = new UnblockRequestDao();
-
-    /**
-     * Check if user is admin
-     */
-    private boolean isAdmin(HttpServletRequest request) {
-        HttpSession session = request.getSession(false);
-        if (session == null) return false;
-        Boolean isAdmin = (Boolean) session.getAttribute("isAdmin");
-        return Boolean.TRUE.equals(isAdmin);
-    }
-
-    @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-        
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-
-        if (!isAdmin(request)) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Unauthorized\"}");
-            return;
-        }
-
-        String action = request.getParameter("action");
-
-        try {
-            if ("listPendingRequests".equals(action)) {
-                List<Map<String, Object>> requests = dao.getPendingRequests();
-                response.getWriter().write(gson.toJson(requests));
-            } 
-            else if ("getRequestDetails".equals(action)) {
-                int requestId = Integer.parseInt(request.getParameter("requestId"));
-                Map<String, Object> requestData = dao.getRequestById(requestId);
-                if (requestData != null) {
-                    response.getWriter().write(gson.toJson(requestData));
-                } else {
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    response.getWriter().write("{\"error\":\"Request not found\"}");
-                }
-            }
-            else {
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.getWriter().write("{\"error\":\"Unknown action\"}");
-            }
-
-        } catch (SQLException e) {
-            logger.error("Database error", e);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
-        } catch (NumberFormatException e) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.getWriter().write("{\"error\":\"Invalid request ID\"}");
-        }
-    }
-
-    @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
-            throws ServletException, IOException {
-        
-        response.setContentType("application/json");
-        response.setCharacterEncoding("UTF-8");
-
-        if (!isAdmin(request)) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Unauthorized\"}");
-            return;
-        }
-
-        String action = request.getParameter("action");
-
-        try {
-            if ("approveRequest".equals(action)) {
-                handleApproveRequest(request, response);
-            } 
-            else if ("rejectRequest".equals(action)) {
-                handleRejectRequest(request, response);
-            }
-            else {
-                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.getWriter().write("{\"error\":\"Unknown action\"}");
-            }
-
-        } catch (SQLException e) {
-            logger.error("Database error", e);
-            response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
-        } catch (NumberFormatException e) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.getWriter().write("{\"error\":\"Invalid input\"}");
-        }
-    }
-
-    private void handleApproveRequest(HttpServletRequest request, HttpServletResponse response)
-            throws SQLException, IOException {
-        
-        int requestId = Integer.parseInt(request.getParameter("requestId"));
-        String adminNotes = request.getParameter("adminNotes");
-
-        // Get request details before approval
-        Map<String, Object> requestData = dao.getRequestById(requestId);
-        if (requestData == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().write("{\"error\":\"Request not found\"}");
-            return;
-        }
-
-        // Approve the request
-        boolean success = dao.approveRequest(requestId, adminNotes);
-
-        if (success) {
-            // Send email to user
-            String userEmail = (String) requestData.get("email");
-            String username = (String) requestData.get("username");
-            
-            if (userEmail != null && !userEmail.trim().isEmpty()) {
-                String subject = "Account Reactivation Approved";
-                String body = EmailUtil.getUnblockApprovedTemplate(username != null ? username : "User");
-                EmailUtil.sendHtmlEmail(userEmail, subject, body);
-            }
-
-            logger.info("Unblock request approved: " + requestId);
-            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request approved successfully\"}");
-        } else {
-            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to approve request\"}");
-        }
-    }
-
-    private void handleRejectRequest(HttpServletRequest request, HttpServletResponse response)
-            throws SQLException, IOException {
-        
-        int requestId = Integer.parseInt(request.getParameter("requestId"));
-        String adminNotes = request.getParameter("adminNotes");
-
-        if (adminNotes == null || adminNotes.trim().isEmpty()) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.getWriter().write("{\"error\":\"Admin notes required for rejection\"}");
-            return;
-        }
-
-        // Get request details before rejection
-        Map<String, Object> requestData = dao.getRequestById(requestId);
-        if (requestData == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().write("{\"error\":\"Request not found\"}");
-            return;
-        }
-
-        // Reject the request
-        boolean success = dao.rejectRequest(requestId, adminNotes);
-
-        if (success) {
-            // Send email to user
-            String userEmail = (String) requestData.get("email");
-            String username = (String) requestData.get("username");
-            
-            if (userEmail != null && !userEmail.trim().isEmpty()) {
-                String subject = "Account Reactivation Request Update";
-                String body = EmailUtil.getUnblockRejectedTemplate(
-                    username != null ? username : "User", 
-                    adminNotes
-                );
-                EmailUtil.sendHtmlEmail(userEmail, subject, body);
-            }
-
-            logger.info("Unblock request rejected: " + requestId);
-            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request rejected\"}");
-        } else {
-            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to reject request\"}");
-        }
-    }
-}
-
-------------------------------------------------------------------------------
-
-
-// After successful insert in UnblockRequestServlet.java
-if (rows > 0) {
-    logger.info("Unblock request submitted for user: " + username + " (ID: " + userId + ")");
-    
-    // Send confirmation email to user
-    String userSubject = "Unblock Request Received";
-    String userBody = EmailUtil.getUnblockRequestReceivedTemplate(username);
-    EmailUtil.sendHtmlEmail(email.trim(), userSubject, userBody);
-    
-    // Send notification to admin
-    String adminEmail = "admin@yourcompany.com"; // Configure this
-    String adminSubject = "New Unblock Request - Action Required";
-    String adminBody = EmailUtil.getAdminUnblockNotificationTemplate(username, email, reason.trim());
-    EmailUtil.sendHtmlEmail(adminEmail, adminSubject, adminBody);
-    
-    json.addProperty("status", "success");
-    json.addProperty("message", "Your request has been submitted successfully");
-}
-
---------------------------------------------------------------------------
-
-<div class="nav-item sidebar-btn" data-target="unblock-requests" role="button">Unblock Requests</div>
-
-----------------------------------------------------------------------------------
-
-
-<section id="view-unblock-requests" class="panel hidden mt-6">
-  <div class="page-head">
-    <div>
-      <h2>Unblock Requests</h2>
-      <div class="muted">Review and manage user reactivation requests</div>
-    </div>
-  </div>
-
-  <div class="card">
-    <table id="unblockRequestsTable" class="display stripe hover" style="width:100%">
-      <thead>
-        <tr>
-          <th>Request ID</th>
-          <th>User</th>
-          <th>Email</th>
-          <th>Request Date</th>
-          <th>Reason</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
-</section>
-
---------------------------------------------------------------------------------------
-
-// Initialize unblock requests table
-let unblockRequestsTable = $('#unblockRequestsTable').DataTable({
-    ajax: {
-        url: '/Ecommerce_Website/UnblockManagementServlet',
-        type: 'GET',
-        data: { action: 'listPendingRequests' },
-        dataSrc: ''
-    },
-    columns: [
-        { data: 'requestId' },
-        { data: 'username' },
-        { data: 'email' },
-        {
-            data: 'requestDate',
-            render: function(d) {
-                try { return new Date(d).toLocaleString(); } 
-                catch(e) { return d; }
-            }
-        },
-        {
-            data: 'reason',
-            render: function(d) {
-                return d.length > 50 ? d.substring(0, 50) + '...' : d;
-            }
-        },
-        {
-            data: null,
-            orderable: false,
-            render: function(r) {
-                return '<button class="approve-request-btn bg-green-500 text-white px-3 py-1 rounded mr-2" data-id="' + r.requestId + '">Approve</button>' +
-                       '<button class="reject-request-btn bg-red-500 text-white px-3 py-1 rounded" data-id="' + r.requestId + '">Reject</button>';
-            }
-        }
-    ],
-    pageLength: 10
-});
-
-// Handle approve request
-$(document).on('click', '.approve-request-btn', function() {
-    const requestId = $(this).data('id');
-    
-    Swal.fire({
-        title: 'Approve Request',
-        input: 'textarea',
-        inputLabel: 'Admin Notes (Optional)',
-        inputPlaceholder: 'Enter any notes about this approval...',
-        showCancelButton: true,
-        confirmButtonText: 'Approve',
-        confirmButtonColor: '#10b981'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            $.post('/Ecommerce_Website/UnblockManagementServlet', {
-                action: 'approveRequest',
-                requestId: requestId,
-                adminNotes: result.value || ''
-            }, function(res) {
-                if (res && res.status === 'ok') {
-                    Swal.fire('Approved!', 'User account has been reactivated.', 'success');
-                    unblockRequestsTable.ajax.reload();
-                    usersTable.ajax.reload();
-                } else {
-                    Swal.fire('Error', 'Failed to approve request', 'error');
-                }
-            }, 'json').fail(function() {
-                Swal.fire('Error', 'Server error', 'error');
-            });
-        }
-    });
-});
-
-// Handle reject request
-$(document).on('click', '.reject-request-btn', function() {
-    const requestId = $(this).data('id');
-    
-    Swal.fire({
-        title: 'Reject Request',
-        input: 'textarea',
-        inputLabel: 'Reason for Rejection (Required)',
-        inputPlaceholder: 'Please provide a reason for rejection...',
-        showCancelButton: true,
-        confirmButtonText: 'Reject',
-        confirmButtonColor: '#ef4444',
-        inputValidator: (value) => {
-            if (!value || value.trim().length < 10) {
-                return 'Please provide a detailed reason (at least 10 characters)';
-            }
-        }
-    }).then((result) => {
-        if (result.isConfirmed) {
-            $.post('/Ecommerce_Website/UnblockManagementServlet', {
-                action: 'rejectRequest',
-                requestId: requestId,
-                adminNotes: result.value
-            }, function(res) {
-                if (res && res.status === 'ok') {
-                    Swal.fire('Rejected', 'Request has been rejected.', 'success');
-                    unblockRequestsTable.ajax.reload();
-                } else {
-                    Swal.fire('Error', 'Failed to reject request', 'error');
-                }
-            }, 'json').fail(function() {
-                Swal.fire('Error', 'Server error', 'error');
-            });
-        }
-    });
-});
-
-----------------------------------------------------------------------------
-
-For Discount Duplicate Prevention & Auto-Delete:
-Update AdminDao.java:
-
-// Check if product already has an active discount
-public boolean productHasActiveDiscount(int productId) throws SQLException {
-    String sql = "SELECT COUNT(*) FROM Ecommerce_Website.M_S_PRODUCT_DISCOUNTS " +
-                 "WHERE product_id = ? AND (end_date IS NULL OR end_date >= GETDATE())";
-    try (Connection conn = DBUtils.getConnection();
-         PreparedStatement ps = conn.prepareStatement(sql)) {
-        ps.setInt(1, productId);
-        try (ResultSet rs = ps.executeQuery()) {
-            if (rs.next()) {
-                return rs.getInt(1) > 0;
-            }
-        }
-    }
-    return false;
-}
-
-// Delete expired discounts
-public int deleteExpiredDiscounts() throws SQLException {
-    String sql = "DELETE FROM Ecommerce_Website.M_S_PRODUCT_DISCOUNTS " +
-                 "WHERE end_date IS NOT NULL AND end_date < GETDATE()";
-    try (Connection conn = DBUtils.getConnection();
-         PreparedStatement ps = conn.prepareStatement(sql)) {
-        return ps.executeUpdate();
-    }
-}
---------------------------------------------------------------------------------
-Update Admin.js discount form submission:
-
-$('#discountForm').on('submit', function(e) {
-    e.preventDefault();
-    const productId = $('#discountProductSelect').val();
-    
-    // Check for existing discount before adding
-    $.get('/Ecommerce_Website/AdminServlet', {
-        action: 'checkExistingDiscount',
-        productId: productId
-    }, function(res) {
-        if (res && res.hasDiscount) {
-            Swal.fire({
-                title: 'Discount Already Exists',
-                text: 'This product already has an active discount. Would you like to edit it instead?',
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Edit Existing',
-                cancelButtonText: 'Cancel'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    // Load existing discount for editing
-                    loadExistingDiscount(productId);
-                }
-            });
-        } else {
-            // Proceed with adding new discount
-            submitDiscountForm();
-        }
-    }, 'json');
-});
------------------------------------------------------------------
-
-Create a scheduled task for auto-deletion (add to web.xml):
-
-<listener>
-    <listener-class>listeners.DiscountCleanupListener</listener-class>
-</listener>
-----------------------------------------------------------------------
-
-package listeners;
-
-import dao.AdminDao;
-import utils.LoggerUtil;
-import javax.servlet.ServletContextEvent;
-import javax.servlet.ServletContextListener;
-import java.util.Timer;
-import java.util.TimerTask;
-
-public class DiscountCleanupListener implements ServletContextListener {
-    private Timer timer;
-
-    @Override
-    public void contextInitialized(ServletContextEvent sce) {
-        timer = new Timer(true);
-        // Run daily at midnight
-        timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                try {
-                    AdminDao dao = new AdminDao();
-                    int deleted = dao.deleteExpiredDiscounts();
-                    LoggerUtil.info("Deleted " + deleted + " expired discounts");
-                } catch (Exception e) {
-                    LoggerUtil.error("Error deleting expired discounts", e);
-                }
-            }
-        }, 0, 24 * 60 * 60 * 1000); // Run every 24 hours
-    }
-
-    @Override
-    public void contextDestroyed(ServletContextEvent sce) {
-        if (timer != null) {
-            timer.cancel();
-        }
-    }
-}
----------------------------------------------------------------------------------
-CREATE TABLE Ecommerce_Website.D_D_UNBLOCK_REQUESTS (
-    request_id INT IDENTITY(1,1) PRIMARY KEY,
+-- Product Ratings Table
+CREATE TABLE Ecommerce_Website.D_D_PRODUCT_RATINGS (
+    rating_id INT IDENTITY(1,1) PRIMARY KEY,
+    product_id INT NOT NULL,
     user_id INT NOT NULL,
-    username NVARCHAR(255),
-    email NVARCHAR(255) NOT NULL,
-    reason NVARCHAR(MAX) NOT NULL,
-    request_date DATETIME DEFAULT GETDATE(),
-    status NVARCHAR(20) DEFAULT 'pending', -- pending, approved, rejected
-    admin_notes NVARCHAR(MAX),
-    processed_date DATETIME,
-    FOREIGN KEY (user_id) REFERENCES Ecommerce_Website.M_S_USER(user_id)
+    order_id INT NOT NULL,
+    rating DECIMAL(2,1) CHECK (rating >= 1.0 AND rating <= 5.0),
+    review_text NVARCHAR(1000),
+    created_at DATETIME DEFAULT GETDATE(),
+    updated_at DATETIME DEFAULT GETDATE(),
+    FOREIGN KEY (product_id) REFERENCES Ecommerce_Website.M_S_DATAS(product_id),
+    FOREIGN KEY (user_id) REFERENCES Ecommerce_Website.M_S_USER(user_id),
+    FOREIGN KEY (order_id) REFERENCES Ecommerce_Website.D_D_ORDER(order_id),
+    CONSTRAINT UQ_User_Product_Order UNIQUE (user_id, product_id, order_id)
 );
 
----------------------------------------------------------------------------------
-package utils;
+-- Add average rating and rating count to products table
+ALTER TABLE Ecommerce_Website.M_S_DATAS 
+ADD average_rating DECIMAL(3,2) DEFAULT 0.00,
+    rating_count INT DEFAULT 0;
 
-import javax.mail.*;
-import javax.mail.internet.*;
-import java.util.Properties;
+-- Create index for faster queries
+CREATE INDEX IDX_ProductRatings_Product ON Ecommerce_Website.D_D_PRODUCT_RATINGS(product_id);
+CREATE INDEX IDX_ProductRatings_User ON Ecommerce_Website.D_D_PRODUCT_RATINGS(user_id);
 
-public class EmailUtil {
 
-    /**
-     * Send email notification
-     */
-    public static boolean sendEmail(String toEmail, String subject, String body) {
-        String smtpHost = System.getenv("SMTP_HOST");
-        String smtpPort = System.getenv("SMTP_PORT");
-        String smtpUser = System.getenv("SMTP_USER");
-        String smtpPass = System.getenv("SMTP_PASS");
-        String from = System.getenv("SMTP_FROM");
 
-        if (smtpHost == null || smtpUser == null || smtpPass == null || smtpPort == null) {
-            LoggerUtil.warn("SMTP configuration not found - email not sent");
-            return false;
-        }
 
-        if (from == null || from.trim().isEmpty()) {
-            from = smtpUser;
-        }
-
-        Properties props = new Properties();
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.host", smtpHost);
-        props.put("mail.smtp.port", smtpPort);
-        props.put("mail.smtp.ssl.trust", smtpHost);
-
-        final String finalFrom = from;
-        final String finalUser = smtpUser;
-        final String finalPass = smtpPass;
-
-        Session mailSession = Session.getInstance(props, new Authenticator() {
-            @Override
-            protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(finalUser, finalPass);
-            }
-        });
-
-        try {
-            Message message = new MimeMessage(mailSession);
-            message.setFrom(new InternetAddress(finalFrom));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
-            message.setSubject(subject);
-            message.setText(body);
-
-            Transport.send(message);
-            LoggerUtil.info("Email sent successfully to: " + toEmail);
-            return true;
-
-        } catch (MessagingException e) {
-            LoggerUtil.error("Failed to send email: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Send HTML email
-     */
-    public static boolean sendHtmlEmail(String toEmail, String subject, String htmlBody) {
-        String smtpHost = System.getenv("SMTP_HOST");
-        String smtpPort = System.getenv("SMTP_PORT");
-        String smtpUser = System.getenv("SMTP_USER");
-        String smtpPass = System.getenv("SMTP_PASS");
-        String from = System.getenv("SMTP_FROM");
-
-        if (smtpHost == null || smtpUser == null || smtpPass == null || smtpPort == null) {
-            LoggerUtil.warn("SMTP configuration not found - email not sent");
-            return false;
-        }
-
-        if (from == null || from.trim().isEmpty()) {
-            from = smtpUser;
-        }
-
-        Properties props = new Properties();
-        props.put("mail.smtp.auth", "true");
-        props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.host", smtpHost);
-        props.put("mail.smtp.port", smtpPort);
-        props.put("mail.smtp.ssl.trust", smtpHost);
-
-        final String finalFrom = from;
-        final String finalUser = smtpUser;
-        final String finalPass = smtpPass;
-
-        Session mailSession = Session.getInstance(props, new Authenticator() {
-            @Override
-            protected PasswordAuthentication getPasswordAuthentication() {
-                return new PasswordAuthentication(finalUser, finalPass);
-            }
-        });
-
-        try {
-            Message message = new MimeMessage(mailSession);
-            message.setFrom(new InternetAddress(finalFrom));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
-            message.setSubject(subject);
-            message.setContent(htmlBody, "text/html; charset=utf-8");
-
-            Transport.send(message);
-            LoggerUtil.info("HTML Email sent successfully to: " + toEmail);
-            return true;
-
-        } catch (MessagingException e) {
-            LoggerUtil.error("Failed to send HTML email: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Email templates
-     */
-    public static String getUnblockRequestReceivedTemplate(String username) {
-        return "<html><body>" +
-               "<h2>Unblock Request Received</h2>" +
-               "<p>Dear " + username + ",</p>" +
-               "<p>We have received your request to reactivate your account.</p>" +
-               "<p>Our admin team will review your request and get back to you within 24-48 hours.</p>" +
-               "<p>Thank you for your patience.</p>" +
-               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
-               "</body></html>";
-    }
-
-    public static String getUnblockApprovedTemplate(String username) {
-        return "<html><body>" +
-               "<h2 style='color: #10b981;'>Account Activated!</h2>" +
-               "<p>Dear " + username + ",</p>" +
-               "<p>Good news! Your account reactivation request has been <strong>approved</strong>.</p>" +
-               "<p>You can now log in to your account and continue shopping.</p>" +
-               "<p><a href='[YOUR_LOGIN_URL]' style='background-color: #10b981; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;'>Login Now</a></p>" +
-               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
-               "</body></html>";
-    }
-
-    public static String getUnblockRejectedTemplate(String username, String reason) {
-        return "<html><body>" +
-               "<h2 style='color: #ef4444;'>Account Reactivation Request</h2>" +
-               "<p>Dear " + username + ",</p>" +
-               "<p>Unfortunately, your account reactivation request has been declined.</p>" +
-               "<p><strong>Reason:</strong> " + reason + "</p>" +
-               "<p>If you have any questions, please contact our support team.</p>" +
-               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
-               "</body></html>";
-    }
-
-    public static String getAccountDeactivatedTemplate(String username, String reason) {
-        return "<html><body>" +
-               "<h2 style='color: #f59e0b;'>Account Deactivated</h2>" +
-               "<p>Dear " + username + ",</p>" +
-               "<p>Your account has been deactivated by an administrator.</p>" +
-               "<p><strong>Reason:</strong> " + reason + "</p>" +
-               "<p>If you believe this was done in error, you can submit an unblock request.</p>" +
-               "<br><p>Best regards,<br>E-Commerce Support Team</p>" +
-               "</body></html>";
-    }
-
-    public static String getAdminUnblockNotificationTemplate(String username, String userEmail, String reason) {
-        return "<html><body>" +
-               "<h2>New Unblock Request</h2>" +
-               "<p>A user has submitted an account reactivation request:</p>" +
-               "<p><strong>User:</strong> " + username + "</p>" +
-               "<p><strong>Email:</strong> " + userEmail + "</p>" +
-               "<p><strong>Reason:</strong> " + reason + "</p>" +
-               "<p>Please review this request in the admin panel.</p>" +
-               "</body></html>";
-    }
-}
-
-------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------
 package servlets;
 
 import com.google.gson.Gson;
-import dao.UnblockRequestDao;
-import utils.EmailUtil;
+import com.google.gson.JsonObject;
+import dao.RatingDao;
+import model.User;
 import utils.LoggerUtil;
 import org.apache.log4j.Logger;
 
@@ -843,24 +41,15 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.*;
 import java.io.IOException;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.List;
+import java.util.Map;
 
-@WebServlet("/UnblockManagementServlet")
-public class UnblockManagementServlet extends HttpServlet {
+@WebServlet("/RatingServlet")
+public class RatingServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
-    private static final Logger logger = LoggerUtil.getLogger(UnblockManagementServlet.class);
+    private static final Logger logger = LoggerUtil.getLogger(RatingServlet.class);
     private final Gson gson = new Gson();
-    private final UnblockRequestDao dao = new UnblockRequestDao();
-
-    /**
-     * Check if user is admin
-     */
-    private boolean isAdmin(HttpServletRequest request) {
-        HttpSession session = request.getSession(false);
-        if (session == null) return false;
-        Boolean isAdmin = (Boolean) session.getAttribute("isAdmin");
-        return Boolean.TRUE.equals(isAdmin);
-    }
+    private final RatingDao ratingDao = new RatingDao();
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -868,42 +57,55 @@ public class UnblockManagementServlet extends HttpServlet {
         
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-
-        if (!isAdmin(request)) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Unauthorized\"}");
-            return;
-        }
-
+        
         String action = request.getParameter("action");
-
+        
         try {
-            if ("listPendingRequests".equals(action)) {
-                List<Map<String, Object>> requests = dao.getPendingRequests();
-                response.getWriter().write(gson.toJson(requests));
-            } 
-            else if ("getRequestDetails".equals(action)) {
-                int requestId = Integer.parseInt(request.getParameter("requestId"));
-                Map<String, Object> requestData = dao.getRequestById(requestId);
-                if (requestData != null) {
-                    response.getWriter().write(gson.toJson(requestData));
-                } else {
-                    response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                    response.getWriter().write("{\"error\":\"Request not found\"}");
+            if ("getProductRatings".equals(action)) {
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                List<Map<String, Object>> ratings = ratingDao.getProductRatings(productId);
+                response.getWriter().write(gson.toJson(ratings));
+                
+            } else if ("getUserRatableProducts".equals(action)) {
+                HttpSession session = request.getSession(false);
+                if (session == null || session.getAttribute("user") == null) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("{\"error\":\"Not logged in\"}");
+                    return;
                 }
-            }
-            else {
+                
+                User user = (User) session.getAttribute("user");
+                List<Map<String, Object>> products = ratingDao.getUserRatableProducts(user.getId());
+                response.getWriter().write(gson.toJson(products));
+                
+            } else if ("checkUserRating".equals(action)) {
+                HttpSession session = request.getSession(false);
+                if (session == null || session.getAttribute("user") == null) {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.getWriter().write("{\"error\":\"Not logged in\"}");
+                    return;
+                }
+                
+                User user = (User) session.getAttribute("user");
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                int orderId = Integer.parseInt(request.getParameter("orderId"));
+                
+                Map<String, Object> rating = ratingDao.getUserRating(user.getId(), productId, orderId);
+                response.getWriter().write(gson.toJson(rating));
+                
+            } else {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.getWriter().write("{\"error\":\"Unknown action\"}");
+                response.getWriter().write("{\"error\":\"Invalid action\"}");
             }
-
+            
+        } catch (NumberFormatException e) {
+            logger.error("Invalid parameter format", e);
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid parameter format\"}");
         } catch (SQLException e) {
             logger.error("Database error", e);
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
-        } catch (NumberFormatException e) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.getWriter().write("{\"error\":\"Invalid request ID\"}");
+            response.getWriter().write("{\"error\":\"Database error\"}");
         }
     }
 
@@ -913,118 +115,94 @@ public class UnblockManagementServlet extends HttpServlet {
         
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-
-        if (!isAdmin(request)) {
+        
+        HttpSession session = request.getSession(false);
+        if (session == null || session.getAttribute("user") == null) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+            response.getWriter().write("{\"error\":\"Not logged in\"}");
             return;
         }
-
+        
+        User user = (User) session.getAttribute("user");
         String action = request.getParameter("action");
-
+        
         try {
-            if ("approveRequest".equals(action)) {
-                handleApproveRequest(request, response);
-            } 
-            else if ("rejectRequest".equals(action)) {
-                handleRejectRequest(request, response);
-            }
-            else {
+            if ("submitRating".equals(action)) {
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                int orderId = Integer.parseInt(request.getParameter("orderId"));
+                double rating = Double.parseDouble(request.getParameter("rating"));
+                String reviewText = request.getParameter("reviewText");
+                
+                // Validate rating
+                if (rating < 1.0 || rating > 5.0) {
+                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                    response.getWriter().write("{\"error\":\"Rating must be between 1 and 5\"}");
+                    return;
+                }
+                
+                // Check if order belongs to user and is delivered
+                if (!ratingDao.canUserRateProduct(user.getId(), productId, orderId)) {
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write("{\"error\":\"You can only rate products from your delivered orders\"}");
+                    return;
+                }
+                
+                boolean success = ratingDao.submitRating(user.getId(), productId, orderId, rating, reviewText);
+                
+                if (success) {
+                    // Update product average rating
+                    ratingDao.updateProductAverageRating(productId);
+                    
+                    JsonObject json = new JsonObject();
+                    json.addProperty("status", "ok");
+                    json.addProperty("message", "Rating submitted successfully");
+                    response.getWriter().write(json.toString());
+                } else {
+                    response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to submit rating\"}");
+                }
+                
+            } else if ("updateRating".equals(action)) {
+                int productId = Integer.parseInt(request.getParameter("productId"));
+                int orderId = Integer.parseInt(request.getParameter("orderId"));
+                double rating = Double.parseDouble(request.getParameter("rating"));
+                String reviewText = request.getParameter("reviewText");
+                
+                if (rating < 1.0 || rating > 5.0) {
+                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                    response.getWriter().write("{\"error\":\"Rating must be between 1 and 5\"}");
+                    return;
+                }
+                
+                boolean success = ratingDao.updateRating(user.getId(), productId, orderId, rating, reviewText);
+                
+                if (success) {
+                    ratingDao.updateProductAverageRating(productId);
+                    
+                    JsonObject json = new JsonObject();
+                    json.addProperty("status", "ok");
+                    json.addProperty("message", "Rating updated successfully");
+                    response.getWriter().write(json.toString());
+                } else {
+                    response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to update rating\"}");
+                }
+                
+            } else {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.getWriter().write("{\"error\":\"Unknown action\"}");
+                response.getWriter().write("{\"error\":\"Invalid action\"}");
             }
-
+            
+        } catch (NumberFormatException e) {
+            logger.error("Invalid parameter format", e);
+            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            response.getWriter().write("{\"error\":\"Invalid parameter format\"}");
         } catch (SQLException e) {
             logger.error("Database error", e);
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
-        } catch (NumberFormatException e) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.getWriter().write("{\"error\":\"Invalid input\"}");
-        }
-    }
-
-    private void handleApproveRequest(HttpServletRequest request, HttpServletResponse response)
-            throws SQLException, IOException {
-        
-        int requestId = Integer.parseInt(request.getParameter("requestId"));
-        String adminNotes = request.getParameter("adminNotes");
-
-        // Get request details before approval
-        Map<String, Object> requestData = dao.getRequestById(requestId);
-        if (requestData == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().write("{\"error\":\"Request not found\"}");
-            return;
-        }
-
-        // Approve the request
-        boolean success = dao.approveRequest(requestId, adminNotes);
-
-        if (success) {
-            // Send email to user
-            String userEmail = (String) requestData.get("email");
-            String username = (String) requestData.get("username");
-            
-            if (userEmail != null && !userEmail.trim().isEmpty()) {
-                String subject = "Account Reactivation Approved";
-                String body = EmailUtil.getUnblockApprovedTemplate(username != null ? username : "User");
-                EmailUtil.sendHtmlEmail(userEmail, subject, body);
-            }
-
-            logger.info("Unblock request approved: " + requestId);
-            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request approved successfully\"}");
-        } else {
-            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to approve request\"}");
-        }
-    }
-
-    private void handleRejectRequest(HttpServletRequest request, HttpServletResponse response)
-            throws SQLException, IOException {
-        
-        int requestId = Integer.parseInt(request.getParameter("requestId"));
-        String adminNotes = request.getParameter("adminNotes");
-
-        if (adminNotes == null || adminNotes.trim().isEmpty()) {
-            response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.getWriter().write("{\"error\":\"Admin notes required for rejection\"}");
-            return;
-        }
-
-        // Get request details before rejection
-        Map<String, Object> requestData = dao.getRequestById(requestId);
-        if (requestData == null) {
-            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-            response.getWriter().write("{\"error\":\"Request not found\"}");
-            return;
-        }
-
-        // Reject the request
-        boolean success = dao.rejectRequest(requestId, adminNotes);
-
-        if (success) {
-            // Send email to user
-            String userEmail = (String) requestData.get("email");
-            String username = (String) requestData.get("username");
-            
-            if (userEmail != null && !userEmail.trim().isEmpty()) {
-                String subject = "Account Reactivation Request Update";
-                String body = EmailUtil.getUnblockRejectedTemplate(
-                    username != null ? username : "User", 
-                    adminNotes
-                );
-                EmailUtil.sendHtmlEmail(userEmail, subject, body);
-            }
-
-            logger.info("Unblock request rejected: " + requestId);
-            response.getWriter().write("{\"status\":\"ok\",\"message\":\"Request rejected\"}");
-        } else {
-            response.getWriter().write("{\"status\":\"fail\",\"message\":\"Failed to reject request\"}");
+            response.getWriter().write("{\"error\":\"Database error\"}");
         }
     }
 }
-
-------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------
 package dao;
 
 import utils.DBUtils;
@@ -1032,173 +210,648 @@ import utils.LoggerUtil;
 import org.apache.log4j.Logger;
 
 import java.sql.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-public class UnblockRequestDao {
-    private static final Logger logger = LoggerUtil.getLogger(UnblockRequestDao.class);
-
-    /**
-     * Get all pending unblock requests
-     */
-    public List<Map<String, Object>> getPendingRequests() throws SQLException {
-        List<Map<String, Object>> requests = new ArrayList<>();
-        String sql = "SELECT ur.request_id, ur.user_id, ur.username, ur.email, ur.reason, " +
-                     "ur.request_date, ur.status, u.fullname, u.phone " +
-                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
-                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
-                     "WHERE ur.status = 'pending' " +
-                     "ORDER BY ur.request_date DESC";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                Map<String, Object> req = new HashMap<>();
-                req.put("requestId", rs.getInt("request_id"));
-                req.put("userId", rs.getInt("user_id"));
-                req.put("username", rs.getString("username"));
-                req.put("email", rs.getString("email"));
-                req.put("reason", rs.getString("reason"));
-                req.put("requestDate", rs.getTimestamp("request_date"));
-                req.put("status", rs.getString("status"));
-                req.put("fullname", rs.getString("fullname"));
-                req.put("phone", rs.getString("phone"));
-                requests.add(req);
-            }
-        }
-        return requests;
-    }
+public class RatingDao {
+    private static final Logger logger = LoggerUtil.getLogger(RatingDao.class);
 
     /**
-     * Approve unblock request - activates user and updates request status
+     * Get all ratings for a product
      */
-    public boolean approveRequest(int requestId, String adminNotes) throws SQLException {
-        String updateRequestSql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
-                                  "SET status = 'approved', admin_notes = ?, processed_date = GETDATE() " +
-                                  "WHERE request_id = ?";
+    public List<Map<String, Object>> getProductRatings(int productId) throws SQLException {
+        List<Map<String, Object>> ratings = new ArrayList<>();
+        String sql = "SELECT r.rating_id, r.rating, r.review_text, r.created_at, " +
+                     "u.fullname AS username, u.user_id " +
+                     "FROM Ecommerce_Website.D_D_PRODUCT_RATINGS r " +
+                     "JOIN Ecommerce_Website.M_S_USER u ON r.user_id = u.user_id " +
+                     "WHERE r.product_id = ? " +
+                     "ORDER BY r.created_at DESC";
         
-        String activateUserSql = "UPDATE Ecommerce_Website.M_S_USER " +
-                                "SET is_active = 1, deactivation_message = NULL, deactivated_at = NULL " +
-                                "WHERE user_id = (SELECT user_id FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS WHERE request_id = ?)";
-
-        Connection conn = null;
-        try {
-            conn = DBUtils.getConnection();
-            conn.setAutoCommit(false);
-
-            // Update request status
-            try (PreparedStatement ps = conn.prepareStatement(updateRequestSql)) {
-                ps.setString(1, adminNotes);
-                ps.setInt(2, requestId);
-                ps.executeUpdate();
-            }
-
-            // Activate user
-            try (PreparedStatement ps = conn.prepareStatement(activateUserSql)) {
-                ps.setInt(1, requestId);
-                ps.executeUpdate();
-            }
-
-            conn.commit();
-            logger.info("Approved unblock request: " + requestId);
-            return true;
-
-        } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    logger.error("Rollback failed", ex);
-                }
-            }
-            logger.error("Failed to approve request", e);
-            throw e;
-        } finally {
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true);
-                    conn.close();
-                } catch (SQLException e) {
-                    logger.error("Connection close failed", e);
-                }
-            }
-        }
-    }
-
-    /**
-     * Reject unblock request
-     */
-    public boolean rejectRequest(int requestId, String adminNotes) throws SQLException {
-        String sql = "UPDATE Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
-                     "SET status = 'rejected', admin_notes = ?, processed_date = GETDATE() " +
-                     "WHERE request_id = ?";
-
         try (Connection conn = DBUtils.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, adminNotes);
-            ps.setInt(2, requestId);
-            int updated = ps.executeUpdate();
-            logger.info("Rejected unblock request: " + requestId);
-            return updated > 0;
-        }
-    }
-
-    /**
-     * Get request details by ID
-     */
-    public Map<String, Object> getRequestById(int requestId) throws SQLException {
-        String sql = "SELECT ur.*, u.fullname, u.phone, u.address, u.is_active " +
-                     "FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS ur " +
-                     "LEFT JOIN Ecommerce_Website.M_S_USER u ON ur.user_id = u.user_id " +
-                     "WHERE ur.request_id = ?";
-
-        try (Connection conn = DBUtils.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, requestId);
+            
+            ps.setInt(1, productId);
+            
             try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    Map<String, Object> req = new HashMap<>();
-                    req.put("requestId", rs.getInt("request_id"));
-                    req.put("userId", rs.getInt("user_id"));
-                    req.put("username", rs.getString("username"));
-                    req.put("email", rs.getString("email"));
-                    req.put("reason", rs.getString("reason"));
-                    req.put("requestDate", rs.getTimestamp("request_date"));
-                    req.put("status", rs.getString("status"));
-                    req.put("adminNotes", rs.getString("admin_notes"));
-                    req.put("processedDate", rs.getTimestamp("processed_date"));
-                    req.put("fullname", rs.getString("fullname"));
-                    req.put("phone", rs.getString("phone"));
-                    req.put("address", rs.getString("address"));
-                    req.put("isActive", rs.getInt("is_active"));
-                    return req;
+                while (rs.next()) {
+                    Map<String, Object> rating = new HashMap<>();
+                    rating.put("ratingId", rs.getInt("rating_id"));
+                    rating.put("rating", rs.getDouble("rating"));
+                    rating.put("reviewText", rs.getString("review_text"));
+                    rating.put("createdAt", rs.getTimestamp("created_at"));
+                    rating.put("username", rs.getString("username"));
+                    rating.put("userId", rs.getInt("user_id"));
+                    ratings.add(rating);
                 }
             }
         }
-        return null;
+        
+        return ratings;
     }
 
     /**
-     * Check if user has pending request
+     * Get products that user can rate (from delivered orders, not yet rated)
      */
-    public boolean hasPendingRequest(int userId) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM Ecommerce_Website.D_D_UNBLOCK_REQUESTS " +
-                     "WHERE user_id = ? AND status = 'pending'";
-
+    public List<Map<String, Object>> getUserRatableProducts(int userId) throws SQLException {
+        List<Map<String, Object>> products = new ArrayList<>();
+        String sql = "SELECT DISTINCT ol.product_id, p.product_name, o.order_id, o.orderdate " +
+                     "FROM Ecommerce_Website.D_D_ORDER o " +
+                     "JOIN Ecommerce_Website.D_D_ORDERLOGS ol ON o.order_id = ol.order_id " +
+                     "JOIN Ecommerce_Website.M_S_DATAS p ON ol.product_id = p.product_id " +
+                     "WHERE o.user_id = ? " +
+                     "AND o.status = 'Paid' " +
+                     "AND NOT EXISTS ( " +
+                     "    SELECT 1 FROM Ecommerce_Website.D_D_PRODUCT_RATINGS r " +
+                     "    WHERE r.user_id = o.user_id " +
+                     "    AND r.product_id = ol.product_id " +
+                     "    AND r.order_id = o.order_id " +
+                     ") " +
+                     "ORDER BY o.orderdate DESC";
+        
         try (Connection conn = DBUtils.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            
             ps.setInt(1, userId);
+            
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> product = new HashMap<>();
+                    product.put("productId", rs.getInt("product_id"));
+                    product.put("productName", rs.getString("product_name"));
+                    product.put("orderId", rs.getInt("order_id"));
+                    product.put("orderDate", rs.getTimestamp("orderdate"));
+                    products.add(product);
+                }
+            }
+        }
+        
+        return products;
+    }
+
+    /**
+     * Check if user can rate a specific product from an order
+     */
+    public boolean canUserRateProduct(int userId, int productId, int orderId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM Ecommerce_Website.D_D_ORDER o " +
+                     "JOIN Ecommerce_Website.D_D_ORDERLOGS ol ON o.order_id = ol.order_id " +
+                     "WHERE o.user_id = ? AND o.order_id = ? AND ol.product_id = ? " +
+                     "AND o.status = 'Paid'";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            ps.setInt(2, orderId);
+            ps.setInt(3, productId);
+            
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     return rs.getInt(1) > 0;
                 }
             }
         }
+        
         return false;
     }
+
+    /**
+     * Get user's rating for a specific product and order
+     */
+    public Map<String, Object> getUserRating(int userId, int productId, int orderId) throws SQLException {
+        String sql = "SELECT rating_id, rating, review_text, created_at, updated_at " +
+                     "FROM Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "WHERE user_id = ? AND product_id = ? AND order_id = ?";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            ps.setInt(2, productId);
+            ps.setInt(3, orderId);
+            
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    Map<String, Object> rating = new HashMap<>();
+                    rating.put("ratingId", rs.getInt("rating_id"));
+                    rating.put("rating", rs.getDouble("rating"));
+                    rating.put("reviewText", rs.getString("review_text"));
+                    rating.put("createdAt", rs.getTimestamp("created_at"));
+                    rating.put("updatedAt", rs.getTimestamp("updated_at"));
+                    return rating;
+                }
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Submit a new rating
+     */
+    public boolean submitRating(int userId, int productId, int orderId, double rating, String reviewText) 
+            throws SQLException {
+        String sql = "INSERT INTO Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "(user_id, product_id, order_id, rating, review_text) " +
+                     "VALUES (?, ?, ?, ?, ?)";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, userId);
+            ps.setInt(2, productId);
+            ps.setInt(3, orderId);
+            ps.setDouble(4, rating);
+            ps.setString(5, reviewText);
+            
+            int rows = ps.executeUpdate();
+            logger.info("Rating submitted: user=" + userId + " product=" + productId + " rating=" + rating);
+            return rows > 0;
+        }
+    }
+
+    /**
+     * Update an existing rating
+     */
+    public boolean updateRating(int userId, int productId, int orderId, double rating, String reviewText) 
+            throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "SET rating = ?, review_text = ?, updated_at = GETDATE() " +
+                     "WHERE user_id = ? AND product_id = ? AND order_id = ?";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setDouble(1, rating);
+            ps.setString(2, reviewText);
+            ps.setInt(3, userId);
+            ps.setInt(4, productId);
+            ps.setInt(5, orderId);
+            
+            int rows = ps.executeUpdate();
+            logger.info("Rating updated: user=" + userId + " product=" + productId + " rating=" + rating);
+            return rows > 0;
+        }
+    }
+
+    /**
+     * Update product's average rating and rating count
+     */
+    public void updateProductAverageRating(int productId) throws SQLException {
+        String sql = "UPDATE Ecommerce_Website.M_S_DATAS " +
+                     "SET average_rating = ( " +
+                     "    SELECT AVG(CAST(rating AS FLOAT)) " +
+                     "    FROM Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "    WHERE product_id = ? " +
+                     "), " +
+                     "rating_count = ( " +
+                     "    SELECT COUNT(*) " +
+                     "    FROM Ecommerce_Website.D_D_PRODUCT_RATINGS " +
+                     "    WHERE product_id = ? " +
+                     ") " +
+                     "WHERE product_id = ?";
+        
+        try (Connection conn = DBUtils.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, productId);
+            ps.setInt(2, productId);
+            ps.setInt(3, productId);
+            
+            ps.executeUpdate();
+            logger.info("Updated average rating for product: " + productId);
+        }
+    }
 }
-----------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------
+4. Update ProductServlet to include ratings
+In your ProductServlet.java, update the doGet method to include rating information:
+
+// Add this to your product map generation
+Map<String, Object> map = productToMap(p);
+// ... existing code ...
+
+// Add rating information
+try {
+    double avgRating = p.getAverageRating(); // or fetch from DB
+    int ratingCount = p.getRatingCount();
+    map.put("averageRating", avgRating);
+    map.put("ratingCount", ratingCount);
+    map.put("stars", Math.round(avgRating * 10.0) / 10.0); // for display
+} catch (Exception e) {
+    map.put("averageRating", 0.0);
+    map.put("ratingCount", 0);
+    map.put("stars", 0.0);
+}
+
+---------------------------------------------------------------------------------------------
+
+5. Update navbar.js to display dynamic ratings
+Update the buildProductCardHtml function in navbar.js:
 
 
+function buildProductCardHtml(p) {
+  const id = p.productId ?? p.id ?? p.product_id;
+  const name = p.productName ?? p.name ?? p.product_name ?? "Unnamed";
+  
+  // Get rating data
+  const avgRating = p.averageRating ?? p.average_rating ?? p.stars ?? 0;
+  const ratingCount = p.ratingCount ?? p.rating_count ?? 0;
+  
+  // ... existing image code ...
+  
+  const stars = renderStars(avgRating);
+  const ratingDisplay = ratingCount > 0 
+    ? `<div class="flex justify-center items-center mb-2">
+         ${stars}
+         <span class="ml-2 text-yellow-600 font-semibold">${avgRating.toFixed(1)}</span>
+         <span class="ml-1 text-xs text-gray-500">(${ratingCount})</span>
+       </div>`
+    : `<div class="flex justify-center items-center mb-2 text-gray-400 text-sm">No ratings yet</div>`;
+  
+  // ... rest of card HTML with ratingDisplay inserted ...
+}
 
+-----------------------------------------------------------------------------------
+
+<!-- Add this modal to your orderhistory.html before closing </body> -->
+
+<!-- Rating Modal -->
+<div id="ratingModal" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50" style="display:none;">
+  <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+    <h3 class="text-xl font-bold mb-4">Rate This Product</h3>
+    
+    <div id="ratingProductInfo" class="mb-4 p-3 bg-gray-50 rounded">
+      <p class="font-semibold" id="ratingProductName"></p>
+      <p class="text-sm text-gray-600" id="ratingOrderInfo"></p>
+    </div>
+    
+    <form id="ratingForm">
+      <input type="hidden" id="ratingProductId" name="productId">
+      <input type="hidden" id="ratingOrderId" name="orderId">
+      <input type="hidden" id="ratingValue" name="rating" value="5">
+      
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-2">Your Rating</label>
+        <div class="flex items-center space-x-2">
+          <div id="starRating" class="flex space-x-1">
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="1" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="2" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="4" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+            <svg class="star w-8 h-8 cursor-pointer text-gray-300 hover:text-yellow-400 transition" data-rating="5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z"/>
+            </svg>
+          </div>
+          <span id="ratingText" class="text-lg font-semibold text-gray-700">5.0</span>
+        </div>
+      </div>
+      
+      <div class="mb-4">
+        <label class="block text-sm font-medium mb-2">Review (Optional)</label>
+        <textarea id="reviewText" name="reviewText" rows="4" class="w-full border rounded-lg p-2 focus:ring-2 focus:ring-yellow-400" placeholder="Share your experience with this product..."></textarea>
+      </div>
+      
+      <div class="flex space-x-3">
+        <button type="submit" class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 rounded-lg">
+          Submit Rating
+        </button>
+        <button type="button" id="closeRatingModal" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-700 font-semibold py-2 rounded-lg">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// Add this to OrderHistory.js
+
+// Star rating functionality
+$(document).on('mouseenter', '#starRating .star', function() {
+  const rating = $(this).data('rating');
+  $('#starRating .star').each(function(index) {
+    if (index < rating) {
+      $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+    } else {
+      $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+    }
+  });
+});
+
+$(document).on('mouseleave', '#starRating', function() {
+  const currentRating = parseInt($('#ratingValue').val());
+  $('#starRating .star').each(function(index) {
+    if (index < currentRating) {
+      $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+    } else {
+      $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+    }
+  });
+});
+
+$(document).on('click', '#starRating .star', function() {
+  const rating = $(this).data('rating');
+  $('#ratingValue').val(rating);
+  $('#ratingText').text(rating + '.0');
+  
+  $('#starRating .star').each(function(index) {
+    if (index < rating) {
+      $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+    } else {
+      $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+    }
+  });
+});
+
+// Open rating modal
+function openRatingModal(productId, productName, orderId, orderDate) {
+  $('#ratingProductId').val(productId);
+  $('#ratingOrderId').val(orderId);
+  $('#ratingProductName').text(productName);
+  $('#ratingOrderInfo').text('Order #' + orderId + ' - ' + new Date(orderDate).toLocaleDateString());
+  
+  // Check if user already rated this product
+  $.get('http://localhost:8080/Ecommerce_Website/RatingServlet', {
+    action: 'checkUserRating',
+    productId: productId,
+    orderId: orderId
+  }, function(rating) {
+    if (rating && rating.rating) {
+      // Pre-fill with existing rating
+      $('#ratingValue').val(rating.rating);
+      $('#ratingText').text(rating.rating.toFixed(1));
+      $('#reviewText').val(rating.reviewText || '');
+      
+      // Set stars
+      $('#starRating .star').each(function(index) {
+        if (index < Math.floor(rating.rating)) {
+          $(this).removeClass('text-gray-300').addClass('text-yellow-400');
+        } else {
+          $(this).removeClass('text-yellow-400').addClass('text-gray-300');
+        }
+      });
+    } else {
+      // Reset to default
+      $('#ratingValue').val(5);
+      $('#ratingText').text('5.0');
+      $('#reviewText').val('');
+      $('#starRating .star').addClass('text-yellow-400').removeClass('text-gray-300');
+    }
+  });
+  
+  $('#ratingModal').removeClass('hidden').css('display', 'flex');
+}
+
+// Close rating modal
+$(document).on('click', '#closeRatingModal', function() {
+  $('#ratingModal').addClass('hidden').css('display', 'none');
+});
+
+// Submit rating
+$(document).on('submit', '#ratingForm', function(e) {
+  e.preventDefault();
+  
+  const formData = $(this).serialize() + '&action=submitRating';
+  
+  $.post('http://localhost:8080/Ecommerce_Website/RatingServlet', formData, function(response) {
+    if (response && response.status === 'ok') {
+      toast('Rating submitted successfully!', 1500);
+      $('#ratingModal').addClass('hidden').css('display', 'none');
+      loadOrderHistory(); // Reload to show rating button state
+    } else {
+      alert(response.message || 'Failed to submit rating');
+    }
+  }, 'json').fail(function() {
+    alert('Error submitting rating. Please try again.');
+  });
+});
+
+// Update renderOrders to include rating button
+function renderOrders(orders) {
+  if (!orders || orders.length === 0) {
+    $('#order-history-container').html('<p class="text-center text-gray-500">You have no previous orders.</p>');
+    return;
+  }
+
+  let html = '';
+  orders.forEach(order => {
+    html += '<div class="bg-white rounded-lg shadow-md order-card overflow-hidden">';
+    html += '  <div class="flex justify-between items-center p-4 order-summary">';
+    html += '    <div>';
+    html += `      <h2 class="font-semibold text-lg text-gray-800">Order #${order.orderId}</h2>`;
+    html += `      <p class="text-gray-600 text-sm">Placed on: ${new Date(order.orderDate).toLocaleDateString()}</p>`;
+    html += `      <p class="text-gray-700 font-bold mt-1 text-lg">Total: ₹${order.totalAmount}</p>`;
+    html += '    </div>';
+    html += '    <button class="view-details bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">View Details</button>';
+    html += '  </div>';
+    html += '  <div class="order-details mt-0 hidden">';
+    html += '    <h3 class="font-semibold text-gray-800 mb-3">Items in this order:</h3>';
+    html += '    <div class="space-y-2">';
+
+    html += order.items.map(item => {
+      return `
+        <div class="flex justify-between items-center p-2 rounded bg-white shadow-sm">
+          <div>
+            <p class="font-medium text-gray-700">${item.productName}</p>
+            <p class="text-gray-500 text-sm">Qty: ${item.quantity}</p>
+          </div>
+          <div class="text-right">
+            <p class="font-semibold text-gray-800">₹${item.price}</p>
+            <button class="rate-product-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded mt-1" 
+                    data-product-id="${item.productId}" 
+                    data-product-name="${item.productName}"
+                    data-order-id="${order.orderId}"
+                    data-order-date="${order.orderDate}">
+              ⭐ Rate
+            </button>
+          </div>
+        </div>`;
+    }).join('');
+
+    html += '    </div>';
+    html += '    <div class="mt-4 flex justify-end">';
+    html += `      <button class="reorder-btn bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded" data-order-id="${order.orderId}">Reorder</button>`;
+    html += '    </div>';
+    html += '  </div>';
+    html += '</div>';
+  });
+
+  $('#order-history-container').html(html);
+}
+
+// Handle rate product button click
+$(document).on('click', '.rate-product-btn', function() {
+  const productId = $(this).data('product-id');
+  const productName = $(this).data('product-name');
+  const orderId = $(this).data('order-id');
+  const orderDate = $(this).data('order-date');
+  
+  openRatingModal(productId, productName, orderId, orderDate);
+});
+</script>
+
+-------------------------------------------------------------------------------------------------------------------------------
+
+package model;
+
+import java.util.Base64;
+
+public class Product {
+    private int productId;
+    private int categoryId;
+    private String productName;
+    private String description;
+    private double price;
+    private int stock;
+    private String imageUrl;
+    private byte[] imageData;
+    private String categoryname;
+    
+    // Rating fields
+    private double averageRating;
+    private int ratingCount;
+
+    public Product() {
+        this.averageRating = 0.0;
+        this.ratingCount = 0;
+    }
+
+    public Product(int categoryId, String productName, String description, double price, int stock, byte[] imageData) {
+        this.categoryId = categoryId;
+        this.productName = productName;
+        this.description = description;
+        this.price = price;
+        this.stock = stock;
+        this.imageData = imageData;
+        this.averageRating = 0.0;
+        this.ratingCount = 0;
+    }
+
+    public Product(int productId, int categoryId, String productName, String description, double price, int stock, byte[] imageData) {
+        this.productId = productId;
+        this.categoryId = categoryId;
+        this.productName = productName;
+        this.description = description;
+        this.price = price;
+        this.stock = stock;
+        this.imageData = imageData;
+        this.averageRating = 0.0;
+        this.ratingCount = 0;
+    }
+
+    // Existing getters and setters
+    
+    public int getProductId() {
+        return productId;
+    }
+
+    public void setProductId(int productId) {
+        this.productId = productId;
+    }
+
+    public int getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(int categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public String getProductName() {
+        return productName;
+    }
+
+    public void setProductName(String productName) {
+        this.productName = productName;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+
+    public void setPrice(double price) {
+        this.price = price;
+    }
+
+    public int getStock() {
+        return stock;
+    }
+
+    public void setStock(int stock) {
+        this.stock = stock;
+    }
+
+    public byte[] getImageData() {
+        return imageData;
+    }
+
+    public void setImageData(byte[] imageData) {
+        this.imageData = imageData;
+    }
+
+    public String getCategoryname() {
+        return categoryname;
+    }
+
+    public void setCategoryname(String categoryname) {
+        this.categoryname = categoryname;
+    }
+
+    public String getImageBase64() {
+        if (imageData == null) return "";
+        return Base64.getEncoder().encodeToString(imageData);
+    }
+
+    public String getImageUrl() {
+        return imageUrl;
+    }
+
+    public void setImageUrl(String imageUrl) {
+        this.imageUrl = imageUrl;
+    }
+
+    // NEW: Rating getters and setters
+    
+    public double getAverageRating() {
+        return averageRating;
+    }
+
+    public void setAverageRating(double averageRating) {
+        this.averageRating = averageRating;
+    }
+
+    public int getRatingCount() {
+        return ratingCount;
+    }
+
+    public void setRatingCount(int ratingCount) {
+        this.ratingCount = ratingCount;
+    }
+    
+    // Helper method to get rounded rating for display
+    public double getStars() {
+        return Math.round(averageRating * 10.0) / 10.0;
+    }
+}
+
+
+--------------------------------------------------------------------------------------------------------------------------------
