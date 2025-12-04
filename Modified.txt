@@ -1,1012 +1,1348 @@
-import * as Dialog from '@radix-ui/react-dialog'
-import { Input } from '@/components/ui/input'
-import React, { useEffect, useRef, useState } from 'react'
-import DatePicker from 'react-datepicker'
-import 'react-datepicker/dist/react-datepicker.css'
-import { useToast } from '@/hooks/use-toast'
-import { createAuthHeaders } from '@/lib/legacyUtils'
-import { API_CONFIG } from '@/lib/constants'
-import { prismStorage } from '@/lib/prismStorage'
-import { Search, X, Calendar, Clock, User, FileText, Tag } from 'lucide-react'
-
-type TaskItem = {
-  taskId: string
-  taskName?: string
-  taskComment?: string
-  taskDate?: string
-  taskAssignedName?: string
-  taskAssignedId?: string
-  taskType?: string
-  taskStatus?: string
-  contacts?: string[]
-  contactName?: string[]
-  accountName?: string[]
-  taskComments?: string
-  reminder?: any[]
-}
-
-interface AssigneeOption {
-  text?: string
-  value?: string
-  code?: string
-  style?: string
-  docName?: string | null
-  docId?: string | null
-}
-
-interface ContactOption {
-  text?: string
-  value?: string
-  code?: string
-  style?: string
-  docName?: string | null
-  docId?: string | null
-  account_name?: string
-}
-
-export default function TasksWidget() {
-  const { toast } = useToast()
-  const [tasks, setTasks] = useState<TaskItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [editTask, setEditTask] = useState<TaskItem | null>(null)
-  const [subject, setSubject] = useState('')
-  const [taskType, setTaskType] = useState('')
-  const [status, setStatus] = useState('')
-  const [description, setDescription] = useState('')
-  const [dueDate, setDueDate] = useState<Date | null>(new Date())
-  const [timeStr, setTimeStr] = useState('10:00')
-  const [query, setQuery] = useState('')
-  const [assigneeResults, setAssigneeResults] = useState<AssigneeOption[]>([])
-  const [loadingSearch, setLoadingSearch] = useState(false)
-  const [isOpen, setIsOpen] = useState(false)
-  const [isModalOpen, setModalOpen] = useState(false)
-  const inputRef = useRef(null)
-  const [assignedToName, setAssignedToName] = useState('')
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
-  const [assignedToId, setAssignedToId] = useState('')
-  const [contactNames, setContactNames] = useState<string[]>([])
-  const [contacts, setContacts] = useState<string[]>([])
-  const [contactQuery, setContactQuery] = useState('')
-  const [contactResults, setContactResults] = useState<ContactOption[]>([])
-  const [loadingContacts, setLoadingContacts] = useState(false)
-  const [isContactResultsOpen, setIsContactResultsOpen] = useState(false)
-  
-  // Pagination states
-  const [displayCount, setDisplayCount] = useState(4)
-  const [showAll, setShowAll] = useState(false)
-
-  const openViewModal = (task: TaskItem) => {
-    setSelectedTask(task)
-    setIsViewModalOpen(true)
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value)
-    if (!e.target.value) {
-      setIsOpen(false)
-    } else {
-      setIsOpen(true)
-    }
-    if (!isModalOpen) setModalOpen(true)
-  }
-
-  const closeViewModal = () => {
-    setIsViewModalOpen(false)
-    setSelectedTask(null)
-  }
-
-  interface ViewTaskModalProps {
-    isOpen: boolean
-    onClose: () => void
-    task: TaskItem
-  }
-
-  const ViewTaskModal: React.FC<ViewTaskModalProps> = ({ isOpen, onClose, task }) => {
-    return (
-      <Dialog.Root open={isOpen} onOpenChange={onClose}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white shadow-2xl">
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 rounded-t-xl">
-              <Dialog.Title className="text-2xl font-bold text-white">
-                Task Details
-              </Dialog.Title>
-            </div>
-            
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="bg-blue-50 border-l-4 border-blue-600 p-4 rounded-r-lg">
-                <h3 className="text-lg font-semibold text-gray-800">{task.taskName}</h3>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-start space-x-3">
-                  <Tag className="w-5 h-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Status</p>
-                    <p className={`text-base font-semibold ${
-                      task.taskStatus === 'Completed' ? 'text-green-600' :
-                      task.taskStatus === 'In Progress' ? 'text-yellow-600' :
-                      'text-gray-600'
-                    }`}>{task.taskStatus}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-3">
-                  <Calendar className="w-5 h-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Due Date</p>
-                    <p className="text-base font-semibold text-gray-800">
-                      {new Date(task.taskDate).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-3">
-                  <User className="w-5 h-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Assignee</p>
-                    <p className="text-base font-semibold text-gray-800">{task.taskAssignedName}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-start space-x-3">
-                  <FileText className="w-5 h-5 text-blue-600 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Task Type</p>
-                    <p className="text-base font-semibold text-gray-800">{task.taskType}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium text-gray-500 mb-2">Description</p>
-                <p className="text-gray-700 bg-gray-50 p-3 rounded-lg">{task.taskComment || 'No description'}</p>
-              </div>
-
-              {task.accountName && task.accountName.length > 0 && (
-                <div className="border-t pt-4">
-                  <p className="text-sm font-medium text-gray-500 mb-2">Account</p>
-                  <div className="flex flex-wrap gap-2">
-                    {task.accountName.map((acc, idx) => (
-                      <span key={idx} className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-medium">
-                        {acc}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {task.contactName && task.contactName.length > 0 && (
-                <div className="border-t pt-4">
-                  <p className="text-sm font-medium text-gray-500 mb-2">Contacts</p>
-                  <div className="flex flex-wrap gap-2">
-                    {task.contactName.map((contact, idx) => (
-                      <span key={idx} className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-medium">
-                        {contact}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex justify-end">
-              <Dialog.Close asChild>
-                <button onClick={onClose} className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium rounded-lg transition-colors">
-                  Close
-                </button>
-              </Dialog.Close>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    )
-  }
-
-  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
-
-  async function fetchTasks() {
-    setLoading(true)
-    try {
-      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
-      const body = new URLSearchParams({ summaryFilter }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        const rawTasks = Array.isArray(data.data) ? data.data : []
-        const normalizedTasks = rawTasks.map((task: any) => {
-          const contactIds = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
-            : []
-          const contactNames = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.contact_name)
-            : []
-          const accountNames = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.account_name)
-            : []
-          return {
-            ...task,
-            contacts: contactIds,
-            contactName: contactNames,
-            accountName: accountNames,
-          }
-        })
-        setTasks(normalizedTasks)
-      } else {
-        setTasks([])
-      }
-    } catch (err) {
-      console.error('fetchTasks error', err)
-      toast({ title: 'Error', description: 'Failed to fetch tasks' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function fetchTaskDetails(taskId: string) {
-    try {
-      const body = new URLSearchParams({ taskId }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        }),
-        body,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        if (Array.isArray(data.data) && data.data.length > 0) return data.data[0]
-        return data.data || null
-      }
-      return null
-    } catch (err) {
-      return null
-    }
-  }
-
-  useEffect(() => {
-    fetchTasks()
-  }, [])
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!query.trim()) {
-        setAssigneeResults([])
-        return
-      }
-      setLoadingSearch(true)
-      const payload = {
-        filtertype: 'employee',
-        filterrpttype: 'Outlook',
-        showuser: true,
-        searchtext: query,
-      }
-      const queryString = new URLSearchParams(payload).toString()
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        })
-        const data: AssigneeOption[] = await res.json()
-        if (Array.isArray(data)) {
-          setAssigneeResults(data)
-        } else {
-          setAssigneeResults([])
-        }
-      } catch (err) {
-        console.error('Fetch assignee error:', err)
-        setAssigneeResults([])
-      } finally {
-        setLoadingSearch(false)
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [query])
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!contactQuery.trim()) {
-        setContactResults([])
-        return
-      }
-      setLoadingContacts(true)
-      const queryString = new URLSearchParams({
-        filtertype: 'contact',
-        restype: 'Detailed',
-        searchtext: contactQuery,
-      }).toString()
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        })
-        const data: ContactOption[] = await res.json()
-        if (Array.isArray(data)) {
-          setContactResults(data)
-        } else {
-          setContactResults([])
-        }
-      } catch (err) {
-        console.error('Fetch contact error:', err)
-        setContactResults([])
-      } finally {
-        setLoadingContacts(false)
-      }
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [contactQuery])
-
-  // FIX: Use contact.value and contact.text instead of contact.id and contact.name
-  const handleContactSelect = (contact: ContactOption) => {
-    const contactId = contact.value || ''
-    const contactName = contact.text || ''
-    
-    if (!contacts.includes(contactId)) {
-      setContacts((prev) => [...prev, contactId])
-      setContactNames((prev) => [...prev, contactName])
-    }
-    console.log('Adding contact:', { id: contactId, name: contactName })
-    setContactQuery('')
-    setIsContactResultsOpen(false)
-  }
-
-  const handleContactInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setContactQuery(e.target.value)
-    setIsContactResultsOpen(true)
-  }
-
-  // FIX: Properly remove contact by finding its index
-  const removeContact = (contactId: string) => {
-    const indexToRemove = contacts.indexOf(contactId)
-    if (indexToRemove !== -1) {
-      setContacts((prev) => prev.filter((_, idx) => idx !== indexToRemove))
-      setContactNames((prev) => prev.filter((_, idx) => idx !== indexToRemove))
-    }
-  }
-
-  const handleAssigneeSelect = (assignee: AssigneeOption) => {
-    setQuery(assignee.text || '')
-    setAssignedToId(assignee.value || '')
-    setAssignedToName(assignee.text || '')
-    setIsOpen(false)
-  }
-
-  async function handleAddTask() {
-    try {
-      if (!assignedToId.trim()) {
-        toast({ title: 'Validation', description: 'Assignee required' })
-        return
-      }
-      if (!subject.trim()) {
-        toast({ title: 'Validation', description: 'Subject required' })
-        return
-      }
-      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
-      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
-      
-      // FIX: Ensure contacts array is properly sanitized
-      const sanitizedContacts = contacts.filter(id => id != null && id !== '')
-      const sanitizedContactNames = contactNames.filter(name => name != null && name !== '')
-
-      console.log('Adding task with contacts:', { sanitizedContacts, sanitizedContactNames })
-
-      const payloadObj = {
-        subject,
-        dueDate: formattedDateTime,
-        dueTime: timeStr,
-        contacts: sanitizedContacts,
-        contactName: sanitizedContactNames,
-        assignedTo: assignedToId,
-        clienttimezone,
-        status,
-        taskType,
-        taskComments: description,
-        module_name: 'Task',
-        action: 'Save',
-      }
-      
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        toast({ title: 'Success', description: 'Task Added Successfully' })
-        setModalOpen(false)
-        resetForm()
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
-      }
-    } catch (err) {
-      console.error('handleAddTask', err)
-      toast({ title: 'Error', description: 'Failed to add task' })
-    }
-  }
-
-  async function handleUpdateTask() {
-    try {
-      if (!editTask) return
-      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
-      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
-      
-      // FIX: Sanitize contacts for update
-      const sanitizedContacts = contacts.filter(id => id != null && id !== '')
-      const sanitizedContactNames = contactNames.filter(name => name != null && name !== '')
-
-      console.log('Updating task with contacts:', { sanitizedContacts, sanitizedContactNames })
-
-      const payloadObj = {
-        subject,
-        dueDate: formattedDateTime,
-        dueTime: timeStr,
-        contacts: sanitizedContacts,
-        contactName: sanitizedContactNames,
-        assignedTo: assignedToId,
-        clienttimezone,
-        status,
-        taskType,
-        taskComments: description,
-        module_name: 'Task',
-        action: 'Update',
-        taskId: editTask.taskId,
-      }
-      
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        toast({ title: 'Success', description: 'Task Updated Successfully' })
-        setModalOpen(false)
-        setEditTask(null)
-        resetForm()
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
-      }
-    } catch (err) {
-      console.error('handleUpdateTask', err)
-      toast({ title: 'Error', description: 'Failed to update task' })
-    }
-  }
-
-  async function openEditModal(task: TaskItem) {
-    let tdata: any = task
-    const missingContacts =
-      !tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
-    const missingName = !tdata.taskName && !tdata.subject
-
-    if ((missingContacts || missingName) && tdata.taskId) {
-      const full = await fetchTaskDetails(tdata.taskId)
-      if (full) tdata = { ...tdata, ...full }
-    }
-
-    setEditTask(tdata)
-    setSubject(tdata.taskName || tdata.subject || '')
-    setDescription(tdata.taskComment || tdata.taskComments || '')
-    const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
-    setAssignedToId(assignedId)
-    const assignedName = tdata.taskAssignedName || ''
-    setQuery(assignedName)
-    setAssignedToName(assignedName)
-    setTaskType(tdata.taskType || '')
-    setStatus(tdata.taskStatus || '')
-
-    if (tdata.taskDate) {
-      const iso = String(tdata.taskDate).replace(' ', 'T')
-      const dt = new Date(iso)
-      if (!isNaN(dt.getTime())) {
-        setDueDate(dt)
-        const hh = dt.getHours().toString().padStart(2, '0')
-        const mm = dt.getMinutes().toString().padStart(2, '0')
-        setTimeStr(`${hh}:${mm}`)
-      } else {
-        setDueDate(new Date())
-        setTimeStr('10:00')
-      }
-    } else {
-      setDueDate(new Date())
-      setTimeStr('10:00')
-    }
-
-    // FIX: Properly load contacts and names from task
-    const selectedIds = normalizeToArray(tdata.contacts)
-    const selectedNames = normalizeToArray(tdata.contactName)
-    
-    setContacts(selectedIds)
-    setContactNames(selectedNames)
-
-    console.log('Editing task with contacts:', { selectedIds, selectedNames })
-
-    setModalOpen(true)
-  }
-
-  async function deleteTask(taskId: string, originalTaskData: any) {
-    try {
-      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      const dueDateStr = dueDate
-        ? dueDate.toISOString().slice(0, 10)
-        : originalTaskData?.taskDate
-          ? originalTaskData.taskDate.split(' ')[0]
-          : ''
-      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
-      
-      // FIX: Include contacts in delete payload
-      const taskContacts = normalizeToArray(originalTaskData?.contacts)
-      const taskContactNames = normalizeToArray(originalTaskData?.contactName)
-
-      const payload = {
-        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
-        dueDate: formattedDateTime,
-        dueTime: timeStr,
-        contacts: taskContacts,
-        contactName: taskContactNames,
-        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
-        clienttimezone,
-        status: 'Dismiss',
-        taskType: originalTaskData?.taskType || '',
-        taskComments:
-          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
-        module_name: 'Task',
-        action: 'Dismiss',
-        taskId: taskId,
-      }
-      
-      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-
-      if (data?.status === 1) {
-        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Delete failed' })
-      }
-    } catch (err) {
-      console.error('deleteTask', err)
-      toast({ title: 'Error', description: 'Delete failed' })
-    }
-  }
-
-  function resetForm() {
-    setSubject('')
-    setAssignedToId('')
-    setQuery('')
-    setAssignedToName('')
-    setTaskType('')
-    setStatus('')
-    setContacts([])
-    setContactNames([])
-    setDescription('')
-    const now = new Date()
-    setDueDate(now)
-    const hh = now.getHours().toString().padStart(2, '0')
-    const mm = now.getMinutes().toString().padStart(2, '0')
-    const currentTimeString = `${hh}:${mm}`
-    setTimeStr(currentTimeString)
-  }
-
-  const calcTimeData = (due: string | undefined) => {
-    if (!due) return null
-    const dueDate = new Date(due)
-    const now = new Date()
-    const diffMs = dueDate.getTime() - now.getTime()
-    const isOverdue = diffMs < 0
-    const absDiffMs = Math.abs(diffMs)
-    const days = Math.floor(absDiffMs / 86400000)
-    const hours = Math.floor((absDiffMs % 86400000) / 3600000)
-    const mins = Math.floor(((absDiffMs % 86400000) % 3600000) / 60000)
-
-    let timeDiffText
-    if (days > 0) timeDiffText = `${days} Day(s)`
-    else if (hours > 0) timeDiffText = `${hours} Hour(s)`
-    else if (mins > 0) timeDiffText = `${mins} Min(s)`
-    else timeDiffText = '0 Min(s)'
-
-    const label = isOverdue ? 'Overdue' : 'Remaining'
-    const statusClass = isOverdue ? 'bg-red-500' : 'bg-green-500'
-
-    return {
-      text: timeDiffText,
-      fullText: `${timeDiffText} ${label}`,
-      statusClass: statusClass,
-    }
-  }
-
-  // Pagination logic
-  const displayedTasks = showAll ? tasks : tasks.slice(0, displayCount)
-  const hasMore = tasks.length > displayCount
-
-  const handleToggleShowAll = () => {
-    setShowAll(!showAll)
-  }
-
-  return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Tasks</h1>
-          <button
-            onClick={() => {
-              setEditTask(null)
-              resetForm()
-              setModalOpen(true)
-            }}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-6 py-3 text-white font-medium shadow-lg transition-all"
-          >
-            <span className="text-xl">+</span>
-            Add Task
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="flex justify-center items-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <p className="text-gray-500 text-lg">No tasks found</p>
-          </div>
-        ) : (
-          <>
-            <div className="grid gap-4">
-              {displayedTasks.map((t) => {
-                const timeData =
-                  t.taskDate && t.taskStatus !== 'Completed' ? calcTimeData(t.taskDate) : null
-
-                return (
-                  <div
-                    key={t.taskId}
-                    className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow border border-gray-200 overflow-hidden"
-                  >
-                    <div className="p-5">
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex-1">
-                          <h3 className="text-xl font-bold text-gray-800 mb-2">{t.taskName}</h3>
-                          <p className="text-gray-600 text-sm line-clamp-2">{t.taskComment}</p>
-                        </div>
-                        {timeData && (
-                          <span
-                            className={`${timeData.statusClass} text-white px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ml-4`}
-                          >
-                            {timeData.fullText}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4 text-sm">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-gray-400" />
-                          <span className="text-gray-600">{new Date(t.taskDate).toLocaleDateString()}</span>
-                        </div>
-                                             <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-gray-400" />
-                        <span className="text-gray-600">{timeStr}</span>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                        {/* Assignee */}
-                        <div className="flex items-center gap-2 rounded px-2 py-1 bg-gray-50 border">
-                          <User className="w-4 h-4 text-gray-500" />
-                          <span className="text-gray-700">{t.taskAssignedName || '—'}</span>
-                        </div>
-
-                        {/* Accounts */}
-                        {t.accountName && t.accountName.length > 0 && (
-                          <div className="flex items-center gap-2 rounded px-2 py-1 bg-purple-50 border">
-                            <span className="text-purple-700 text-sm">{t.accountName.join(', ')}</span>
-                          </div>
-                        )}
-
-                        {/* Contacts */}
-                        {t.contactName && t.contactName.length > 0 && (
-                          <div className="flex items-center gap-2 rounded px-2 py-1 bg-green-50 border">
-                            <span className="text-green-700 text-sm">{t.contactName.join(', ')}</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-4 flex gap-3">
-                        <button
-                          className="rounded-md bg-blue-600 px-3 py-1 text-white"
-                          onClick={() => openViewModal(t)}
-                        >
-                          View
-                        </button>
-
-                        <button
-                          className="rounded-md bg-yellow-500 px-3 py-1 text-white"
-                          onClick={() => openEditModal(t)}
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          className="rounded-md bg-red-600 px-3 py-1 text-white"
-                          onClick={() => deleteTask(t.taskId, t)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Pagination / More button */}
-            <div className="mt-6 flex justify-center">
-              {!showAll && hasMore ? (
-                <button
-                  onClick={() => setShowAll(true)}
-                  className="rounded-md bg-gray-200 px-4 py-2 hover:bg-gray-300"
-                >
-                  More
-                </button>
-              ) : hasMore ? (
-                <button
-                  onClick={() => setShowAll(false)}
-                  className="rounded-md bg-gray-200 px-4 py-2 hover:bg-gray-300"
-                >
-                  Show Less
-                </button>
-              ) : null}
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Add / Edit Modal */}
-      {isModalOpen && (
-        <Dialog.Root open={isModalOpen} onOpenChange={setModalOpen}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-6 shadow-xl">
-              <div className="flex items-center justify-between mb-4">
-                <Dialog.Title className="text-xl font-semibold">
-                  {editTask ? 'Update Task' : 'Add Task'}
-                </Dialog.Title>
-                <Dialog.Close asChild>
-                  <button className="text-gray-500 hover:text-gray-800">
-                    <X className="w-5 h-5" />
-                  </button>
-                </Dialog.Close>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3">
-                {/* Assign To - reuse your assignee dropdown */}
-                <label className="text-sm font-medium">Assign To</label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                  <Input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="Search assignee..."
-                    value={query}
-                    onChange={handleInputChange}
-                    className="pl-10 pr-4 py-2"
-                  />
-                  {isOpen && query.length > 0 && (
-                    <ul className="absolute z-30 mt-1 max-h-48 w-full overflow-auto rounded-md bg-white py-1 text-base shadow ring-1 ring-black/5">
-                      {loadingSearch ? (
-                        <li className="p-2 text-gray-600">Loading...</li>
-                      ) : assigneeResults.length > 0 ? (
-                        assigneeResults.map((a) => (
-                          <li
-                            key={a.value}
-                            className="cursor-pointer p-2 hover:bg-prism-primary hover:text-white"
-                            onClick={() => handleAssigneeSelect(a)}
-                          >
-                            {a.text}
-                          </li>
-                        ))
-                      ) : (
-                        <li className="p-2 text-gray-600">No results</li>
-                      )}
-                    </ul>
-                  )}
-                </div>
-
-                {/* Due date + time */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium">Due Date</label>
-                    <div className="flex items-center gap-2">
-                      <DatePicker
-                        selected={dueDate}
-                        onChange={(d: Date | null) => setDueDate(d)}
-                        className="w-full rounded border p-2"
-                      />
-                      <Calendar className="w-5 h-5 text-gray-400" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium">Time</label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="time"
-                        value={timeStr}
-                        onChange={(e) => setTimeStr(e.target.value)}
-                        className="w-full rounded border p-2"
-                      />
-                      <Clock className="w-5 h-5 text-gray-400" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm font-medium">Task Type</label>
-                    <select
-                      value={taskType}
-                      onChange={(e) => setTaskType(e.target.value)}
-                      className="w-full rounded border p-2"
-                    >
-                      <option value="">-- Select --</option>
-                      <option value="Call Back1">Call Back1</option>
-                      <option value="Action items">Action Items</option>
-                      <option value="Others">Others</option>
-                      <option value="Schedule Meeting">Schedule Meeting</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="text-sm font-medium">Status</label>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      className="w-full rounded border p-2"
-                    >
-                      <option value="">-- Select --</option>
-                      <option value="Not Started">Not Started</option>
-                      <option value="Completed">Completed</option>
-                      <option value="In Progress">In Progress</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium">Subject</label>
-                  <input
-                    type="text"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    className="w-full rounded border p-2"
-                  />
-                </div>
-
-                {/* Contacts chips + input */}
-                <div>
-                  <label className="text-sm font-medium mb-1 block">Contacts</label>
-                  <div className="relative">
-                    <div className="flex flex-wrap gap-2 items-center rounded border p-2 bg-gray-50">
-                      {contacts.map((contactId) => {
-                        const idx = contacts.indexOf(contactId)
-                        const name = contactNames[idx] || contactId
-                        return (
-                          <span
-                            key={contactId}
-                            className="flex items-center gap-2 rounded bg-blue-100 px-2 py-1 text-sm"
-                          >
-                            <span>{name}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeContact(contactId)}
-                              className="text-blue-700 hover:text-blue-900"
-                            >
-                              &times;
-                            </button>
-                          </span>
-                        )
-                      })}
-
-                      <Input
-                        type="text"
-                        placeholder="Search and add contacts..."
-                        value={contactQuery}
-                        onChange={handleContactInputChange}
-                        onFocus={() => setIsContactResultsOpen(true)}
-                        className="flex-1 min-w-[160px] border-none bg-transparent p-0"
-                      />
-                    </div>
-
-                    {/* Contact results dropdown */}
-                    {isContactResultsOpen && (contactQuery.length > 0 || contactResults.length > 0) && (
-                      <ul className="absolute z-40 mt-1 max-h-44 w-full overflow-auto rounded-md bg-white py-1 text-base shadow ring-1 ring-black/5">
-                        {loadingContacts ? (
-                          <li className="p-2 text-gray-600">Loading...</li>
-                        ) : contactResults.length > 0 ? (
-                          contactResults.map((c) => (
-                            <li
-                              key={c.value}
-                              className="cursor-pointer p-2 hover:bg-prism-primary hover:text-white"
-                              onClick={() => handleContactSelect(c)}
-                            >
-                              <div className="font-medium">{c.text}</div>
-                              {c.account_name && <div className="text-xs text-gray-500">{c.account_name}</div>}
-                            </li>
-                          ))
-                        ) : (
-                          <li className="p-2 text-gray-600">No contacts found</li>
-                        )}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium">Description</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    rows={3}
-                    className="w-full rounded border p-2"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-4 flex justify-end gap-3">
-                <Dialog.Close asChild>
-                  <button className="rounded-md bg-gray-200 px-4 py-2">Cancel</button>
-                </Dialog.Close>
-
-                <button
-                  onClick={editTask ? handleUpdateTask : handleAddTask}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-white"
-                >
-                  {editTask ? 'Update' : 'Add'}
-                </button>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      )}
-      {selectedTask && (
-        <ViewTaskModal isOpen={isViewModalOpen} onClose={closeViewModal} task={selectedTask} />
-      )}
-    </div>
-  )
+var repScreenACStatus = 'collapsed';
+var fadingContactSelf = (function(){
+	var filterValue = '', filterObjVal = '';
+	var id = '', thisRepID = '', thisRepIboxID = '', thisRepInternalID = '';
+	var thisFileName = 'reports - fading_contacts1.js';
+	var prepareTypeaheadArr = [],prepareMultiselectArr = [], prepareSelectsArr = [], prepareTokenizerArr = [],getFilterVal = [];
+	var formsettingval = {},filterInfoObj = {};
+	var filterObj =  {"isExcelGenerate":false,"daysAgo":"","accountName":[],"includeAccName":true,"excludeAccName":false,"accountType":[],"includeAccType":true,"excludeAccType":false,"tier":[],"conSubRes":false,"myCoveredContact":false,"distributionList":false,"list":[],"conAccVoted":false,"conAccVotedMe":false,"conSubMyRes":false,"conSubMyCovTicker":false,"allCriteria":true,"oneOrMoreCriteria":false};
+	var filterhtml = '<div class="pull-right filter-icons"><i class="icon font-xs icon-filter-filled-tool c-pointer fading_filter" aria-hidden="true" title="Filter this list"></i><span title="Filtered By" class="info-icons"><i class="fa font-sm1 fa-info-circle m-l-xs c-pointer list_popover" id="fadingFilterInfo" data-toggle="popover" data-html="true" data-placement="left"  data-container="body" data-content=""></i></span></div>';
+
+	$(window).resizeEnd(function(){
+		getActiveID();
+	});
+
+	//TO GET ACTIVE REPORT ID
+	function getActiveID(){
+		try{
+			//id = $('.fading_contact_cont .box_panels').attr('id');
+			var targetID = '';
+			var fadContLength=$('#appTsheetContainer .tsheetdivcontainer.active .tab-content .tab-pane.active .fading_contact_cont .box_panels');
+			if($('.dashContainer').css('display') == 'none'&&fadContLength.length>0){
+				targetID=fadContLength.attr('id');
+			}else{
+				targetID = $('.dashContainer .fading_contact_cont .box_panels').attr('id');
+			}
+			id = targetID;
+			thisRepID = id;
+			thisRepIboxID = id+'_ibox';
+			thisRepInternalID = thisRepID+' #fading-contacts-contents';
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+		}
+	}
+
+	//CLICK EVENT FOR FILTER BUTTON
+	$("body").undelegate(".fading_filter","click")
+	$("body").delegate(".fading_filter","click",function(e){
+		$('#loading_screen').show();
+		$('.fadingFilterModal').modal({
+			backdrop: 'static',
+			keyboard: false,
+			show: 'true'
+		});
+		prepareTypeahead(prepareTypeaheadArr,function(status){});
+		prepareSelects(prepareSelectsArr, function(status){
+			if(status){
+				prepareSelectsArr = [];
+				setTimeout(function(){
+					prepareMultiselect(prepareMultiselectArr); // multi select
+				}, 300);
+			};
+		});
+		prepareTokenizer(prepareTokenizerArr, function (status) {
+			if (status) prepareTokenizerArr = [];
+		});
+		setTimeout(function(){
+			gettblfieldsval(1);
+			$('#loading_screen').hide();
+		}, 500);
+	});
+
+	//TO RESIZE FADING CONTACTS DATA TABLE
+	$('body').click(function(e){
+		if($(e.target).parents('.fading_contact_cont').length > 0 && repScreenACStatus == 'expanded'){ helper.dataTableResize(); }
+	});
+
+	//CLICK EVENT FOR SUBMIT FADING CONTACT FILTER BUTTON
+	$("body").undelegate("#submitAdvanceFilter","click")
+	$("body").delegate("#submitAdvanceFilter","click",function(e){
+		$('#loading_screen').show();
+		$('.fadingFilterModal').modal('hide');
+		getfiltervalues();
+		setTimeout(function(){
+			if(getFilterVal != ''){
+				var tblId = 'fadingcontact_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
+				utils.scriptErrorHandling('Fading contact filter - '+tblId, 'Fading contact filter - '+tblId, JSON.stringify(getFilterVal));
+
+				_server.post({
+					url: serviceURLJava + "tableconfig/settblfields",
+					data: {"tblid": tblId, "settings": JSON.stringify(getFilterVal)},
+					success: function(response){
+						utils.info_toaster(_prismsuccMsgs["00057"], 's');
+						$('#loading_screen').hide();
+					},
+					error: function(jqXHR){
+						$('#loading_screen').hide();
+						utils.scriptErrorHandling(thisFileName, 'tableconfig/settblfields', jqXHR.responseText);
+					}
+				});
+			}
+			if(repScreenACStatus == 'collapsed'){
+				getFadingContactCollapsed(repScreenACStatus);
+			}else{
+				getFadingContactTable();
+			}
+		}, 500);
+	});
+
+	//DISMISS ICON CLICK
+	$("body").undelegate("#dismissResonsPopupClose, #cancel_dismiss","click")
+	$("body").delegate("#dismissResonsPopupClose, #cancel_dismiss","click",function(e){
+		utils.drawConfirmationPopupOutlook(_prismcommMsgs["00011"],  _prismcommMsgs["00012"], 'dismissOk', 'dismissCancel');
+	});
+
+	//POPUP CLOSE YES CLICK
+	$("body").undelegate("#dismissOk","click")
+	$("body").delegate("#dismissOk","click",function(e){
+		$('#dashboard_popup').modal('hide');
+	});
+
+	//POPUP CLOSE NO CLICK
+	$("body").undelegate("#dismissCancel","click")
+	$("body").delegate("#dismissCancel","click",function(e){
+		$('#dashboard_popup').modal('hide');
+		$('#fading_contact_dismiss_popup').modal('show');
+	});
+
+
+	//GET SETTING FOR DATATABLE
+	function getFadingContactTable(){
+		try{
+			var tableHTML = '<table id="' + thisRepInternalID + '_dataTable_fadingcontact" class="compact table theme-table table-bordered table-striped data-ellipsis" style="width: 100%;"></table>';
+			_server.post({
+				url: serviceURLJava + 'tableconfig/gettablesetting',
+				data:{
+					rpttype: 'getfadingcontacts',
+					moduletype: 'contact'
+				},
+				success: function (response){
+					if(response.status == 1){
+						DrawFadingContactTable(response);
+					}else{
+						$('#loading_screen').hide();
+						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
+					}
+				},
+				error: function (response){
+					$('#loading_screen').hide();
+					$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
+					utils.scriptErrorHandling(thisFileName, "tableconfig/gettablesetting", e);
+				}
+			});
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+		}
+	}
+
+	 //GET SETTING FOR DATATABLE
+	 function getFadingContactCollapsed(tabetype){
+		try{
+			$('#'+thisRepID+' .fading-contacts').html(PrismSpinner)
+			var startVar = 0;
+			var lengVar = config["fadingContactLimit"];
+			_server.post({
+				url: serviceURLJava+"contact/retrievefadingcontact",
+				data:{
+					"top": tabetype,"action":tabetype,"start": startVar,"length": lengVar,
+					"data": JSON.stringify(filterObj)
+				},
+				success: function(response){
+					if(response.status==1 ||response.status == 0){
+						callbackLoadFadingContacts(response);
+					}else{
+						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
+					}
+				},
+				error:function(e){
+					$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
+					utils.scriptErrorHandling(thisFileName, "fading_contacts/FadingContactTable", e);
+				}
+			});
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+		}
+	}
+
+	//FUNCTION TO DRAW FADING CONTACTS TABLES
+	function DrawFadingContactTable(tableSetting){
+		try{
+			$('#loading_screen').show();
+			filterdata = JSON.stringify(filterObj)
+			var tableObj ={};
+			var start = 0;
+			var tablength = 20;
+			var scrollFlag = utils.validateInputs(_prismConstantValues['FADING_CONTACT_LAZY_LOAD']);
+			var columns = [];
+			var table_settings = tableSetting.table_settings;
+			var cols = tableSetting.cols;
+			var title = tableSetting.title;
+			var colsAlign = tableSetting.colsAlign;
+			var numberFormatType = tableSetting.formatter;
+			var tableHTML = '<table id="dataTable_fadingcontact_'+repScreenACStatus+'" class="compact fading-contact-detail-table table-striped table-bordered theme-table table data-ellipsis" style="width: 100%;"></table>';
+			$(title).each(function (index, heading) {
+				columns.push({
+					"title": heading,
+					"sName": heading,
+					"name": heading,
+					"data": cols[index],
+					"className": "border-all " + colsAlign[index],
+					"target": [index],
+					"isDefault": table_settings[index].blockchk,
+					createdCell:  function (td, cellData, rowData, row, col) {
+						$(td).attr('title',utils.stripHTMLTags(cellData));
+						if(cols[col] == 'comments'){
+							cellData = (cellData == null || cellData == '') ? '-' : utils.replaceHTMLStrings(cellData);
+							$(td).html(cellData).prepend('<button class="icon fa fa-comments-o animate-hover cmnt-acty-account cursor m-r-sm font-sm" title="" data-placement="auto" data-content="'+cellData+'"   data-toggle="popover" data-trigger="click" data-container="body" ></button>' ).addClass('dt-left');
+						}
+					}           
+				});
+			});
+			var scrollYHeight =  ($(window).height() - 220) + "px";
+			var id1 = '#dataTable_fadingcontact_'+repScreenACStatus;
+			$("#"+thisRepInternalID).html(tableHTML);
+			tableObj = $.extend({
+				processing: true,
+				language: {
+					"loadingRecords": "loading..."
+				},
+				serverSide: true,
+				ajax: {
+					url: serviceURLJava + "contact/retrievefadingcontact",
+					dataType: "json",
+					method: "POST",
+					headers:{
+						auth_token: utils._prismGetAuthToken('1')
+					},
+					"data": function(result){
+						var resultLen = utils.validateInputs($('#'+thisRepID).attr('data-fadingLen'));
+						if(resultLen == ''){ $('#'+thisRepID).attr('data-fadingLen', utils.validateInputs(result.length)); }
+						else{ result.length = resultLen; }
+						var objSend = utils.formDataTableReqObj(result);
+						objSend = $.extend({
+							top: 'collapsed',
+							action:repScreenACStatus,
+							// start: start,
+							// length: tablength,
+							data: JSON.stringify(filterObj)
+						}, objSend);
+						return objSend;
+					}
+				},
+				id:id1,
+				settings:true,
+				table_settings: table_settings,
+				columns: columns,
+				sScrollY: scrollYHeight,
+				scrollX: true,
+				lengthChange:false,
+				numberFormatType:numberFormatType,
+				excelExport:true,
+				order: [[tableSetting.defColSort, tableSetting.defColSortType]],
+				numeberFormatCels: tableSetting.colsCnt,
+				beforePaginateAdd: true,
+				destroy: true,
+				bInfo: true,
+				deferRender: true,
+				bPaginate: true,
+				pageLength: 50,
+				enableScroll: true,
+				scrollCollapse: false,
+				loadPopover: true,
+				loadPopoverFn: function(result){
+					popoverTrigger();
+				},
+				ExcelUrl:serviceURLJava+"contact/retrievefadingcontact?top="+repScreenACStatus+"&action="+repScreenACStatus+"&start="+start+"&length="+tablength+"&data="+encodeURIComponent(filterdata),
+				drawCallback: function(settings){
+					if(utils.callCiaOnOffFlag() == false){ $('.dismisscall').hide(); }
+					$('#loading_screen').hide();
+					$(id1 + " tr:last td").css('padding-bottom','4px');
+					if(repScreenACStatus == 'collapsed'){
+						$("#col_visb_div").css('display','none');
+					}
+					$('#dataTable_fadingcontact_'+repScreenACStatus+' thead tr').css('height','0px');
+//					var api = this.api();
+//					var rows = api.rows({page:'current'}).nodes();
+//					var ind = _.findIndex(settings.aoColumns,{data:'comments'})+1;
+//					var CommentData = api.column(_.findIndex(settings.aoColumns,{data:'comments'})).data();
+//					api.column(ind-1,{page:'current'}).data().each( function(group,i){
+//						var comData = (CommentData[i] == '') ? '-' : CommentData[i];
+//						$(rows).eq(i).find("td.activitydescription").prepend('<button class="icon fa fa-comments-o animate-hover cmnt-acty-account cursor m-r-sm font-sm" title="" data-placement="auto" data-content="'+utils.replaceHTMLStrings(comData)+'"   data-toggle="popover" data-trigger="click" data-container="body" id="cmnt-acty-account"></button>' ).addClass('dt-left');
+//					})
+					if(scrollFlag == '2' || (scrollFlag == '1' && !utils.checkifIE())){
+						$("#" + settings.sTableId + "_wrapper .dataTables_paginate .pagination").hide();						
+                    }
+					popoverTrigger();
+					$(id1+' .fadingActions').attr('title', '')
+					setTimeout(function(){
+						helper.dataTableResize();
+					},1000)
+				},
+				fnRowCallback: function(domRow, rowData, rowIdx){
+					if(utils.validateInputs(rowData.lastInteractedDate) !=''){
+						var dateTime = moment(rowData.lastInteractedDate,_prismSTDateOrgFormatSlash+" hh:mm").format(_prismSTDateFormatSlash+" hh:mm A");
+						$(domRow).find("td.intDateCol").attr('title',dateTime).html(dateTime);
+					}
+					if(utils.validateInputs(rowData.lastInteractedDateMe) !=''){
+						var dateTimeMe = moment(rowData.lastInteractedDateMe,_prismSTDateOrgFormatSlash+" hh:mm").format(_prismSTDateFormatSlash+" hh:mm A");
+						$(domRow).find("td.intDateColMe").attr('title',dateTimeMe).html(dateTimeMe);
+					}
+				},
+			}, tableObj);
+			if(scrollFlag == '2' || (scrollFlag == '1' && !utils.checkifIE())){
+				tableObj = $.extend({ "enableScroll": true, "scrollCollapse": false, "lengthChange": false}, tableObj);
+			}else{
+				tableObj = $.extend({ "enableScroll": false, "scrollCollapse": true }, dataTableObj);
+			}
+			utils.DrawDatatable(tableObj);
+			setTimeout(function(){
+				var data = _.keys(filterInfoObj);
+				var contentData = '<b>Filters Applied: </b>'+data;
+				if(filterObjVal == ''){
+					$('#fadingFilterInfo').css('display','none');
+				}else{
+					$('#fadingFilterInfo').css('display','inline-block');
+					if(filterObjVal == '<b class="fw-100">All the criteria is selected </b><div class="fltr-val fw-100">True</div>' || filterObjVal == '<b class="fw-100">One or more of the criteria is selected </b><div class="fltr-val fw-100">True</div>' ){
+						$('#fadingFilterInfo').hide()
+					}else{
+						$('#fadingFilterInfo').attr('data-content',filterObjVal);
+						popoverTrigger();
+					}
+				}
+				
+			},500);
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+		}
+	}
+
+	//FUNCTION TO LOAD FADING CONTACT
+	function callbackLoadFadingContacts(response){
+		try{
+			getActiveID();
+			var dataRes = (typeof response['data'] !== 'undefined' && $.isEmptyObject(response['data']) == false)?response['data']:'';
+			var dataStatus = (typeof response['status'] !== 'undefined' && response['status'] != '')?response['status']:'';
+			var res = "";
+			var i;
+			var conDetails = '';
+			var contactName,accountName,contactId,accountId,lastIntDays,type,desc,empId,mailId,accountType;
+			var errFetchRec = '<div class="no-data">'+_prismerrMsgs["00002"]+'</div>';
+			var noRecVar = '<div class="no-data">'+_prismcommMsgs["00001"]+'</div>';
+			if(dataStatus == 1 || dataStatus == 0){
+				$("#"+thisRepID+"_ibox .ibox-tools .filter-icons").remove();
+				if(dataStatus == 1 && dataRes.length > 0){
+					res += '<div class="fading-small-widget"><table class="table table-striped fading-contact-table">'+
+								'<tbody class="tbl-body">';
+					try{
+						for(i=0;i<dataRes.length;i++){
+							if(typeof dataRes[i] !== 'undefined'){
+								conDetails = dataRes[i];
+								
+								contactName = utils.stripHTMLTags(utils.validateInputs(conDetails['contactName']));
+								accountName = (typeof conDetails['accountName'] !== 'undefined' && conDetails['accountName'] !== '')?'('+utils.validateInputs(utils.stripHTMLTags(conDetails['accountName'])).trim()+')':'';
+								accountType= utils.validateInputs(conDetails['accountType']);
+								contactId = utils.validateInputs(conDetails['contactId']);
+								accountId = utils.validateInputs(conDetails['accountId']);
+								mailId = (typeof conDetails['email'] !== 'undefined' && conDetails['email'] !== '')?'mailto:'+conDetails['email']:'#';
+								empId = utils.validateInputs(conDetails['empId']);
+								lastIntDays = utils.validateInputs(conDetails['lastInteracted']);
+								lastIntDays = (lastIntDays >1)?lastIntDays+' days ago':lastIntDays+' day ago';
+								
+								type = (typeof conDetails['lastInteractedMode'] !== 'undefined' && conDetails['lastInteractedMode'] !== '')?'<span class="" title="'+conDetails['lastInteractedMode']+'">'+conDetails['lastInteractedMode']+'</span>':'';
+								desc = (typeof conDetails['desc'] !== 'undefined' && conDetails['desc'] !== '')?'<div class="small text-ellipsis"><span class="int_desc" title="'+conDetails['desc']+'">'+conDetails['desc']+'</span></div>':'';
+								res += '<tr id="fdc_row_'+contactId+'" class="fdc-row">'+
+											'<td colspan="2">'+
+											   '<div class="text-ellipsis" title="'+utils.replaceQuotes(contactName+accountName)+'">'+utils.replaceHTMLStrings(contactName+accountName)+'</div>'+			  
+											'</td>'+
+											'<td>'+
+												'<div style="text-align:right;" title="'+accountType+'">'+accountType+'</div>'+
+											'</td>'+
+										'</tr>'+
+										'<tr>'+
+											'<td colspan="2">'+desc+'</td>'+
+										'</tr>'+
+										'<tr>'+
+											'<td>'+type+'</td>'+
+											'<td><div class="small contact-days dt-left"><b>' + lastIntDays + '</b></div></td>'+
+											'<td>'+
+												'<div class="icons-list">'+
+													'<input type="hidden" value="'+contactId+'" class="contactId" />'+
+													'<input type="hidden" value="'+accountId+'" class="accountId" />'+
+													'<input type="hidden" value="'+empId+'" class="employeeId" />'+
+													'<input type="hidden" value="'+utils.replaceHTMLStrings(utils.validateInputs(conDetails['accountName']))+'" class="accountNme" />'+
+													'<input type="hidden" value="'+contactName+'" class="contactNme" />'+
+													'<input type="hidden" value="'+utils.validateInputs(conDetails['email'])+'" class="contactMail" />'+
+													conDetails['action']+
+												'</div>'+
+											'</td>'+
+										'</tr>';
+							}		
+						}
+					}catch(e){
+						utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+					}			
+					res += '</tbody>'+
+								'</table></div>';
+								//'<button type="button" class="btn theme-more"><span>More..</span></button>';			
+				}else{
+					res += noRecVar;
+				}
+			}else{
+				res +=  errFetchRec
+			}
+			$('#'+thisRepInternalID).html(res);
+			setTimeout(function(){
+				if(utils.callCiaOnOffFlag() == false){ $('.dismisscall').hide(); }
+				if(filterObjVal != '' || dataStatus == 1){
+					$(filterhtml).appendTo($("#"+thisRepID+"_ibox .ibox-tools"));
+				}
+				var data = _.keys(filterInfoObj);
+				var contentData = '<b>Filters Applied: </b>'+data;
+				if(filterObjVal == ''){
+					$('#fadingFilterInfo').css('display','none');
+				}else{
+					$('#fadingFilterInfo').css('display','inline-block');
+					if(filterObjVal == '<b class="fw-100">All the criteria is selected </b><div class="fltr-val fw-100">true</div>' || filterObjVal == '<b class="fw-100">One or more of the criteria is selected </b><div class="fltr-val fw-100">true</div>' ){
+						$('#fadingFilterInfo').css('display','none');
+					}else{
+						$('#fadingFilterInfo').attr('data-content',filterObjVal);
+						popoverTrigger();
+					}
+				}
+				
+			},500);
+			$('#loading_screen').hide();
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+		}
+	}
+
+	//CALLBACK FUNCTION
+	function thisRepCB(){
+		try{
+			$('#loading_screen').show();
+			$(window).resizeEnd();
+			gettblfieldsval(0);
+		}catch(e){
+			$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
+			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+		}
+	}
+
+	//FUNCTION TO TRIGGER POPOVER
+	function popoverTrigger(){
+		try{
+			$('.popover').remove();
+			$('[data-toggle="popover"]').popover({
+					"placement": wheretoplace,
+					"container": 'body',
+					"classname": 'fading-filter-popover'
+			});
+			function wheretoplace(){
+				var MyTop = utils.validateInputs($(this)[0].$element.offset().top);
+				if (MyTop != '' && MyTop < 1100)	return 'bottom';  
+				else return 'top';
+			}
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+		}
+	}
+
+	//SERVICE CALL FOR GET TABLE VALUES
+	function gettblfieldsval(val){
+		try{
+			var tblId = 'fadingcontact_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
+			_server.post({
+				url: serviceURLJava + "tableconfig/gettblfields",
+				data: {"tblid": tblId},
+				success: function(response){
+					if(response.status == 1){
+						var data = (utils.validateInputs(response.settings.column_def) != '') ? JSON.parse(response.settings.column_def) : '';
+						if(val == 1){
+							settblfeildsval(data,val);
+						}
+						defaultfiltervalues(data,val)
+					}else{
+						defaultfiltervalues('',val);
+					}
+				},
+				error: function(jqXHR){
+					$('#loading_screen').hide();
+					utils.scriptErrorHandling(thisFileName, 'tableconfig/gettblfields', jqXHR.responseText);
+				}
+			});
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+	//FUNCTION TO FORM FILTER INFORMATION
+	function defaultfiltervalues(response,val){
+		try{
+			if(response != ''){
+				filterInfoObj = {}
+				_.map(response, function (tokenObj, key){
+					switch(utils.validateInputs(tokenObj.type).toLowerCase()){
+						case 'radiotokenizer':
+						case 'tokenizer':
+							var tempdata = _.pluck(tokenObj.values, 'val');
+							var tempdatas = _.pluck(tokenObj.values,'txt');
+							filterObj[tokenObj.key] = tempdata;
+							if(tempdata.length >= 1 ){
+								filterInfoObj[tokenObj.title] = tempdatas;
+							}
+						break;
+						case 'select':
+							filterObj[tokenObj.key] = tokenObj.values;
+							if(utils.validateInputs(tokenObj.values) != '' ){
+								filterInfoObj[tokenObj.title] = tokenObj.values;
+							}
+						break;
+						case 'checkbox':
+							filterObj[tokenObj.key] = tokenObj.values;
+							if(utils.validateInputs(tokenObj.values) == true ){
+								filterInfoObj[tokenObj.title] = tokenObj.values;
+							}
+						break;
+						default:
+							filterObj[tokenObj.key] = tokenObj.values;
+							var tokenObjKey=utils.validateInputs(tokenObj.key).toLowerCase();
+							if(tokenObj.values == true || utils.validateInputs(tokenObj.values) != '' || utils.validateInputs(tokenObj.values).length > 0){
+								if(tokenObjKey.indexOf('include') != -1 || tokenObjKey.indexOf('exclude') != -1){
+									filterInfoObj[tokenObj.key] = tokenObj.values;
+								}else{ filterInfoObj[tokenObj.title] = tokenObj.values; }
+							}
+						break;
+					}
+				});
+				if(!filterObj.distributionList){
+					filterObj.list = [];
+					filterInfoObj = _.omit(filterInfoObj, 'List name');
+				}	
+				if(utils.validateInputs(filterObj.accountName).length == 0) {
+					filterInfoObj = _.omit(filterInfoObj, 'includeAccName','excludeAccName');
+				}
+				 if(utils.validateInputs(filterObj.accountType).length == 0){
+					filterInfoObj = _.omit(filterInfoObj, 'includeAccType','excludeAccType');
+				}
+				setTimeout(function(){
+					if(_.size(filterInfoObj) > 1){
+						filterObjVal = '<div><b class="fw-100">Filter Applied:</b><br>';
+					}else{
+						filterObjVal = '<div>No filter applied</div>';
+					}
+					// filterObjVal = "";
+					var keyLowerCase ="";
+					$.each(filterInfoObj,function(key,val){
+						// if(typeof val == 'string'){
+							// filterObjVal += '<b class="fw-100">'+key+'</b><div class="fltr-val">'+val+'</div>';
+						// }else if(typeof val == 'boolean'){
+							// filterObjVal += '<b class="fw-100">'+key+'</b><div class="fltr-val">'+val+'</div>';
+						// }else if(typeof val == 'object'){
+							if(_.size(filterInfoObj) > 1){
+								keyLowerCase= utils.validateInputs(key).toLowerCase();
+								if(keyLowerCase.indexOf('include') != -1){key = 'Include';}
+								if(keyLowerCase.indexOf('exclude') != -1){key = 'Exclude';}
+
+								val = (typeof val == 'object')? val.toString() : val;
+								if(val === true){ val = ''; }
+								if(val === false){ val = ''; }
+								filterObjVal += '<b class="fw-100">'+key+' </b><div class="fltr-val fw-100">'+val+'</div>';
+							}
+						//}
+					})
+					filterObjVal += '</div>';
+				}, 500);
+			}
+			if(val == 0){
+				if(repScreenACStatus == 'collapsed'){
+					getFadingContactCollapsed(repScreenACStatus);
+				}else{
+					getFadingContactTable();
+				}
+				drawFadingContactFilterForm();
+			}
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+
+	//FUNCTION TO SET FILTER VALUES TO FORM
+	function settblfeildsval(data){
+		try{
+			_.map(data, function(tokenObj,key){
+				switch(utils.validateInputs(tokenObj.type).toLowerCase()){
+					case "checkbox":
+					case "radio":
+						$('#'+tokenObj.id).prop('checked',tokenObj.values);
+						$('#'+tokenObj.id).trigger('change');
+					break;
+					case "select":
+					if(typeof tokenObj.values == 'object'){
+						setTimeout(function(){
+							$("#"+tokenObj.id).val(tokenObj.values).trigger("chosen:updated");
+						}, 300);
+					}else{
+						$('#'+tokenObj.id).val(tokenObj.values);
+					}
+					break;
+					case 'tokenizer':
+						$.each(tokenObj.values,function(key,val){
+							$(".fadingFilterModal .modal-body #"+tokenObj.id).tokenize().tokenAdd(val.val, val.txt);
+						})
+					break;
+					default:
+						$('#'+tokenObj.id).val(tokenObj.values);
+					break;
+				}
+			});
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+	//FUNCTION TO DRAW FADING CONTACT FITER FORM
+	function drawFadingContactFilterForm(){
+		try{
+			formsettingval = utils.validateInputs(_prismFormSettingValues['FADINGCONTACTFILTER']);
+			var formDetail = JSON.parse(formsettingval);
+			var htmlContent = '<div class="modal-dialog" data-targetid="fadingContact">'+
+									'<div class="modal-content animated fadeInRight popupcenter">'+
+										'<div class="modal-header bg-primaryLight"><button type="button" class="close" data-dismiss="" id="advance_pop_up_close"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button><span id="poptitle" style="text-align:center;" class="text-center modal-title">Fading Contact Filters</span></div>'+
+										
+										'<div class="modal-body"><div class="panel-form form-xs" id="">';
+			$.each(formDetail, function(i, ele){
+				var formcondition = (ele.role == "" || (ele.role.toLowerCase().indexOf(userDetails.role.toLowerCase())!= -1)) ? true : false;
+				if(formcondition){
+					htmlContent += formFields(ele);
+				}
+			});					
+			htmlContent +=	'</div></div>'+
+								'<div class="modal-footer">'+
+									'<button id="resetAdvanceFilter" data-action="" class="advfilter-btn-cancel adv-filter-btns btn-custom btn-dflt m-r-xs" type="button" >Reset</button>'+
+									'<button id="submitAdvanceFilter" data-clickid="'+_prismSTClickTrackMessages.dashfadingcontactfilter+'" data-action="" class="advfilter-btn-save adv-filter-btns comm_btn_ok btn-custom btn-green dashfadingcontactfilter" type="button">Apply</button>'+
+									'</div>'+
+								'</div>'+
+							'</div>';
+			$('.fadingFilterModal').html(htmlContent);
+			popoverTrigger();
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+		}
+	}
+
+	//TO FORM FILTER FORM FIELD
+	function formFields(obj){
+		try{
+			var content = '';
+			switch(utils.validateInputs(obj.type).toLowerCase()){
+				case 'select':
+					if(obj.options.length == 0){
+						prepareSelectsArr.push({
+							id: obj.id,
+							url: obj.optionsUrl,
+							reqData: ((obj.reqData != undefined) ? obj.reqData : {}),
+							title: obj.name,
+							defaultValue: obj.defaultValue,
+							multiSelect: obj.multiSelect,
+							customOption:utils.validateInputs(obj.customOption)
+						})
+						if(obj.multiSelect == true){
+							prepareMultiselectArr.push(obj.id);
+						}
+					}
+					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label><select class="'+obj.classname+ '" data-placeholder="Select ' +( (obj.name == 'Account Tier')?'tiers':obj.name )+ '"   id="'+obj.id+'" ' + (obj.multiSelect ? "multiple" : "") + '>';
+						$.each(obj.options, function(j, jele){
+							content += '<option value="'+jele.value+'">'+jele.text+'</option>';
+						});
+					content += '</select>'+
+								'</div>';
+					return content;
+				break;
+				case 'checkbox':
+					content += '<div class="form-fields '+obj.classname+'"><div class="checkbox checkbox-primary checkbox-inline custom-checkbox" style="width:100%">' +
+						'<input id="'+obj.id+'" value="'+obj.name+'" style="height:auto" type="checkbox" name="'+obj.name+'">' +
+						'<label for="'+obj.id+'">'+obj.name+'</label>';
+					if(typeof obj.info !== 'undefined' && obj.info != ''){
+						content += '<i class="fa font-sm1 fa-info-circle m-l-xs c-pointer tier_popover" data-toggle="popover" data-html="true" data-placement="auto"  data-container="body" data-content="'+obj.info+'"></i>';
+					}
+					content +=	'</div></div>';
+					return content;
+				break;
+				case 'tokenizer':
+					prepareTokenizerArr.push({ ele: obj, id: obj.id });
+					var display = (utils.validateInputs(obj.display) == true) ? 'block' : 'none' ;
+					content += '<div class="form-fields '+obj.classname+'" style="display:'+display+'"><div class="tokenize-container" id="'+obj.id+ '_list">' +
+						'<select id="'+obj.id+'" multiple="multiple" class="tokenize-sample Tokenize TokensContainer"></select>' +
+						'</div></div>';
+					return content;
+				break;
+				case 'radio':
+					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label>';
+					$.each(obj.options,function(j,jele){
+						var defaultcheck = (utils.validateInputs(jele.defaultcheck) == true) ? 'checked':'';
+						content += '<div class="radio radio-circle radio-primary radio-inline '+obj.classname+'">' +
+						'<input id="'+jele.value+'" value="' + jele.value + '" type="radio" '+defaultcheck+ ' name="'+jele.name+'">' +
+						'<label for="'+jele.value+'">' + jele.text + '</label>' +
+						'</div>';
+					});
+					content += '</div>';
+					return content;
+				break;
+				default:
+					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label></div>';
+					return content;
+				break;
+			}	
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+		}
+	}
+
+	//FUNCTION TO CLEAR FILTER VALUES
+	function clearFilterValue(){
+		try{
+			var response = JSON.parse(formsettingval);
+			_.map(response, function (tokenObj, key){
+				var type = tokenObj.type.toLowerCase();
+				if(type == 'select'){
+					if(utils.validateInputs(tokenObj.multiSelect) != '' && tokenObj.multiSelect == true){
+							$('#'+tokenObj.id).val('').trigger("chosen:updated");
+					}else{
+						$('#'+tokenObj.id).val('');
+					}
+				}else if(type == 'checkbox'){
+					$('#'+tokenObj.id).prop('checked',false).trigger('change');
+				}else if(type == 'tokenizer'){
+					if(utils.validateInputs($('#'+tokenObj.id).tokenize()) != ''){
+						$('#'+tokenObj.id).tokenize().clear();
+					}	
+				}else if(type == 'radio'){
+					$.each(tokenObj.options,function(key,val){
+						if(val.defaultcheck == true){
+							$('#'+val.value).prop('checked',true).trigger('change');
+						}
+					})
+				}
+			})
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+
+	// FUNCTION TO PREPARE TYPEAHEAD
+	function prepareTypeahead(arr, callback){
+		try{
+			_.map(arr, function(ele){
+				$("#" + ele.id).typeahead('destroy');
+				var maxItem = utils.validateInputs(ele.ele.typeaheadParams.maxItem)
+				$.typeahead({
+					input: "#" +ele.id,
+					minLength: ele.ele.typeaheadParams.minLength,
+					maxItem: (maxItem != '') ? maxItem : typeaHeadMaxItem,
+					mustSelectItem: ele.ele.typeaheadParams.mustSelectItem,
+					delay: 300,
+					emptyTemplate: ele.ele.typeaheadParams.emptyTemplate,
+					dynamic: ele.ele.typeaheadParams.dynamic,
+					cache: false,
+					// template: ele.ele.typeaheadParams.template,
+					template: function(query, item){
+						var temp = ele.ele.typeaheadParams.template;
+						return temp;
+					},
+					source: {
+						search: {
+							display: ele.ele.typeaheadParams.display,
+							url: [{
+								type: "POST",
+								url: serviceURLJava + ele.ele.typeaheadParams.url,
+								data: {
+									searchtext: "{{query}}",
+									// type: "dashboard",
+									filtertype: ele.ele.typeaheadParams.filtertype
+								},
+								headers:{
+									auth_token: utils._prismGetAuthToken('1')
+								},
+								callback: {
+									done: function(data){
+										$("#" + ele.id+ ' .typeahead__result .typeahead__list').remove();
+										return data.data;
+									}
+								}
+							}]
+						}
+					},
+					callback: {
+						onClick: function(node, a, obj, e){
+							if(ele.ele.duplicateValidation)
+								return false;
+							else{
+								setTimeout(function(){
+									$("#" + ele.id).val(obj[ele.ele.typeaheadParams.display[0]]);
+								},0);
+							}
+						},
+						onClickAfter: function(node, a, obj, e){
+							$("#" + ele.id).val('').val(obj[ele.ele.typeaheadParams.display[0]]);
+							$("#" + ele.id).data("value", obj);
+							$("#" + ele.id).trigger("change");
+						}
+					}
+				});
+			})
+			callback(true);
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+	/* Start: multiselect init function */
+	function prepareMultiselect(arr){
+		try{
+			if(arr.length > 0){
+				var ids = arr.join(', #')
+				setTimeout(function() {
+					$('#' + ids).chosen({ width: "520px" });
+					$('#' + ids).trigger('chosen:updated');
+				}, 500)
+			}
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+		}
+	}
+
+	//FUNCTION TO PREPARE SELECT
+	function prepareSelects(arr, callback){
+		try{
+			if(arr.length > 0){
+				_.map(arr, function(obj, key){
+					_server.post({
+						url: serviceURLJava + obj.url,
+						cache: false,
+						data: obj.reqData,
+						success: function(res){
+							if(res.status >= 0 && res.data){
+								var options ='';
+								var thisid = utils.validateInputs(obj.id);
+								/* Setting Account tier or Research tier Based on Config */
+								var accountResearchTier = "0";
+								var thisdata = res.data;
+								try{
+									var researchTierKey = utils.validateInputs(utils.jsonDataObj(_prismConstantValues["MIFID_CONFIG"]));
+									accountResearchTier = (utils.validateInputs(researchTierKey.Acct_Research_Tier) != '')? researchTierKey.Acct_Research_Tier : accountResearchTier;
+								}catch(e){}
+								if(accountResearchTier == '1' || accountResearchTier == 1){
+									thisdata = (utils.validateInputs(obj.customOption) != "") ? utils.validateInputs(obj.customOption) :res.data;
+								}
+								if(thisdata.length >0){
+									_.map(thisdata, function(opt){
+										if(obj.reqData != undefined && obj.reqData.type != undefined) {
+											options += '<option value="' + opt.text + '" ' + ((obj.defaultValue != "NA" && obj.defaultValue == opt.value) ? "selected" : "") + '>' + opt.text + '</option>';
+										}else{
+											options += '<option value="' + opt.text + '" ' + ((obj.defaultValue != "NA" && obj.defaultValue == opt.text) ? "selected" : "") + '>' + opt.text + '</option>';
+										}
+									});
+									$("#" + obj.id + ' > option').remove();
+									$("#" + obj.id).append(options);
+								}
+							}
+						},
+						error: function(e){
+							utils.scriptErrorHandling(thisFileName, obj.url, e);
+						}
+					});
+					if(key == arr.length - 1){
+						callback(true);
+					}
+				})
+			}else{
+				callback(true);
+			}
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+
+	//FUNCTION TO FORM TOKENIZER
+	function prepareTokenizer(arr, callback){
+		try {
+			_.map(arr, function (obj){
+				var filterparam = (utils.validateInputs(obj.ele.filterarray) != '') ? ('&'+obj.ele.filterarray) : ''
+				$(".fadingFilterModal .modal-body #" +obj.id).tokenize({
+					datas: serviceURLJava + obj.ele.filterURL+'?1=1'+filterparam,
+					searchParam: 'searchtext',
+					placeholder: obj.ele.placeHolder,
+					newElements: "true",
+					maxElements:obj.ele.maxLength,
+					onRemoveToken: function (value, e) { },
+					onAddToken: function (value, e) { }
+				});
+			})
+			callback(true);
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+
+	//FUNCTION TO GET FILTER VALUES
+	function getfiltervalues(){
+		try{
+			getFilterVal = [];
+			var filterform = JSON.parse(formsettingval);
+			_.map(filterform, function(tokenObj, key){
+				switch(utils.validateInputs(tokenObj.type).toLowerCase()){
+					case 'select':
+						if(typeof tokenObj.requestkey == 'string'){
+							if(utils.validateInputs(tokenObj.multiSelect) == '' || !tokenObj.multiSelect){
+								getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('#'+tokenObj.id+' option:selected').val(),"id":tokenObj.id,"title":tokenObj.name})
+							}else{
+								getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('#'+tokenObj.id).val(),"id":tokenObj.id,"title":tokenObj.name})
+							}
+						}
+					break;
+					case 'checkbox':
+						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('.fadingFilterModal #'+tokenObj.id).is(':checked'),"id":tokenObj.id,"title":tokenObj.name})
+					break;
+					case 'tokenizer':
+						var tokenval = ($('#'+tokenObj.id).tokenize().getFullDtls() == '')?[]:$('#'+tokenObj.id).tokenize().getFullDtls();
+						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":tokenval,"id":tokenObj.id,"title":tokenObj.name})
+					break;
+					case 'radio':
+					$.each(tokenObj.options,function(key,val){
+						var tempdata = $('#'+val.value).is(':checked');
+						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":val.key,"key":val.key,"values":tempdata,"id":val.value,"title":val.text})
+					})
+					break;
+					default:
+					break;
+				}
+				setTimeout(function(){
+					defaultfiltervalues(getFilterVal)
+				}, 500);
+			});
+		}catch(e){
+			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
+			callback(false);
+		}
+	}
+	
+	return {
+		getFadingContactCollapsed: getFadingContactCollapsed,
+		DrawFadingContactTable: DrawFadingContactTable,
+		getFadingContactTable: getFadingContactTable,
+		callbackLoadFadingContacts: callbackLoadFadingContacts,
+		popoverTrigger: popoverTrigger,
+		thisRepCB: thisRepCB,
+		gettblfieldsval: gettblfieldsval,
+		defaultfiltervalues: defaultfiltervalues,
+		settblfeildsval: settblfeildsval,
+		drawFadingContactFilterForm: drawFadingContactFilterForm,
+		formFields: formFields,
+		clearFilterValue: clearFilterValue,
+		prepareTypeahead: prepareTypeahead,
+		prepareMultiselect: prepareMultiselect,
+		prepareSelects: prepareSelects,
+		prepareTokenizer: prepareTokenizer,
+		getfiltervalues: getfiltervalues
+	};
+})();
+
+function fading_contacts(id, clientID, searchCode){
+	try{
+		var thisRepID = id;
+		var thisRepIboxID = id+'_ibox';
+		var filterValue = '';
+		var thisFileName = 'reports - fading_contacts1.js';
+		var thisRepInternalID = thisRepID+' #fading-contacts-contents';
+		
+		/**** Start Events ****/
+		//FADING CONTACT DISMISS CLICK EVENT
+		$("body").undelegate("#"+thisRepID+" #dismissfadingcontact","click");
+		$("body").delegate("#"+thisRepID+" #dismissfadingcontact","click",function(e){
+			var thisParent = $(this).parent();
+			var conId = thisParent.data('contactid');
+			var empId = thisParent.data('empid');
+			var accountNme = thisParent.data('accountname');
+			var contactNme = thisParent.data('contactname');
+			var contactMail = $(this).data('mailid');
+			var searchCode = thisParent.data('searchcode');
+			var commFreq = thisParent.parent().siblings('td.commFreq').attr('data-order');
+
+			var dissmissObj = {};
+			dissmissObj.conId = conId;
+			dissmissObj.empId = empId;
+			dissmissObj.commFreq = commFreq;
+			dissmissObj.searchCode = searchCode;
+
+			conInfo.contactEmail = contactMail;
+			conInfo.contactId = conId; 
+			conInfo.contactName = contactNme;
+			conInfo.acctName = accountNme;
+			
+			if(conId != ''){
+				dismissResonsPopup(dissmissObj);
+			}else{
+				utils.info_toaster(_prismerrMsgs["00003"], 'e');
+			}
+		});
+
+		//CHANGE EVENT FOR DISTRIBUTION LIST CHECKBOX
+		$("body").undelegate("#distributionlist","change")
+		$("body").delegate("#distributionlist","change",function(e){
+			if($('#distributionlist').is(':checked') == true){
+				$('#distributionlistname_list').parent().css('display','block');
+			}else{
+				$('#distributionlistname_list').parent().css('display','none');
+			}
+		});
+
+		//CLICK EVENT FOR RESET FILTER BUTTON
+		$("body").undelegate("#resetAdvanceFilter","click")
+		$("body").delegate("#resetAdvanceFilter","click",function(e){
+			fadingContactSelf.clearFilterValue();
+		});
+
+		//FULLSCREEN LINK CLICK
+		$('body').undelegate('.fading_contact_cont #'+thisRepIboxID+' .fullscreen-link i','click');
+		$('body').delegate('.fading_contact_cont #'+thisRepIboxID+' .fullscreen-link i','click',function (){
+			if($(this).hasClass('fa-expand')){
+				repScreenACStatus = 'expanded';
+				$('#'+thisRepID).attr('data-fadingLen','');
+				$('.fading_contact_cont #'+thisRepIboxID).addClass('fad-full');
+				$('#loading_screen').show();
+			}else{
+				repScreenACStatus = 'collapsed';
+				$('.fading_contact_cont #'+thisRepIboxID).removeClass('fad-full');
+			}
+			
+			if($('.grid-stack').length >0){
+				utils.toggleFullscreen($(this));
+				var iboxCls = $('.fading_contact_cont #'+thisRepIboxID).attr('class');
+				if(iboxCls.indexOf('gridHt')==-1){ $('.fading_contact_cont #'+thisRepIboxID).addClass('gridHt'); }
+			}
+			fadingContactSelf.thisRepCB();
+		});
+
+		//CHANGE EVENT FOR DISMISS POPUP RADIO BUTTON
+		$("body").undelegate(".frm_fc_dismission_options .choose_dismiss_opt","change")
+		$("body").delegate(".frm_fc_dismission_options .choose_dismiss_opt","change",function(e){
+			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio input#rdo_comm_freq').is(':checked') == true){
+				$('.choose_dismiss_opt_container .dismiss_communication_frequency').css('display','block');
+			}else{
+				$('.choose_dismiss_opt_container .dismiss_communication_frequency').css('display','none');
+			}
+
+			$("#submit_dismiss").removeClass('disabled');
+			if($(this).val() == 1){
+				$('.frm_fc_dismiss_day_options').show();
+			}else{
+				$('.frm_fc_dismiss_day_options input.choose_dismiss_day_opt').first().trigger('click');
+				$('.frm_fc_dismiss_day_options').hide();
+			}	
+		});
+		
+		//CLICK EVENT FOR LOG INTERACTION IN FADING CONTACT TABLE 
+		$("body").undelegate("#interactionedit","click")
+		$("body").delegate("#interactionedit","click",function(e){
+			var thisParent = $(this).parent();
+			var contactname = utils.replaceSlashDoubleQuotes(thisParent.data('contactname'));
+			var parentCon = utils.validateInputs(thisParent.data('contactid'));
+			parentCon = (typeof parentCon == 'number') ? parentCon.toString() : parentCon;
+			var propObject = {"popTitle":contactname+' -'+lblConfig["contactlogInteractionsPopupHeader"]};
+			conInfo.contactId = parentCon;
+			conInfo.contactName = contactname;
+			conInfo.acctName = utils.replaceSlashDoubleQuotes(thisParent.data('accountname'));
+			conInfo.fromFadingCont = true;
+			conInfo.screenSts = repScreenACStatus;
+			interactionLogDash.openLogInteractionPopup(propObject);
+		});
+
+		//CLOSE CLICK EVENT FOR FADING CONTACT FILTER BUTTON
+		$("body").undelegate("#advance_pop_up_close","click")
+		$("body").delegate("#advance_pop_up_close","click",function(e){
+			$('.fadingFilterModal').modal('hide');
+			var confTitle = 'Confirmation';
+			var yesID = 'fadingContactFilterYes';
+			var noID = 'fadingContactFilterNo';
+			utils.drawConfirmationPopup(confTitle, _prismcommMsgs['00024'], yesID, noID);
+		});
+
+		//TO CLOSE CONFIRMATION BOX
+		$('body').undelegate('#fadingContactFilterNo','click');
+		$('body').delegate('#fadingContactFilterNo','click',function(){
+			$('.fadingFilterModal').modal('show');
+		});
+
+		//TO RESET ADVANCE FILTER
+		$('body').undelegate('#fadingContactFilterYes','click');
+		$('body').delegate('#fadingContactFilterYes','click',function(){
+			fadingContactSelf.clearFilterValue();
+			$('#dashboard_popup').modal('hide');
+		});
+		
+		//CLICK EVENT FOR CALL IN FADING CONTACT TABLE
+		$("body").undelegate("#dismisscall","click")
+		$("body").delegate("#dismisscall","click",function(e){
+			var uniqPhone = utils.validateInputs($(this).parent().data('phone'));			
+			if(uniqPhone != ''){
+				var contact_id = utils.validateInputs($(this).parent().data('contactid'));
+				if(utils.validateInputs(contact_id) != '') {	
+					$('#loading_screen').show();			
+					var phObj ={
+						contact_id: contact_id,
+						phone_number: '',
+						sel_num: '',
+						uniqPhone: uniqPhone
+					}		
+					quickcall.start.qc_load_start(phObj);
+				}
+			}				
+		});		
+		
+		//CLICK EVENT FOR DISMISS POPUP SUBMIT BUTTON
+		$("body").undelegate("#submit_dismiss","click");
+		$("body").delegate("#submit_dismiss","click",function(e){
+			var dismiss_ws = $('.choose_dismiss_opt_content .radio .choose_dismiss_opt:checked').attr('dismiss');
+			var commfreq = '';
+			var stopalert = 0;
+			var isSelected = false;
+			var contactid=$('.fading_contact_title').attr('contactid');
+			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #rdo_comm_freq').is(':checked') == true){
+				isSelected = true;
+				commfreq = $('.choose_dismiss_opt_container .dismiss_communication_frequency select option:selected').val();
+			}
+			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #stopalert').is(':checked') == true){
+				isSelected = true;
+				stopalert = 1;
+			}
+			if(dismiss_ws == "true"){
+				var dismissData = {};
+				dismissData.contactId = contactid;
+				dismissData.commFreq = commfreq;
+				dismissData.stopAlert = stopalert;
+
+				utils.scriptErrorHandling('Fading contact dismiss - '+contactid, 'Fading contact dismiss - '+contactid, JSON.stringify(dismissData));
+				$('#submit_dismiss').data('clickid',_prismSTClickTrackMessages.dashfadingcontactdismiss);
+
+				_server.post({
+					url: serviceURLJava + 'contact/dismissfadingcontact',
+					data:{
+						"data" : JSON.stringify(dismissData)
+					},
+					success: function (response){
+						if(response.status ==1){
+							utils.info_toaster(_prismsuccMsgs["00056"], 's');
+							if(repScreenACStatus == 'collapsed'){
+								fadingContactSelf.getFadingContactCollapsed(repScreenACStatus);
+							}else{
+								fadingContactSelf.getFadingContactTable();
+							}
+						}else{
+							utils.info_toaster(_prismerrMsgs["00260"], 'e');
+						}
+						$('#fading_contact_dismiss_popup').modal('hide');
+					},
+					error: function (response){
+						utils.info_toaster(_prismerrMsgs["00260"], 'e');
+						$('#fading_contact_dismiss_popup').modal('hide');
+						utils.scriptErrorHandling(thisFileName, "contact/dismissfadingcontact", e);
+					}
+				});
+			}
+			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #dismissinactive').is(':checked') == true){
+				isSelected = true;
+				$('#loading_screen').show();
+				$('#fading_contact_dismiss_popup').modal('hide');
+				if(utils.validateInputs(contactid) != ''){
+					conInfo.isfadingCon = true;
+					conInfo.screenSts = repScreenACStatus;
+					contactCRMObj.editContactInfo(contactid);
+				}else{
+					alert("Invalid contact details.");
+				}
+			}
+
+			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #dismissempchange').is(':checked') == true){
+				$('#fading_contact_dismiss_popup').modal('hide');
+				isSelected = true;
+				if(utils.validateInputs(contactid) != ''){
+					conInfo.isfadingCon = false;
+					conInfo.isFadEmpChange = true;
+					conInfo.screenSts = repScreenACStatus;
+					contactCRMObj.empChange(contactid);
+				}else{
+					alert("Invalid contact details.");
+				}
+			}
+			if(!isSelected){
+				utils.info_toaster(_prismerrMsgs["00461"], 'w');
+			}
+		});
+		
+		//CALL ICON CLICK EVENT CALL CIA FLAG IS IN OFF
+		$("body").undelegate(".phone-nos-call","click");
+		$("body").delegate(".phone-nos-call","click",function(e){
+			var contactid = $(this).data('contactid')
+			var thisVar = $(this);
+			if(utils.validateInputs(contactid)!='' && utils.validateInputs($(this).find('.icon-phone-call').attr('data-content')) =='' ){
+				$(this).find('.icon-phone-call').attr('data-content','')				
+				$('#loading_screen').show();
+				_server.get({
+					url: serviceURLJava+ "contact/getcontactinfo",
+					data: {
+						contactid: contactid
+					},
+					success: function(response) {
+						if(response.status == 1){
+							var tableHTML = '<table class="table fund_managertable theme-table table-striped"><thead><tr><th>Phone Label</th><th>Phone No</th></tr></thead><tbody>'
+							var data = response.data[0];
+							if(data.crmDet.phone.length > 0){
+								$.each(data.crmDet.phone, function(ind,value){
+									tableHTML+='<tr><td>'+data.crmDet.phoneLabel[ind]+'</td><td>'+value+'</td></tr>';
+								})
+							}
+							tableHTML+='</tbody></table>';
+						}
+						thisVar.find('.icon-phone-call').popover({html:true,placement: 'auto',"container": "body"})
+						thisVar.find('.icon-phone-call').attr('data-content', tableHTML.toString()).popover('show')
+						$('#loading_screen').hide();
+					},
+					error: function (jqXHR){
+						if(jqXHR.responseText != ''){
+							$('#loading_screen').hide();
+							utils.scriptErrorHandling(thisFileName, "contact/getcontactinfo", jqXHR.responseText);
+						}
+						$('#loading_screen').hide();
+					}
+				});
+			}else if($(this).find('.icon-phone-call').data('bs.popover').tip().hasClass('in') == true){
+				$(this).find('.icon-phone-call').popover('hide');
+			}else if(utils.validateInputs($(this).find('.icon-phone-call').attr('data-content')) !='' &&  $(this).find('.icon-phone-call').data('bs.popover').tip().hasClass('in') == false){
+				$(this).find('.icon-phone-call').popover('show');
+			}
+		})
+			
+
+		/**** End Events ****/
+		
+		// TO LOAD FADING CONTACT DISMISS POPUP
+		function dismissResonsPopup(dissmissObj){
+			try{
+				var conId = dissmissObj.conId;
+				var empId = dissmissObj.empId;
+				var commFreq = dissmissObj.commFreq;
+				var searchCode = dissmissObj.searchCode;
+				var commFreqval = JSON.parse(_prismConstantValues['ADD_CRM_DROP_DOWN_COMM_FREQ']);
+				var idx = 0;
+				var CtSrchCode = utils._prismTsheetSearchCode({mainType: 'cont', subType: 'deflt'});
+				var nonCtSrchCode = utils._prismTsheetSearchCode({mainType: 'cont', subType: 'non_covd'});
+				var pHtml = '<div class="modal-dialog right fadeInRight">';
+						pHtml += '<div class="modal-content animated fadeInRight popupcenter">'
+							pHtml += '<div class="modal-header bg-primaryLight"><span id="poptitle" class="fading_contact_title text-center modal-title" contactid='+conId+'>'+lblConfig["fadinContactDismissPopupHeader"]+'</span><button type="button" class="close" data-dismiss="modal" id="dismissResonsPopupClose"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button></div>';
+							pHtml += '<div class="fading-modal panel-form modal-body">';
+				
+									pHtml += '<form class="frm_fc_dismission_options"><div class="choose_dismiss_opt_container">';
+									if(utils.checkPermission("SHOW_CONTACT_COMM_FREQ") == true){
+											pHtml += '<div class="choose_dismiss_opt_content" style="width:100%">'+
+											'<div class="radio radio-circle  radio-inline custom-radio-btn">'+
+												'<input type="radio" id="rdo_comm_freq" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="1" dismiss="true" />'+
+												'<label for="rdo_comm_freq">'+lblConfig["fadinOptionChgFrq"]+'</label>'+
+											'</div>'+
+										'</div>';
+									}	
+									pHtml += '<div class="dismiss_communication_frequency" style="display:none;">'+
+									'<select class="form-control" id="dismiss_contactInfo_commuFreq" data-fldid="" data-placeholder="Select How often would prefer to be in touch?" autocomplete="off" style="width:75% !important">'+
+										'<option value="" selected="">Select Communication Frequency</option>';
+										$.each(commFreqval,function(key,val){
+											pHtml += '<option value="'+val.value+'">'+val.text+'</option>';
+										});
+									pHtml += '</select>'+
+								'</div><br>'+
+								'<div class="choose_dismiss_opt_content" style="width:100%">'+
+										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
+												'<input type="radio" id="stopalert" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="true" />'+
+												'<label for="stopalert">Stop receiving alerts for this contact</label>'+
+											'</div>'+
+										'</div>';
+										if((utils.checkPermission("CT_EDIT_CONTACT") == true && searchCode == CtSrchCode) || (utils.checkPermission("NCT_EDIT_CONTACT") == true && searchCode == nonCtSrchCode)){
+										pHtml += '<div class="choose_dismiss_opt_content" style="width:100%">'+
+										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
+												'<input type="radio" id="dismissinactive" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="false" />'+
+												'<label for="dismissinactive">Contact is inactive</label>'+
+											'</div>'+
+										'</div>';
+										}
+										if((utils.checkPermission("CT_EMP_CHANGE") == true && searchCode == CtSrchCode) || (utils.checkPermission("NCT_EMP_CHANGE") == true && searchCode == nonCtSrchCode)){
+										pHtml += '<div class="choose_dismiss_opt_content">'+
+										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
+												'<input type="radio" id="dismissempchange" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="false" />'+
+												'<label for="dismissempchange">Contact has changed employment</label>'+
+											'</div>'+
+										'</div>';
+										}
+										pHtml += '<div class="clearfix"></div>'+
+									 '</div></form>';
+								pHtml += '<form class="frm_fc_dismiss_day_options"><div class="dismiss_day_opt_container">';
+									if(!$.isEmptyObject(_prismContactFilters)){
+										if(typeof _prismContactFilters.commFreq !== 'undefined'){
+											/*for (var dayKey in lblConfig["fadinOptionDays"]) {
+										
+											if (lblConfig["fadinOptionDays"].hasOwnProperty(dayKey)) {*/
+												$.each(_prismContactFilters.commFreq,function(i, ele){
+													pHtml += '<div class="dismiss_day_opt_content"><div class="radio radio-circle radio-inline custom-radio-btn">'+
+															//'+((idx==0)?'checked="checked"':'')+'	
+															  '<input type="radio" id="rdo_'+idx+'_days" class="common_ipt_rado choose_dismiss_day_opt" name="dismiss_day_opt" '+((idx==0)?'checked="checked"':'')+' value="'+ele.value+'" />'+
+															  '<label for="rdo_'+idx+'_days">'+ele.text+'</label>'+	
+															'</div></div>';
+													idx++;		
+												});
+										}
+									}
+								pHtml += '<div class="dismiss-controls pull-right">';
+									pHtml += '<input class="contactId" type="hidden" value="'+conId+'" />';
+									pHtml += '<input class="employeeId" type="hidden" value="'+empId+'" />';
+								pHtml += '</div>';	
+								pHtml += '</div></form>';	
+						
+							pHtml += '</div>';
+							
+							pHtml += '<div class="modal-footer">'+
+												'<input id="submit_dismiss" class="fading-contact-btns comm_btn_ok m-r-sm btn-custom btn-green disabled" type="button" value="Update" />'+
+												'<input id="cancel_dismiss" class="fading-contact-btns comm_btn_cancel btn-custom btn-dflt" data-dismiss="modal" type="button" value="Cancel" />'+
+										'</div>';
+							pHtml +='</div></div>';
+				
+				$('#fading_contact_dismiss_popup').html(pHtml).removeAttr('data-tableid').attr('data-tableid','dismissResonsPopup');
+				$('#fading_contact_dismiss_popup').modal({
+					backdrop: 'static',
+					keyboard: false,
+					show:'true'
+				});
+				if(commFreq != ''){
+					$('#dismiss_contactInfo_commuFreq option[value="'+commFreq+'"]').attr("selected", "selected");
+				}
+			}catch(e){
+				utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+			}
+		}
+					
+		templateFn(thisRepID, '', '<div class="fading-contacts" id="fading-contacts-contents"></div> <!-- fading-contacts -->', fadingContactSelf.thisRepCB);
+	}catch(e){
+		utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
+	}
 }
