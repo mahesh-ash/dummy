@@ -1,1348 +1,150 @@
-var repScreenACStatus = 'collapsed';
-var fadingContactSelf = (function(){
-	var filterValue = '', filterObjVal = '';
-	var id = '', thisRepID = '', thisRepIboxID = '', thisRepInternalID = '';
-	var thisFileName = 'reports - fading_contacts1.js';
-	var prepareTypeaheadArr = [],prepareMultiselectArr = [], prepareSelectsArr = [], prepareTokenizerArr = [],getFilterVal = [];
-	var formsettingval = {},filterInfoObj = {};
-	var filterObj =  {"isExcelGenerate":false,"daysAgo":"","accountName":[],"includeAccName":true,"excludeAccName":false,"accountType":[],"includeAccType":true,"excludeAccType":false,"tier":[],"conSubRes":false,"myCoveredContact":false,"distributionList":false,"list":[],"conAccVoted":false,"conAccVotedMe":false,"conSubMyRes":false,"conSubMyCovTicker":false,"allCriteria":true,"oneOrMoreCriteria":false};
-	var filterhtml = '<div class="pull-right filter-icons"><i class="icon font-xs icon-filter-filled-tool c-pointer fading_filter" aria-hidden="true" title="Filter this list"></i><span title="Filtered By" class="info-icons"><i class="fa font-sm1 fa-info-circle m-l-xs c-pointer list_popover" id="fadingFilterInfo" data-toggle="popover" data-html="true" data-placement="left"  data-container="body" data-content=""></i></span></div>';
+import { API_CONFIG } from '@/lib/constants';
+import React, { useState, useEffect } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { createAuthHeaders } from '@/lib/legacyUtils';
 
-	$(window).resizeEnd(function(){
-		getActiveID();
-	});
+type NormalizedContact = {
+    contactId: string;
+    contactName: string;
+    accountName: string;
+    accountType: string;
+    lastInteractedDateMe: string;
+    comments: string;
+    email?: string;
+};
+type RawContactItem = NormalizedContact;
 
-	//TO GET ACTIVE REPORT ID
-	function getActiveID(){
-		try{
-			//id = $('.fading_contact_cont .box_panels').attr('id');
-			var targetID = '';
-			var fadContLength=$('#appTsheetContainer .tsheetdivcontainer.active .tab-content .tab-pane.active .fading_contact_cont .box_panels');
-			if($('.dashContainer').css('display') == 'none'&&fadContLength.length>0){
-				targetID=fadContLength.attr('id');
-			}else{
-				targetID = $('.dashContainer .fading_contact_cont .box_panels').attr('id');
-			}
-			id = targetID;
-			thisRepID = id;
-			thisRepIboxID = id+'_ibox';
-			thisRepInternalID = thisRepID+' #fading-contacts-contents';
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//CLICK EVENT FOR FILTER BUTTON
-	$("body").undelegate(".fading_filter","click")
-	$("body").delegate(".fading_filter","click",function(e){
-		$('#loading_screen').show();
-		$('.fadingFilterModal').modal({
-			backdrop: 'static',
-			keyboard: false,
-			show: 'true'
-		});
-		prepareTypeahead(prepareTypeaheadArr,function(status){});
-		prepareSelects(prepareSelectsArr, function(status){
-			if(status){
-				prepareSelectsArr = [];
-				setTimeout(function(){
-					prepareMultiselect(prepareMultiselectArr); // multi select
-				}, 300);
-			};
-		});
-		prepareTokenizer(prepareTokenizerArr, function (status) {
-			if (status) prepareTokenizerArr = [];
-		});
-		setTimeout(function(){
-			gettblfieldsval(1);
-			$('#loading_screen').hide();
-		}, 500);
-	});
-
-	//TO RESIZE FADING CONTACTS DATA TABLE
-	$('body').click(function(e){
-		if($(e.target).parents('.fading_contact_cont').length > 0 && repScreenACStatus == 'expanded'){ helper.dataTableResize(); }
-	});
-
-	//CLICK EVENT FOR SUBMIT FADING CONTACT FILTER BUTTON
-	$("body").undelegate("#submitAdvanceFilter","click")
-	$("body").delegate("#submitAdvanceFilter","click",function(e){
-		$('#loading_screen').show();
-		$('.fadingFilterModal').modal('hide');
-		getfiltervalues();
-		setTimeout(function(){
-			if(getFilterVal != ''){
-				var tblId = 'fadingcontact_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
-				utils.scriptErrorHandling('Fading contact filter - '+tblId, 'Fading contact filter - '+tblId, JSON.stringify(getFilterVal));
-
-				_server.post({
-					url: serviceURLJava + "tableconfig/settblfields",
-					data: {"tblid": tblId, "settings": JSON.stringify(getFilterVal)},
-					success: function(response){
-						utils.info_toaster(_prismsuccMsgs["00057"], 's');
-						$('#loading_screen').hide();
-					},
-					error: function(jqXHR){
-						$('#loading_screen').hide();
-						utils.scriptErrorHandling(thisFileName, 'tableconfig/settblfields', jqXHR.responseText);
-					}
-				});
-			}
-			if(repScreenACStatus == 'collapsed'){
-				getFadingContactCollapsed(repScreenACStatus);
-			}else{
-				getFadingContactTable();
-			}
-		}, 500);
-	});
-
-	//DISMISS ICON CLICK
-	$("body").undelegate("#dismissResonsPopupClose, #cancel_dismiss","click")
-	$("body").delegate("#dismissResonsPopupClose, #cancel_dismiss","click",function(e){
-		utils.drawConfirmationPopupOutlook(_prismcommMsgs["00011"],  _prismcommMsgs["00012"], 'dismissOk', 'dismissCancel');
-	});
-
-	//POPUP CLOSE YES CLICK
-	$("body").undelegate("#dismissOk","click")
-	$("body").delegate("#dismissOk","click",function(e){
-		$('#dashboard_popup').modal('hide');
-	});
-
-	//POPUP CLOSE NO CLICK
-	$("body").undelegate("#dismissCancel","click")
-	$("body").delegate("#dismissCancel","click",function(e){
-		$('#dashboard_popup').modal('hide');
-		$('#fading_contact_dismiss_popup').modal('show');
-	});
-
-
-	//GET SETTING FOR DATATABLE
-	function getFadingContactTable(){
-		try{
-			var tableHTML = '<table id="' + thisRepInternalID + '_dataTable_fadingcontact" class="compact table theme-table table-bordered table-striped data-ellipsis" style="width: 100%;"></table>';
-			_server.post({
-				url: serviceURLJava + 'tableconfig/gettablesetting',
-				data:{
-					rpttype: 'getfadingcontacts',
-					moduletype: 'contact'
-				},
-				success: function (response){
-					if(response.status == 1){
-						DrawFadingContactTable(response);
-					}else{
-						$('#loading_screen').hide();
-						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					}
-				},
-				error: function (response){
-					$('#loading_screen').hide();
-					$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					utils.scriptErrorHandling(thisFileName, "tableconfig/gettablesetting", e);
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	 //GET SETTING FOR DATATABLE
-	 function getFadingContactCollapsed(tabetype){
-		try{
-			$('#'+thisRepID+' .fading-contacts').html(PrismSpinner)
-			var startVar = 0;
-			var lengVar = config["fadingContactLimit"];
-			_server.post({
-				url: serviceURLJava+"contact/retrievefadingcontact",
-				data:{
-					"top": tabetype,"action":tabetype,"start": startVar,"length": lengVar,
-					"data": JSON.stringify(filterObj)
-				},
-				success: function(response){
-					if(response.status==1 ||response.status == 0){
-						callbackLoadFadingContacts(response);
-					}else{
-						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					}
-				},
-				error:function(e){
-					$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					utils.scriptErrorHandling(thisFileName, "fading_contacts/FadingContactTable", e);
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//FUNCTION TO DRAW FADING CONTACTS TABLES
-	function DrawFadingContactTable(tableSetting){
-		try{
-			$('#loading_screen').show();
-			filterdata = JSON.stringify(filterObj)
-			var tableObj ={};
-			var start = 0;
-			var tablength = 20;
-			var scrollFlag = utils.validateInputs(_prismConstantValues['FADING_CONTACT_LAZY_LOAD']);
-			var columns = [];
-			var table_settings = tableSetting.table_settings;
-			var cols = tableSetting.cols;
-			var title = tableSetting.title;
-			var colsAlign = tableSetting.colsAlign;
-			var numberFormatType = tableSetting.formatter;
-			var tableHTML = '<table id="dataTable_fadingcontact_'+repScreenACStatus+'" class="compact fading-contact-detail-table table-striped table-bordered theme-table table data-ellipsis" style="width: 100%;"></table>';
-			$(title).each(function (index, heading) {
-				columns.push({
-					"title": heading,
-					"sName": heading,
-					"name": heading,
-					"data": cols[index],
-					"className": "border-all " + colsAlign[index],
-					"target": [index],
-					"isDefault": table_settings[index].blockchk,
-					createdCell:  function (td, cellData, rowData, row, col) {
-						$(td).attr('title',utils.stripHTMLTags(cellData));
-						if(cols[col] == 'comments'){
-							cellData = (cellData == null || cellData == '') ? '-' : utils.replaceHTMLStrings(cellData);
-							$(td).html(cellData).prepend('<button class="icon fa fa-comments-o animate-hover cmnt-acty-account cursor m-r-sm font-sm" title="" data-placement="auto" data-content="'+cellData+'"   data-toggle="popover" data-trigger="click" data-container="body" ></button>' ).addClass('dt-left');
-						}
-					}           
-				});
-			});
-			var scrollYHeight =  ($(window).height() - 220) + "px";
-			var id1 = '#dataTable_fadingcontact_'+repScreenACStatus;
-			$("#"+thisRepInternalID).html(tableHTML);
-			tableObj = $.extend({
-				processing: true,
-				language: {
-					"loadingRecords": "loading..."
-				},
-				serverSide: true,
-				ajax: {
-					url: serviceURLJava + "contact/retrievefadingcontact",
-					dataType: "json",
-					method: "POST",
-					headers:{
-						auth_token: utils._prismGetAuthToken('1')
-					},
-					"data": function(result){
-						var resultLen = utils.validateInputs($('#'+thisRepID).attr('data-fadingLen'));
-						if(resultLen == ''){ $('#'+thisRepID).attr('data-fadingLen', utils.validateInputs(result.length)); }
-						else{ result.length = resultLen; }
-						var objSend = utils.formDataTableReqObj(result);
-						objSend = $.extend({
-							top: 'collapsed',
-							action:repScreenACStatus,
-							// start: start,
-							// length: tablength,
-							data: JSON.stringify(filterObj)
-						}, objSend);
-						return objSend;
-					}
-				},
-				id:id1,
-				settings:true,
-				table_settings: table_settings,
-				columns: columns,
-				sScrollY: scrollYHeight,
-				scrollX: true,
-				lengthChange:false,
-				numberFormatType:numberFormatType,
-				excelExport:true,
-				order: [[tableSetting.defColSort, tableSetting.defColSortType]],
-				numeberFormatCels: tableSetting.colsCnt,
-				beforePaginateAdd: true,
-				destroy: true,
-				bInfo: true,
-				deferRender: true,
-				bPaginate: true,
-				pageLength: 50,
-				enableScroll: true,
-				scrollCollapse: false,
-				loadPopover: true,
-				loadPopoverFn: function(result){
-					popoverTrigger();
-				},
-				ExcelUrl:serviceURLJava+"contact/retrievefadingcontact?top="+repScreenACStatus+"&action="+repScreenACStatus+"&start="+start+"&length="+tablength+"&data="+encodeURIComponent(filterdata),
-				drawCallback: function(settings){
-					if(utils.callCiaOnOffFlag() == false){ $('.dismisscall').hide(); }
-					$('#loading_screen').hide();
-					$(id1 + " tr:last td").css('padding-bottom','4px');
-					if(repScreenACStatus == 'collapsed'){
-						$("#col_visb_div").css('display','none');
-					}
-					$('#dataTable_fadingcontact_'+repScreenACStatus+' thead tr').css('height','0px');
-//					var api = this.api();
-//					var rows = api.rows({page:'current'}).nodes();
-//					var ind = _.findIndex(settings.aoColumns,{data:'comments'})+1;
-//					var CommentData = api.column(_.findIndex(settings.aoColumns,{data:'comments'})).data();
-//					api.column(ind-1,{page:'current'}).data().each( function(group,i){
-//						var comData = (CommentData[i] == '') ? '-' : CommentData[i];
-//						$(rows).eq(i).find("td.activitydescription").prepend('<button class="icon fa fa-comments-o animate-hover cmnt-acty-account cursor m-r-sm font-sm" title="" data-placement="auto" data-content="'+utils.replaceHTMLStrings(comData)+'"   data-toggle="popover" data-trigger="click" data-container="body" id="cmnt-acty-account"></button>' ).addClass('dt-left');
-//					})
-					if(scrollFlag == '2' || (scrollFlag == '1' && !utils.checkifIE())){
-						$("#" + settings.sTableId + "_wrapper .dataTables_paginate .pagination").hide();						
-                    }
-					popoverTrigger();
-					$(id1+' .fadingActions').attr('title', '')
-					setTimeout(function(){
-						helper.dataTableResize();
-					},1000)
-				},
-				fnRowCallback: function(domRow, rowData, rowIdx){
-					if(utils.validateInputs(rowData.lastInteractedDate) !=''){
-						var dateTime = moment(rowData.lastInteractedDate,_prismSTDateOrgFormatSlash+" hh:mm").format(_prismSTDateFormatSlash+" hh:mm A");
-						$(domRow).find("td.intDateCol").attr('title',dateTime).html(dateTime);
-					}
-					if(utils.validateInputs(rowData.lastInteractedDateMe) !=''){
-						var dateTimeMe = moment(rowData.lastInteractedDateMe,_prismSTDateOrgFormatSlash+" hh:mm").format(_prismSTDateFormatSlash+" hh:mm A");
-						$(domRow).find("td.intDateColMe").attr('title',dateTimeMe).html(dateTimeMe);
-					}
-				},
-			}, tableObj);
-			if(scrollFlag == '2' || (scrollFlag == '1' && !utils.checkifIE())){
-				tableObj = $.extend({ "enableScroll": true, "scrollCollapse": false, "lengthChange": false}, tableObj);
-			}else{
-				tableObj = $.extend({ "enableScroll": false, "scrollCollapse": true }, dataTableObj);
-			}
-			utils.DrawDatatable(tableObj);
-			setTimeout(function(){
-				var data = _.keys(filterInfoObj);
-				var contentData = '<b>Filters Applied: </b>'+data;
-				if(filterObjVal == ''){
-					$('#fadingFilterInfo').css('display','none');
-				}else{
-					$('#fadingFilterInfo').css('display','inline-block');
-					if(filterObjVal == '<b class="fw-100">All the criteria is selected </b><div class="fltr-val fw-100">True</div>' || filterObjVal == '<b class="fw-100">One or more of the criteria is selected </b><div class="fltr-val fw-100">True</div>' ){
-						$('#fadingFilterInfo').hide()
-					}else{
-						$('#fadingFilterInfo').attr('data-content',filterObjVal);
-						popoverTrigger();
-					}
-				}
-				
-			},500);
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//FUNCTION TO LOAD FADING CONTACT
-	function callbackLoadFadingContacts(response){
-		try{
-			getActiveID();
-			var dataRes = (typeof response['data'] !== 'undefined' && $.isEmptyObject(response['data']) == false)?response['data']:'';
-			var dataStatus = (typeof response['status'] !== 'undefined' && response['status'] != '')?response['status']:'';
-			var res = "";
-			var i;
-			var conDetails = '';
-			var contactName,accountName,contactId,accountId,lastIntDays,type,desc,empId,mailId,accountType;
-			var errFetchRec = '<div class="no-data">'+_prismerrMsgs["00002"]+'</div>';
-			var noRecVar = '<div class="no-data">'+_prismcommMsgs["00001"]+'</div>';
-			if(dataStatus == 1 || dataStatus == 0){
-				$("#"+thisRepID+"_ibox .ibox-tools .filter-icons").remove();
-				if(dataStatus == 1 && dataRes.length > 0){
-					res += '<div class="fading-small-widget"><table class="table table-striped fading-contact-table">'+
-								'<tbody class="tbl-body">';
-					try{
-						for(i=0;i<dataRes.length;i++){
-							if(typeof dataRes[i] !== 'undefined'){
-								conDetails = dataRes[i];
-								
-								contactName = utils.stripHTMLTags(utils.validateInputs(conDetails['contactName']));
-								accountName = (typeof conDetails['accountName'] !== 'undefined' && conDetails['accountName'] !== '')?'('+utils.validateInputs(utils.stripHTMLTags(conDetails['accountName'])).trim()+')':'';
-								accountType= utils.validateInputs(conDetails['accountType']);
-								contactId = utils.validateInputs(conDetails['contactId']);
-								accountId = utils.validateInputs(conDetails['accountId']);
-								mailId = (typeof conDetails['email'] !== 'undefined' && conDetails['email'] !== '')?'mailto:'+conDetails['email']:'#';
-								empId = utils.validateInputs(conDetails['empId']);
-								lastIntDays = utils.validateInputs(conDetails['lastInteracted']);
-								lastIntDays = (lastIntDays >1)?lastIntDays+' days ago':lastIntDays+' day ago';
-								
-								type = (typeof conDetails['lastInteractedMode'] !== 'undefined' && conDetails['lastInteractedMode'] !== '')?'<span class="" title="'+conDetails['lastInteractedMode']+'">'+conDetails['lastInteractedMode']+'</span>':'';
-								desc = (typeof conDetails['desc'] !== 'undefined' && conDetails['desc'] !== '')?'<div class="small text-ellipsis"><span class="int_desc" title="'+conDetails['desc']+'">'+conDetails['desc']+'</span></div>':'';
-								res += '<tr id="fdc_row_'+contactId+'" class="fdc-row">'+
-											'<td colspan="2">'+
-											   '<div class="text-ellipsis" title="'+utils.replaceQuotes(contactName+accountName)+'">'+utils.replaceHTMLStrings(contactName+accountName)+'</div>'+			  
-											'</td>'+
-											'<td>'+
-												'<div style="text-align:right;" title="'+accountType+'">'+accountType+'</div>'+
-											'</td>'+
-										'</tr>'+
-										'<tr>'+
-											'<td colspan="2">'+desc+'</td>'+
-										'</tr>'+
-										'<tr>'+
-											'<td>'+type+'</td>'+
-											'<td><div class="small contact-days dt-left"><b>' + lastIntDays + '</b></div></td>'+
-											'<td>'+
-												'<div class="icons-list">'+
-													'<input type="hidden" value="'+contactId+'" class="contactId" />'+
-													'<input type="hidden" value="'+accountId+'" class="accountId" />'+
-													'<input type="hidden" value="'+empId+'" class="employeeId" />'+
-													'<input type="hidden" value="'+utils.replaceHTMLStrings(utils.validateInputs(conDetails['accountName']))+'" class="accountNme" />'+
-													'<input type="hidden" value="'+contactName+'" class="contactNme" />'+
-													'<input type="hidden" value="'+utils.validateInputs(conDetails['email'])+'" class="contactMail" />'+
-													conDetails['action']+
-												'</div>'+
-											'</td>'+
-										'</tr>';
-							}		
-						}
-					}catch(e){
-						utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-					}			
-					res += '</tbody>'+
-								'</table></div>';
-								//'<button type="button" class="btn theme-more"><span>More..</span></button>';			
-				}else{
-					res += noRecVar;
-				}
-			}else{
-				res +=  errFetchRec
-			}
-			$('#'+thisRepInternalID).html(res);
-			setTimeout(function(){
-				if(utils.callCiaOnOffFlag() == false){ $('.dismisscall').hide(); }
-				if(filterObjVal != '' || dataStatus == 1){
-					$(filterhtml).appendTo($("#"+thisRepID+"_ibox .ibox-tools"));
-				}
-				var data = _.keys(filterInfoObj);
-				var contentData = '<b>Filters Applied: </b>'+data;
-				if(filterObjVal == ''){
-					$('#fadingFilterInfo').css('display','none');
-				}else{
-					$('#fadingFilterInfo').css('display','inline-block');
-					if(filterObjVal == '<b class="fw-100">All the criteria is selected </b><div class="fltr-val fw-100">true</div>' || filterObjVal == '<b class="fw-100">One or more of the criteria is selected </b><div class="fltr-val fw-100">true</div>' ){
-						$('#fadingFilterInfo').css('display','none');
-					}else{
-						$('#fadingFilterInfo').attr('data-content',filterObjVal);
-						popoverTrigger();
-					}
-				}
-				
-			},500);
-			$('#loading_screen').hide();
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//CALLBACK FUNCTION
-	function thisRepCB(){
-		try{
-			$('#loading_screen').show();
-			$(window).resizeEnd();
-			gettblfieldsval(0);
-		}catch(e){
-			$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//FUNCTION TO TRIGGER POPOVER
-	function popoverTrigger(){
-		try{
-			$('.popover').remove();
-			$('[data-toggle="popover"]').popover({
-					"placement": wheretoplace,
-					"container": 'body',
-					"classname": 'fading-filter-popover'
-			});
-			function wheretoplace(){
-				var MyTop = utils.validateInputs($(this)[0].$element.offset().top);
-				if (MyTop != '' && MyTop < 1100)	return 'bottom';  
-				else return 'top';
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//SERVICE CALL FOR GET TABLE VALUES
-	function gettblfieldsval(val){
-		try{
-			var tblId = 'fadingcontact_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
-			_server.post({
-				url: serviceURLJava + "tableconfig/gettblfields",
-				data: {"tblid": tblId},
-				success: function(response){
-					if(response.status == 1){
-						var data = (utils.validateInputs(response.settings.column_def) != '') ? JSON.parse(response.settings.column_def) : '';
-						if(val == 1){
-							settblfeildsval(data,val);
-						}
-						defaultfiltervalues(data,val)
-					}else{
-						defaultfiltervalues('',val);
-					}
-				},
-				error: function(jqXHR){
-					$('#loading_screen').hide();
-					utils.scriptErrorHandling(thisFileName, 'tableconfig/gettblfields', jqXHR.responseText);
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	//FUNCTION TO FORM FILTER INFORMATION
-	function defaultfiltervalues(response,val){
-		try{
-			if(response != ''){
-				filterInfoObj = {}
-				_.map(response, function (tokenObj, key){
-					switch(utils.validateInputs(tokenObj.type).toLowerCase()){
-						case 'radiotokenizer':
-						case 'tokenizer':
-							var tempdata = _.pluck(tokenObj.values, 'val');
-							var tempdatas = _.pluck(tokenObj.values,'txt');
-							filterObj[tokenObj.key] = tempdata;
-							if(tempdata.length >= 1 ){
-								filterInfoObj[tokenObj.title] = tempdatas;
-							}
-						break;
-						case 'select':
-							filterObj[tokenObj.key] = tokenObj.values;
-							if(utils.validateInputs(tokenObj.values) != '' ){
-								filterInfoObj[tokenObj.title] = tokenObj.values;
-							}
-						break;
-						case 'checkbox':
-							filterObj[tokenObj.key] = tokenObj.values;
-							if(utils.validateInputs(tokenObj.values) == true ){
-								filterInfoObj[tokenObj.title] = tokenObj.values;
-							}
-						break;
-						default:
-							filterObj[tokenObj.key] = tokenObj.values;
-							var tokenObjKey=utils.validateInputs(tokenObj.key).toLowerCase();
-							if(tokenObj.values == true || utils.validateInputs(tokenObj.values) != '' || utils.validateInputs(tokenObj.values).length > 0){
-								if(tokenObjKey.indexOf('include') != -1 || tokenObjKey.indexOf('exclude') != -1){
-									filterInfoObj[tokenObj.key] = tokenObj.values;
-								}else{ filterInfoObj[tokenObj.title] = tokenObj.values; }
-							}
-						break;
-					}
-				});
-				if(!filterObj.distributionList){
-					filterObj.list = [];
-					filterInfoObj = _.omit(filterInfoObj, 'List name');
-				}	
-				if(utils.validateInputs(filterObj.accountName).length == 0) {
-					filterInfoObj = _.omit(filterInfoObj, 'includeAccName','excludeAccName');
-				}
-				 if(utils.validateInputs(filterObj.accountType).length == 0){
-					filterInfoObj = _.omit(filterInfoObj, 'includeAccType','excludeAccType');
-				}
-				setTimeout(function(){
-					if(_.size(filterInfoObj) > 1){
-						filterObjVal = '<div><b class="fw-100">Filter Applied:</b><br>';
-					}else{
-						filterObjVal = '<div>No filter applied</div>';
-					}
-					// filterObjVal = "";
-					var keyLowerCase ="";
-					$.each(filterInfoObj,function(key,val){
-						// if(typeof val == 'string'){
-							// filterObjVal += '<b class="fw-100">'+key+'</b><div class="fltr-val">'+val+'</div>';
-						// }else if(typeof val == 'boolean'){
-							// filterObjVal += '<b class="fw-100">'+key+'</b><div class="fltr-val">'+val+'</div>';
-						// }else if(typeof val == 'object'){
-							if(_.size(filterInfoObj) > 1){
-								keyLowerCase= utils.validateInputs(key).toLowerCase();
-								if(keyLowerCase.indexOf('include') != -1){key = 'Include';}
-								if(keyLowerCase.indexOf('exclude') != -1){key = 'Exclude';}
-
-								val = (typeof val == 'object')? val.toString() : val;
-								if(val === true){ val = ''; }
-								if(val === false){ val = ''; }
-								filterObjVal += '<b class="fw-100">'+key+' </b><div class="fltr-val fw-100">'+val+'</div>';
-							}
-						//}
-					})
-					filterObjVal += '</div>';
-				}, 500);
-			}
-			if(val == 0){
-				if(repScreenACStatus == 'collapsed'){
-					getFadingContactCollapsed(repScreenACStatus);
-				}else{
-					getFadingContactTable();
-				}
-				drawFadingContactFilterForm();
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	//FUNCTION TO SET FILTER VALUES TO FORM
-	function settblfeildsval(data){
-		try{
-			_.map(data, function(tokenObj,key){
-				switch(utils.validateInputs(tokenObj.type).toLowerCase()){
-					case "checkbox":
-					case "radio":
-						$('#'+tokenObj.id).prop('checked',tokenObj.values);
-						$('#'+tokenObj.id).trigger('change');
-					break;
-					case "select":
-					if(typeof tokenObj.values == 'object'){
-						setTimeout(function(){
-							$("#"+tokenObj.id).val(tokenObj.values).trigger("chosen:updated");
-						}, 300);
-					}else{
-						$('#'+tokenObj.id).val(tokenObj.values);
-					}
-					break;
-					case 'tokenizer':
-						$.each(tokenObj.values,function(key,val){
-							$(".fadingFilterModal .modal-body #"+tokenObj.id).tokenize().tokenAdd(val.val, val.txt);
-						})
-					break;
-					default:
-						$('#'+tokenObj.id).val(tokenObj.values);
-					break;
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	//FUNCTION TO DRAW FADING CONTACT FITER FORM
-	function drawFadingContactFilterForm(){
-		try{
-			formsettingval = utils.validateInputs(_prismFormSettingValues['FADINGCONTACTFILTER']);
-			var formDetail = JSON.parse(formsettingval);
-			var htmlContent = '<div class="modal-dialog" data-targetid="fadingContact">'+
-									'<div class="modal-content animated fadeInRight popupcenter">'+
-										'<div class="modal-header bg-primaryLight"><button type="button" class="close" data-dismiss="" id="advance_pop_up_close"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button><span id="poptitle" style="text-align:center;" class="text-center modal-title">Fading Contact Filters</span></div>'+
-										
-										'<div class="modal-body"><div class="panel-form form-xs" id="">';
-			$.each(formDetail, function(i, ele){
-				var formcondition = (ele.role == "" || (ele.role.toLowerCase().indexOf(userDetails.role.toLowerCase())!= -1)) ? true : false;
-				if(formcondition){
-					htmlContent += formFields(ele);
-				}
-			});					
-			htmlContent +=	'</div></div>'+
-								'<div class="modal-footer">'+
-									'<button id="resetAdvanceFilter" data-action="" class="advfilter-btn-cancel adv-filter-btns btn-custom btn-dflt m-r-xs" type="button" >Reset</button>'+
-									'<button id="submitAdvanceFilter" data-clickid="'+_prismSTClickTrackMessages.dashfadingcontactfilter+'" data-action="" class="advfilter-btn-save adv-filter-btns comm_btn_ok btn-custom btn-green dashfadingcontactfilter" type="button">Apply</button>'+
-									'</div>'+
-								'</div>'+
-							'</div>';
-			$('.fadingFilterModal').html(htmlContent);
-			popoverTrigger();
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//TO FORM FILTER FORM FIELD
-	function formFields(obj){
-		try{
-			var content = '';
-			switch(utils.validateInputs(obj.type).toLowerCase()){
-				case 'select':
-					if(obj.options.length == 0){
-						prepareSelectsArr.push({
-							id: obj.id,
-							url: obj.optionsUrl,
-							reqData: ((obj.reqData != undefined) ? obj.reqData : {}),
-							title: obj.name,
-							defaultValue: obj.defaultValue,
-							multiSelect: obj.multiSelect,
-							customOption:utils.validateInputs(obj.customOption)
-						})
-						if(obj.multiSelect == true){
-							prepareMultiselectArr.push(obj.id);
-						}
-					}
-					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label><select class="'+obj.classname+ '" data-placeholder="Select ' +( (obj.name == 'Account Tier')?'tiers':obj.name )+ '"   id="'+obj.id+'" ' + (obj.multiSelect ? "multiple" : "") + '>';
-						$.each(obj.options, function(j, jele){
-							content += '<option value="'+jele.value+'">'+jele.text+'</option>';
-						});
-					content += '</select>'+
-								'</div>';
-					return content;
-				break;
-				case 'checkbox':
-					content += '<div class="form-fields '+obj.classname+'"><div class="checkbox checkbox-primary checkbox-inline custom-checkbox" style="width:100%">' +
-						'<input id="'+obj.id+'" value="'+obj.name+'" style="height:auto" type="checkbox" name="'+obj.name+'">' +
-						'<label for="'+obj.id+'">'+obj.name+'</label>';
-					if(typeof obj.info !== 'undefined' && obj.info != ''){
-						content += '<i class="fa font-sm1 fa-info-circle m-l-xs c-pointer tier_popover" data-toggle="popover" data-html="true" data-placement="auto"  data-container="body" data-content="'+obj.info+'"></i>';
-					}
-					content +=	'</div></div>';
-					return content;
-				break;
-				case 'tokenizer':
-					prepareTokenizerArr.push({ ele: obj, id: obj.id });
-					var display = (utils.validateInputs(obj.display) == true) ? 'block' : 'none' ;
-					content += '<div class="form-fields '+obj.classname+'" style="display:'+display+'"><div class="tokenize-container" id="'+obj.id+ '_list">' +
-						'<select id="'+obj.id+'" multiple="multiple" class="tokenize-sample Tokenize TokensContainer"></select>' +
-						'</div></div>';
-					return content;
-				break;
-				case 'radio':
-					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label>';
-					$.each(obj.options,function(j,jele){
-						var defaultcheck = (utils.validateInputs(jele.defaultcheck) == true) ? 'checked':'';
-						content += '<div class="radio radio-circle radio-primary radio-inline '+obj.classname+'">' +
-						'<input id="'+jele.value+'" value="' + jele.value + '" type="radio" '+defaultcheck+ ' name="'+jele.name+'">' +
-						'<label for="'+jele.value+'">' + jele.text + '</label>' +
-						'</div>';
-					});
-					content += '</div>';
-					return content;
-				break;
-				default:
-					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label></div>';
-					return content;
-				break;
-			}	
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//FUNCTION TO CLEAR FILTER VALUES
-	function clearFilterValue(){
-		try{
-			var response = JSON.parse(formsettingval);
-			_.map(response, function (tokenObj, key){
-				var type = tokenObj.type.toLowerCase();
-				if(type == 'select'){
-					if(utils.validateInputs(tokenObj.multiSelect) != '' && tokenObj.multiSelect == true){
-							$('#'+tokenObj.id).val('').trigger("chosen:updated");
-					}else{
-						$('#'+tokenObj.id).val('');
-					}
-				}else if(type == 'checkbox'){
-					$('#'+tokenObj.id).prop('checked',false).trigger('change');
-				}else if(type == 'tokenizer'){
-					if(utils.validateInputs($('#'+tokenObj.id).tokenize()) != ''){
-						$('#'+tokenObj.id).tokenize().clear();
-					}	
-				}else if(type == 'radio'){
-					$.each(tokenObj.options,function(key,val){
-						if(val.defaultcheck == true){
-							$('#'+val.value).prop('checked',true).trigger('change');
-						}
-					})
-				}
-			})
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	// FUNCTION TO PREPARE TYPEAHEAD
-	function prepareTypeahead(arr, callback){
-		try{
-			_.map(arr, function(ele){
-				$("#" + ele.id).typeahead('destroy');
-				var maxItem = utils.validateInputs(ele.ele.typeaheadParams.maxItem)
-				$.typeahead({
-					input: "#" +ele.id,
-					minLength: ele.ele.typeaheadParams.minLength,
-					maxItem: (maxItem != '') ? maxItem : typeaHeadMaxItem,
-					mustSelectItem: ele.ele.typeaheadParams.mustSelectItem,
-					delay: 300,
-					emptyTemplate: ele.ele.typeaheadParams.emptyTemplate,
-					dynamic: ele.ele.typeaheadParams.dynamic,
-					cache: false,
-					// template: ele.ele.typeaheadParams.template,
-					template: function(query, item){
-						var temp = ele.ele.typeaheadParams.template;
-						return temp;
-					},
-					source: {
-						search: {
-							display: ele.ele.typeaheadParams.display,
-							url: [{
-								type: "POST",
-								url: serviceURLJava + ele.ele.typeaheadParams.url,
-								data: {
-									searchtext: "{{query}}",
-									// type: "dashboard",
-									filtertype: ele.ele.typeaheadParams.filtertype
-								},
-								headers:{
-									auth_token: utils._prismGetAuthToken('1')
-								},
-								callback: {
-									done: function(data){
-										$("#" + ele.id+ ' .typeahead__result .typeahead__list').remove();
-										return data.data;
-									}
-								}
-							}]
-						}
-					},
-					callback: {
-						onClick: function(node, a, obj, e){
-							if(ele.ele.duplicateValidation)
-								return false;
-							else{
-								setTimeout(function(){
-									$("#" + ele.id).val(obj[ele.ele.typeaheadParams.display[0]]);
-								},0);
-							}
-						},
-						onClickAfter: function(node, a, obj, e){
-							$("#" + ele.id).val('').val(obj[ele.ele.typeaheadParams.display[0]]);
-							$("#" + ele.id).data("value", obj);
-							$("#" + ele.id).trigger("change");
-						}
-					}
-				});
-			})
-			callback(true);
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	/* Start: multiselect init function */
-	function prepareMultiselect(arr){
-		try{
-			if(arr.length > 0){
-				var ids = arr.join(', #')
-				setTimeout(function() {
-					$('#' + ids).chosen({ width: "520px" });
-					$('#' + ids).trigger('chosen:updated');
-				}, 500)
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//FUNCTION TO PREPARE SELECT
-	function prepareSelects(arr, callback){
-		try{
-			if(arr.length > 0){
-				_.map(arr, function(obj, key){
-					_server.post({
-						url: serviceURLJava + obj.url,
-						cache: false,
-						data: obj.reqData,
-						success: function(res){
-							if(res.status >= 0 && res.data){
-								var options ='';
-								var thisid = utils.validateInputs(obj.id);
-								/* Setting Account tier or Research tier Based on Config */
-								var accountResearchTier = "0";
-								var thisdata = res.data;
-								try{
-									var researchTierKey = utils.validateInputs(utils.jsonDataObj(_prismConstantValues["MIFID_CONFIG"]));
-									accountResearchTier = (utils.validateInputs(researchTierKey.Acct_Research_Tier) != '')? researchTierKey.Acct_Research_Tier : accountResearchTier;
-								}catch(e){}
-								if(accountResearchTier == '1' || accountResearchTier == 1){
-									thisdata = (utils.validateInputs(obj.customOption) != "") ? utils.validateInputs(obj.customOption) :res.data;
-								}
-								if(thisdata.length >0){
-									_.map(thisdata, function(opt){
-										if(obj.reqData != undefined && obj.reqData.type != undefined) {
-											options += '<option value="' + opt.text + '" ' + ((obj.defaultValue != "NA" && obj.defaultValue == opt.value) ? "selected" : "") + '>' + opt.text + '</option>';
-										}else{
-											options += '<option value="' + opt.text + '" ' + ((obj.defaultValue != "NA" && obj.defaultValue == opt.text) ? "selected" : "") + '>' + opt.text + '</option>';
-										}
-									});
-									$("#" + obj.id + ' > option').remove();
-									$("#" + obj.id).append(options);
-								}
-							}
-						},
-						error: function(e){
-							utils.scriptErrorHandling(thisFileName, obj.url, e);
-						}
-					});
-					if(key == arr.length - 1){
-						callback(true);
-					}
-				})
-			}else{
-				callback(true);
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	//FUNCTION TO FORM TOKENIZER
-	function prepareTokenizer(arr, callback){
-		try {
-			_.map(arr, function (obj){
-				var filterparam = (utils.validateInputs(obj.ele.filterarray) != '') ? ('&'+obj.ele.filterarray) : ''
-				$(".fadingFilterModal .modal-body #" +obj.id).tokenize({
-					datas: serviceURLJava + obj.ele.filterURL+'?1=1'+filterparam,
-					searchParam: 'searchtext',
-					placeholder: obj.ele.placeHolder,
-					newElements: "true",
-					maxElements:obj.ele.maxLength,
-					onRemoveToken: function (value, e) { },
-					onAddToken: function (value, e) { }
-				});
-			})
-			callback(true);
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	//FUNCTION TO GET FILTER VALUES
-	function getfiltervalues(){
-		try{
-			getFilterVal = [];
-			var filterform = JSON.parse(formsettingval);
-			_.map(filterform, function(tokenObj, key){
-				switch(utils.validateInputs(tokenObj.type).toLowerCase()){
-					case 'select':
-						if(typeof tokenObj.requestkey == 'string'){
-							if(utils.validateInputs(tokenObj.multiSelect) == '' || !tokenObj.multiSelect){
-								getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('#'+tokenObj.id+' option:selected').val(),"id":tokenObj.id,"title":tokenObj.name})
-							}else{
-								getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('#'+tokenObj.id).val(),"id":tokenObj.id,"title":tokenObj.name})
-							}
-						}
-					break;
-					case 'checkbox':
-						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('.fadingFilterModal #'+tokenObj.id).is(':checked'),"id":tokenObj.id,"title":tokenObj.name})
-					break;
-					case 'tokenizer':
-						var tokenval = ($('#'+tokenObj.id).tokenize().getFullDtls() == '')?[]:$('#'+tokenObj.id).tokenize().getFullDtls();
-						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":tokenval,"id":tokenObj.id,"title":tokenObj.name})
-					break;
-					case 'radio':
-					$.each(tokenObj.options,function(key,val){
-						var tempdata = $('#'+val.value).is(':checked');
-						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":val.key,"key":val.key,"values":tempdata,"id":val.value,"title":val.text})
-					})
-					break;
-					default:
-					break;
-				}
-				setTimeout(function(){
-					defaultfiltervalues(getFilterVal)
-				}, 500);
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	
-	return {
-		getFadingContactCollapsed: getFadingContactCollapsed,
-		DrawFadingContactTable: DrawFadingContactTable,
-		getFadingContactTable: getFadingContactTable,
-		callbackLoadFadingContacts: callbackLoadFadingContacts,
-		popoverTrigger: popoverTrigger,
-		thisRepCB: thisRepCB,
-		gettblfieldsval: gettblfieldsval,
-		defaultfiltervalues: defaultfiltervalues,
-		settblfeildsval: settblfeildsval,
-		drawFadingContactFilterForm: drawFadingContactFilterForm,
-		formFields: formFields,
-		clearFilterValue: clearFilterValue,
-		prepareTypeahead: prepareTypeahead,
-		prepareMultiselect: prepareMultiselect,
-		prepareSelects: prepareSelects,
-		prepareTokenizer: prepareTokenizer,
-		getfiltervalues: getfiltervalues
-	};
-})();
-
-function fading_contacts(id, clientID, searchCode){
-	try{
-		var thisRepID = id;
-		var thisRepIboxID = id+'_ibox';
-		var filterValue = '';
-		var thisFileName = 'reports - fading_contacts1.js';
-		var thisRepInternalID = thisRepID+' #fading-contacts-contents';
-		
-		/**** Start Events ****/
-		//FADING CONTACT DISMISS CLICK EVENT
-		$("body").undelegate("#"+thisRepID+" #dismissfadingcontact","click");
-		$("body").delegate("#"+thisRepID+" #dismissfadingcontact","click",function(e){
-			var thisParent = $(this).parent();
-			var conId = thisParent.data('contactid');
-			var empId = thisParent.data('empid');
-			var accountNme = thisParent.data('accountname');
-			var contactNme = thisParent.data('contactname');
-			var contactMail = $(this).data('mailid');
-			var searchCode = thisParent.data('searchcode');
-			var commFreq = thisParent.parent().siblings('td.commFreq').attr('data-order');
-
-			var dissmissObj = {};
-			dissmissObj.conId = conId;
-			dissmissObj.empId = empId;
-			dissmissObj.commFreq = commFreq;
-			dissmissObj.searchCode = searchCode;
-
-			conInfo.contactEmail = contactMail;
-			conInfo.contactId = conId; 
-			conInfo.contactName = contactNme;
-			conInfo.acctName = accountNme;
-			
-			if(conId != ''){
-				dismissResonsPopup(dissmissObj);
-			}else{
-				utils.info_toaster(_prismerrMsgs["00003"], 'e');
-			}
-		});
-
-		//CHANGE EVENT FOR DISTRIBUTION LIST CHECKBOX
-		$("body").undelegate("#distributionlist","change")
-		$("body").delegate("#distributionlist","change",function(e){
-			if($('#distributionlist').is(':checked') == true){
-				$('#distributionlistname_list').parent().css('display','block');
-			}else{
-				$('#distributionlistname_list').parent().css('display','none');
-			}
-		});
-
-		//CLICK EVENT FOR RESET FILTER BUTTON
-		$("body").undelegate("#resetAdvanceFilter","click")
-		$("body").delegate("#resetAdvanceFilter","click",function(e){
-			fadingContactSelf.clearFilterValue();
-		});
-
-		//FULLSCREEN LINK CLICK
-		$('body').undelegate('.fading_contact_cont #'+thisRepIboxID+' .fullscreen-link i','click');
-		$('body').delegate('.fading_contact_cont #'+thisRepIboxID+' .fullscreen-link i','click',function (){
-			if($(this).hasClass('fa-expand')){
-				repScreenACStatus = 'expanded';
-				$('#'+thisRepID).attr('data-fadingLen','');
-				$('.fading_contact_cont #'+thisRepIboxID).addClass('fad-full');
-				$('#loading_screen').show();
-			}else{
-				repScreenACStatus = 'collapsed';
-				$('.fading_contact_cont #'+thisRepIboxID).removeClass('fad-full');
-			}
-			
-			if($('.grid-stack').length >0){
-				utils.toggleFullscreen($(this));
-				var iboxCls = $('.fading_contact_cont #'+thisRepIboxID).attr('class');
-				if(iboxCls.indexOf('gridHt')==-1){ $('.fading_contact_cont #'+thisRepIboxID).addClass('gridHt'); }
-			}
-			fadingContactSelf.thisRepCB();
-		});
-
-		//CHANGE EVENT FOR DISMISS POPUP RADIO BUTTON
-		$("body").undelegate(".frm_fc_dismission_options .choose_dismiss_opt","change")
-		$("body").delegate(".frm_fc_dismission_options .choose_dismiss_opt","change",function(e){
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio input#rdo_comm_freq').is(':checked') == true){
-				$('.choose_dismiss_opt_container .dismiss_communication_frequency').css('display','block');
-			}else{
-				$('.choose_dismiss_opt_container .dismiss_communication_frequency').css('display','none');
-			}
-
-			$("#submit_dismiss").removeClass('disabled');
-			if($(this).val() == 1){
-				$('.frm_fc_dismiss_day_options').show();
-			}else{
-				$('.frm_fc_dismiss_day_options input.choose_dismiss_day_opt').first().trigger('click');
-				$('.frm_fc_dismiss_day_options').hide();
-			}	
-		});
-		
-		//CLICK EVENT FOR LOG INTERACTION IN FADING CONTACT TABLE 
-		$("body").undelegate("#interactionedit","click")
-		$("body").delegate("#interactionedit","click",function(e){
-			var thisParent = $(this).parent();
-			var contactname = utils.replaceSlashDoubleQuotes(thisParent.data('contactname'));
-			var parentCon = utils.validateInputs(thisParent.data('contactid'));
-			parentCon = (typeof parentCon == 'number') ? parentCon.toString() : parentCon;
-			var propObject = {"popTitle":contactname+' -'+lblConfig["contactlogInteractionsPopupHeader"]};
-			conInfo.contactId = parentCon;
-			conInfo.contactName = contactname;
-			conInfo.acctName = utils.replaceSlashDoubleQuotes(thisParent.data('accountname'));
-			conInfo.fromFadingCont = true;
-			conInfo.screenSts = repScreenACStatus;
-			interactionLogDash.openLogInteractionPopup(propObject);
-		});
-
-		//CLOSE CLICK EVENT FOR FADING CONTACT FILTER BUTTON
-		$("body").undelegate("#advance_pop_up_close","click")
-		$("body").delegate("#advance_pop_up_close","click",function(e){
-			$('.fadingFilterModal').modal('hide');
-			var confTitle = 'Confirmation';
-			var yesID = 'fadingContactFilterYes';
-			var noID = 'fadingContactFilterNo';
-			utils.drawConfirmationPopup(confTitle, _prismcommMsgs['00024'], yesID, noID);
-		});
-
-		//TO CLOSE CONFIRMATION BOX
-		$('body').undelegate('#fadingContactFilterNo','click');
-		$('body').delegate('#fadingContactFilterNo','click',function(){
-			$('.fadingFilterModal').modal('show');
-		});
-
-		//TO RESET ADVANCE FILTER
-		$('body').undelegate('#fadingContactFilterYes','click');
-		$('body').delegate('#fadingContactFilterYes','click',function(){
-			fadingContactSelf.clearFilterValue();
-			$('#dashboard_popup').modal('hide');
-		});
-		
-		//CLICK EVENT FOR CALL IN FADING CONTACT TABLE
-		$("body").undelegate("#dismisscall","click")
-		$("body").delegate("#dismisscall","click",function(e){
-			var uniqPhone = utils.validateInputs($(this).parent().data('phone'));			
-			if(uniqPhone != ''){
-				var contact_id = utils.validateInputs($(this).parent().data('contactid'));
-				if(utils.validateInputs(contact_id) != '') {	
-					$('#loading_screen').show();			
-					var phObj ={
-						contact_id: contact_id,
-						phone_number: '',
-						sel_num: '',
-						uniqPhone: uniqPhone
-					}		
-					quickcall.start.qc_load_start(phObj);
-				}
-			}				
-		});		
-		
-		//CLICK EVENT FOR DISMISS POPUP SUBMIT BUTTON
-		$("body").undelegate("#submit_dismiss","click");
-		$("body").delegate("#submit_dismiss","click",function(e){
-			var dismiss_ws = $('.choose_dismiss_opt_content .radio .choose_dismiss_opt:checked').attr('dismiss');
-			var commfreq = '';
-			var stopalert = 0;
-			var isSelected = false;
-			var contactid=$('.fading_contact_title').attr('contactid');
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #rdo_comm_freq').is(':checked') == true){
-				isSelected = true;
-				commfreq = $('.choose_dismiss_opt_container .dismiss_communication_frequency select option:selected').val();
-			}
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #stopalert').is(':checked') == true){
-				isSelected = true;
-				stopalert = 1;
-			}
-			if(dismiss_ws == "true"){
-				var dismissData = {};
-				dismissData.contactId = contactid;
-				dismissData.commFreq = commfreq;
-				dismissData.stopAlert = stopalert;
-
-				utils.scriptErrorHandling('Fading contact dismiss - '+contactid, 'Fading contact dismiss - '+contactid, JSON.stringify(dismissData));
-				$('#submit_dismiss').data('clickid',_prismSTClickTrackMessages.dashfadingcontactdismiss);
-
-				_server.post({
-					url: serviceURLJava + 'contact/dismissfadingcontact',
-					data:{
-						"data" : JSON.stringify(dismissData)
-					},
-					success: function (response){
-						if(response.status ==1){
-							utils.info_toaster(_prismsuccMsgs["00056"], 's');
-							if(repScreenACStatus == 'collapsed'){
-								fadingContactSelf.getFadingContactCollapsed(repScreenACStatus);
-							}else{
-								fadingContactSelf.getFadingContactTable();
-							}
-						}else{
-							utils.info_toaster(_prismerrMsgs["00260"], 'e');
-						}
-						$('#fading_contact_dismiss_popup').modal('hide');
-					},
-					error: function (response){
-						utils.info_toaster(_prismerrMsgs["00260"], 'e');
-						$('#fading_contact_dismiss_popup').modal('hide');
-						utils.scriptErrorHandling(thisFileName, "contact/dismissfadingcontact", e);
-					}
-				});
-			}
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #dismissinactive').is(':checked') == true){
-				isSelected = true;
-				$('#loading_screen').show();
-				$('#fading_contact_dismiss_popup').modal('hide');
-				if(utils.validateInputs(contactid) != ''){
-					conInfo.isfadingCon = true;
-					conInfo.screenSts = repScreenACStatus;
-					contactCRMObj.editContactInfo(contactid);
-				}else{
-					alert("Invalid contact details.");
-				}
-			}
-
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #dismissempchange').is(':checked') == true){
-				$('#fading_contact_dismiss_popup').modal('hide');
-				isSelected = true;
-				if(utils.validateInputs(contactid) != ''){
-					conInfo.isfadingCon = false;
-					conInfo.isFadEmpChange = true;
-					conInfo.screenSts = repScreenACStatus;
-					contactCRMObj.empChange(contactid);
-				}else{
-					alert("Invalid contact details.");
-				}
-			}
-			if(!isSelected){
-				utils.info_toaster(_prismerrMsgs["00461"], 'w');
-			}
-		});
-		
-		//CALL ICON CLICK EVENT CALL CIA FLAG IS IN OFF
-		$("body").undelegate(".phone-nos-call","click");
-		$("body").delegate(".phone-nos-call","click",function(e){
-			var contactid = $(this).data('contactid')
-			var thisVar = $(this);
-			if(utils.validateInputs(contactid)!='' && utils.validateInputs($(this).find('.icon-phone-call').attr('data-content')) =='' ){
-				$(this).find('.icon-phone-call').attr('data-content','')				
-				$('#loading_screen').show();
-				_server.get({
-					url: serviceURLJava+ "contact/getcontactinfo",
-					data: {
-						contactid: contactid
-					},
-					success: function(response) {
-						if(response.status == 1){
-							var tableHTML = '<table class="table fund_managertable theme-table table-striped"><thead><tr><th>Phone Label</th><th>Phone No</th></tr></thead><tbody>'
-							var data = response.data[0];
-							if(data.crmDet.phone.length > 0){
-								$.each(data.crmDet.phone, function(ind,value){
-									tableHTML+='<tr><td>'+data.crmDet.phoneLabel[ind]+'</td><td>'+value+'</td></tr>';
-								})
-							}
-							tableHTML+='</tbody></table>';
-						}
-						thisVar.find('.icon-phone-call').popover({html:true,placement: 'auto',"container": "body"})
-						thisVar.find('.icon-phone-call').attr('data-content', tableHTML.toString()).popover('show')
-						$('#loading_screen').hide();
-					},
-					error: function (jqXHR){
-						if(jqXHR.responseText != ''){
-							$('#loading_screen').hide();
-							utils.scriptErrorHandling(thisFileName, "contact/getcontactinfo", jqXHR.responseText);
-						}
-						$('#loading_screen').hide();
-					}
-				});
-			}else if($(this).find('.icon-phone-call').data('bs.popover').tip().hasClass('in') == true){
-				$(this).find('.icon-phone-call').popover('hide');
-			}else if(utils.validateInputs($(this).find('.icon-phone-call').attr('data-content')) !='' &&  $(this).find('.icon-phone-call').data('bs.popover').tip().hasClass('in') == false){
-				$(this).find('.icon-phone-call').popover('show');
-			}
-		})
-			
-
-		/**** End Events ****/
-		
-		// TO LOAD FADING CONTACT DISMISS POPUP
-		function dismissResonsPopup(dissmissObj){
-			try{
-				var conId = dissmissObj.conId;
-				var empId = dissmissObj.empId;
-				var commFreq = dissmissObj.commFreq;
-				var searchCode = dissmissObj.searchCode;
-				var commFreqval = JSON.parse(_prismConstantValues['ADD_CRM_DROP_DOWN_COMM_FREQ']);
-				var idx = 0;
-				var CtSrchCode = utils._prismTsheetSearchCode({mainType: 'cont', subType: 'deflt'});
-				var nonCtSrchCode = utils._prismTsheetSearchCode({mainType: 'cont', subType: 'non_covd'});
-				var pHtml = '<div class="modal-dialog right fadeInRight">';
-						pHtml += '<div class="modal-content animated fadeInRight popupcenter">'
-							pHtml += '<div class="modal-header bg-primaryLight"><span id="poptitle" class="fading_contact_title text-center modal-title" contactid='+conId+'>'+lblConfig["fadinContactDismissPopupHeader"]+'</span><button type="button" class="close" data-dismiss="modal" id="dismissResonsPopupClose"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button></div>';
-							pHtml += '<div class="fading-modal panel-form modal-body">';
-				
-									pHtml += '<form class="frm_fc_dismission_options"><div class="choose_dismiss_opt_container">';
-									if(utils.checkPermission("SHOW_CONTACT_COMM_FREQ") == true){
-											pHtml += '<div class="choose_dismiss_opt_content" style="width:100%">'+
-											'<div class="radio radio-circle  radio-inline custom-radio-btn">'+
-												'<input type="radio" id="rdo_comm_freq" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="1" dismiss="true" />'+
-												'<label for="rdo_comm_freq">'+lblConfig["fadinOptionChgFrq"]+'</label>'+
-											'</div>'+
-										'</div>';
-									}	
-									pHtml += '<div class="dismiss_communication_frequency" style="display:none;">'+
-									'<select class="form-control" id="dismiss_contactInfo_commuFreq" data-fldid="" data-placeholder="Select How often would prefer to be in touch?" autocomplete="off" style="width:75% !important">'+
-										'<option value="" selected="">Select Communication Frequency</option>';
-										$.each(commFreqval,function(key,val){
-											pHtml += '<option value="'+val.value+'">'+val.text+'</option>';
-										});
-									pHtml += '</select>'+
-								'</div><br>'+
-								'<div class="choose_dismiss_opt_content" style="width:100%">'+
-										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
-												'<input type="radio" id="stopalert" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="true" />'+
-												'<label for="stopalert">Stop receiving alerts for this contact</label>'+
-											'</div>'+
-										'</div>';
-										if((utils.checkPermission("CT_EDIT_CONTACT") == true && searchCode == CtSrchCode) || (utils.checkPermission("NCT_EDIT_CONTACT") == true && searchCode == nonCtSrchCode)){
-										pHtml += '<div class="choose_dismiss_opt_content" style="width:100%">'+
-										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
-												'<input type="radio" id="dismissinactive" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="false" />'+
-												'<label for="dismissinactive">Contact is inactive</label>'+
-											'</div>'+
-										'</div>';
-										}
-										if((utils.checkPermission("CT_EMP_CHANGE") == true && searchCode == CtSrchCode) || (utils.checkPermission("NCT_EMP_CHANGE") == true && searchCode == nonCtSrchCode)){
-										pHtml += '<div class="choose_dismiss_opt_content">'+
-										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
-												'<input type="radio" id="dismissempchange" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="false" />'+
-												'<label for="dismissempchange">Contact has changed employment</label>'+
-											'</div>'+
-										'</div>';
-										}
-										pHtml += '<div class="clearfix"></div>'+
-									 '</div></form>';
-								pHtml += '<form class="frm_fc_dismiss_day_options"><div class="dismiss_day_opt_container">';
-									if(!$.isEmptyObject(_prismContactFilters)){
-										if(typeof _prismContactFilters.commFreq !== 'undefined'){
-											/*for (var dayKey in lblConfig["fadinOptionDays"]) {
-										
-											if (lblConfig["fadinOptionDays"].hasOwnProperty(dayKey)) {*/
-												$.each(_prismContactFilters.commFreq,function(i, ele){
-													pHtml += '<div class="dismiss_day_opt_content"><div class="radio radio-circle radio-inline custom-radio-btn">'+
-															//'+((idx==0)?'checked="checked"':'')+'	
-															  '<input type="radio" id="rdo_'+idx+'_days" class="common_ipt_rado choose_dismiss_day_opt" name="dismiss_day_opt" '+((idx==0)?'checked="checked"':'')+' value="'+ele.value+'" />'+
-															  '<label for="rdo_'+idx+'_days">'+ele.text+'</label>'+	
-															'</div></div>';
-													idx++;		
-												});
-										}
-									}
-								pHtml += '<div class="dismiss-controls pull-right">';
-									pHtml += '<input class="contactId" type="hidden" value="'+conId+'" />';
-									pHtml += '<input class="employeeId" type="hidden" value="'+empId+'" />';
-								pHtml += '</div>';	
-								pHtml += '</div></form>';	
-						
-							pHtml += '</div>';
-							
-							pHtml += '<div class="modal-footer">'+
-												'<input id="submit_dismiss" class="fading-contact-btns comm_btn_ok m-r-sm btn-custom btn-green disabled" type="button" value="Update" />'+
-												'<input id="cancel_dismiss" class="fading-contact-btns comm_btn_cancel btn-custom btn-dflt" data-dismiss="modal" type="button" value="Cancel" />'+
-										'</div>';
-							pHtml +='</div></div>';
-				
-				$('#fading_contact_dismiss_popup').html(pHtml).removeAttr('data-tableid').attr('data-tableid','dismissResonsPopup');
-				$('#fading_contact_dismiss_popup').modal({
-					backdrop: 'static',
-					keyboard: false,
-					show:'true'
-				});
-				if(commFreq != ''){
-					$('#dismiss_contactInfo_commuFreq option[value="'+commFreq+'"]').attr("selected", "selected");
-				}
-			}catch(e){
-				utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-			}
-		}
-					
-		templateFn(thisRepID, '', '<div class="fading-contacts" id="fading-contacts-contents"></div> <!-- fading-contacts -->', fadingContactSelf.thisRepCB);
-	}catch(e){
-		utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-	}
+interface FilterObject {
+    isExcelGenerate: boolean;
+    daysAgo: string;
+    accountName: string[];
+    includeAccName: boolean;
+    excludeAccName: boolean;
+    accountType: string[];
+    includeAccType: boolean;
+    excludeAccType: boolean;
+    tier: any[];
+    conSubRes: boolean;
+    myCoveredContact: boolean;
+    distributionList: boolean;
+    list: any[];
+    conAccVoted: boolean;
+    conAccVotedMe: boolean;
+    conSubMyRes: boolean;
+    conSubMyCovTicker: boolean;
+    allCriteria: boolean;
+    oneOrMoreCriteria: boolean;
 }
+
+const initialFilterObj: FilterObject = {
+    "isExcelGenerate": false,
+    "daysAgo": "",
+    "accountName": [],
+    "includeAccName": true,
+    "excludeAccName": false,
+    "accountType": [],
+    "includeAccType": true,
+    "excludeAccType": false,
+    "tier": [],
+    "conSubRes": false,
+    "myCoveredContact": false,
+    "distributionList": false,
+    "list": [],
+    "conAccVoted": false,
+    "conAccVotedMe": false,
+    "conSubMyRes": false,
+    "conSubMyCovTicker": false,
+    "allCriteria": true,
+    "oneOrMoreCriteria": false
+};
+
+// declare const config: { fadingContactLimit: number };
+
+export const FadingContactComponent = ({ tabType }: { tabType: string }) => {
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [contacts, setContacts] = useState<NormalizedContact[]>([]);
+    
+    const { toast } = useToast(); 
+
+    const fetchFadingContacts = async () => {
+        setIsLoading(true);
+        try {
+            const startVar = 0;
+            const lengVar = 0;
+
+            const filterDataStr = JSON.stringify(initialFilterObj);
+            
+            const bodyParams = new URLSearchParams({
+                "top": 'collapse',
+                "action": 'collapse',
+                "start": startVar.toString(),
+                "length": lengVar.toString(),
+                "data": filterDataStr
+            }).toString();
+
+            const response = await fetch(`${API_CONFIG.baseUrl}/contact/retrievefadingcontact`, {
+                method: 'POST',
+                headers: createAuthHeaders({
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                    'Accept': 'application/json, text/javascript, */*; q=0.01',
+                }),
+                body: bodyParams,
+                credentials: 'include',
+            });
+
+            const data = await response.json();
+
+            if (data.status === 1 || data.status === 0) {
+                const rawContacts: RawContactItem[] = Array.isArray(data.data) ? data.data : [];
+                setContacts(rawContacts);
+            } else {
+                setContacts([]);
+            }
+
+        } catch (err) {
+            console.error('fetchFadingContacts error', err);
+            setError('Failed to fetch fading contacts.');
+            toast({ title: 'Error', description: 'Failed to fetch contacts' });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchFadingContacts();
+    }, [tabType]);
+
+    if (isLoading) {
+        return <div>Loading fading contacts...</div>;
+    }
+
+    if (contacts.length === 0) {
+        return <p className="align-center">No fading contacts found.</p>;
+    }
+
+    return (
+        <div className="p-5">
+            <ul className="space-y-3">
+                {contacts.map((contact) => {
+                    return (
+                        <li key={contact.contactId} className="relative rounded border bg-gray-50 p-3 shadow-sm">
+                            <h3 
+                                className="font-bold" 
+                                dangerouslySetInnerHTML={{ __html: contact.contactName }} 
+                            />
+                            <p className="text-sm text-gray-600">
+                                Email: {contact.email} | Account Type: {contact.accountType} |
+                                Account: <span dangerouslySetInnerHTML={{ __html: contact.accountName }} /> | 
+                                Last Interacted: {contact.lastInteractedDateMe}
+                            </p>
+                            {/* <p>Comments: {contact.comments}</p> */}
+                        </li>
+                    )
+                })}
+            </ul>
+        </div>
+    );
+};
+
+export default FadingContactComponent;
