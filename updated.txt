@@ -35,8 +35,8 @@ type TaskItem = {
   taskName?: string
   taskComment?: string
   taskDate?: string
-  taskAssignedName?: string
-  taskAssignedId?: string
+  taskAssignedName?: string[]
+  taskAssignedId?: string[]
   taskType?: string
   taskStatus?: string
   contacts?: string[]
@@ -85,13 +85,13 @@ export default function TasksWidget() {
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [isModalOpen, setModalOpen] = useState(false)
   const inputRef = useRef(null)
-  const [assignedToName, setAssignedToName] = useState('')
+  // const [assignedToName, setAssignedToName] = useState('')
 
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
 
-  const [assignedToId, setAssignedToId] = useState('')
-
+ const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
+const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
   const [contactNames, setContactNames] = useState<string[]>([])
   const [contacts, setContacts] = useState<string[]>([])
   const [contactQuery, setContactQuery] = useState('')
@@ -646,11 +646,21 @@ export default function TasksWidget() {
   }
 
   const handleAssigneeSelect = (assignee: AssigneeOption) => {
+    if (!assignedToIds.includes(assignee.value)) {
+        setAssignedToIds([...assignedToIds, assignee.value]);
+        setAssignedToNames([...assignedToNames, assignee.text || '']);
+    }
     setQuery(assignee.text || '')
-    setAssignedToId(assignee.value || '')
-    setAssignedToName(assignee.text || '')
+    setAssignedToIds(assignee.value || '')
+    setAssignedToNames(assignee.text || '')
     setIsOpen(false)
   }
+
+  const handleRemoveAssignee = (idToRemove: string) => {
+    setAssignedToIds(assignedToIds.filter(id => id !== idToRemove));
+    // Also remove the name corresponding to the ID (requires careful management)
+    setAssignedToNames(assignedToNames.filter((name, index) => assignedToIds[index] !== idToRemove));
+};
 
   // Add new task
   async function handleAddTask() {
@@ -659,7 +669,7 @@ export default function TasksWidget() {
       const isEmpty = (value: any) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
 
       const mandatoryFields = [
-        { value: assignedToId, name: 'Assignee' },
+        { value: assignedToIds, name: 'Assignee' },
         { value: subject, name: 'Subject' },
         { value: dueDate, name: 'Due Date' },
         { value: timeStr, name: 'Time' },
@@ -678,7 +688,7 @@ export default function TasksWidget() {
         return; 
       }
 
-      if (!assignedToId.trim()) {
+      if (!assignedToIds) {
         toast({ title: 'Validation', description: 'Assignee required' })
         return
       }
@@ -702,7 +712,7 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
         dueTime: formattedDueTime,
         contacts: sanitizedContacts,
         contactName: sanitizedContactNames,
-        assignedTo: assignedToId,
+        assignedTo: assignedToIds,
         clienttimezone,
         status,
         taskType,
@@ -748,7 +758,7 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
         dueTime: formattedDueTime,
         contacts,
         contactName: contactNames,
-        assignedTo: assignedToId,
+        assignedTo: assignedToIds,
         clienttimezone,
         status,
         taskType,
@@ -800,10 +810,10 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
     setSubject(tdata.taskName || tdata.subject || '')
     setDescription(tdata.taskComment || tdata.taskComments || '')
     const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
-    setAssignedToId(assignedId)
+    setAssignedToIds(assignedId)
     const assignedName = tdata.taskAssignedName || ''
     setQuery(assignedName)
-    setAssignedToName(assignedName)
+    setAssignedToNames(assignedName)
     setTaskType(tdata.taskType || '')
     setStatus(tdata.taskStatus || '')
 
@@ -1055,49 +1065,72 @@ const payload = {
                 {editTask ? 'Update Task' : 'Add Task'}
               </Dialog.Title>
 
-               <label htmlFor="assignTo" className="mb-2 block">
-                Assign To (Choose Only One Employee As Assignee) <span className="text-red-500">*</span>
-              </label>
+              <label htmlFor="assignTo" className="mb-2 block">
+    Assign To (Choose One or More Employees As Assignee) <span className="text-red-500">*</span>
+</label>
 
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-prism-primary" />
-                <Input
-                  ref={inputRef}
-                  type="text"
-                  placeholder="Search..."
-                  value={query}
-                  onChange={handleInputChange}
-                  autoFocus
-                  id="searchInput"
-                  className="h-full min-h-[3rem] flex-1 rounded-md border border-gray-300 bg-gray-50 pl-10 pr-24 text-base focus:border-prism-primary focus:bg-white"
-                  style={{ paddingRight: '6rem', height: '100%' }}
-                />
-                {isOpen && query.length > 0 && (
-                  <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
-                    {loadingSearch ? (
-                      <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
-                        Loading...
-                      </li>
-                    ) : assigneeResults.length > 0 ? (
-                      assigneeResults.map((assignee) => (
-                        <li
-                          key={assignee.value}
-                          className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-prism-primary hover:text-white"
-                          onClick={() => {
+<div className="relative">
+    {/* Display selected assignees as tags/pills */}
+   <div className="flex flex-wrap gap-2 mb-2 p-2 border border-gray-300 rounded-md bg-gray-50">
+    {Array.isArray(assignedToNames) && assignedToNames.map((name, index) => (
+        <span key={assignedToIds[index]} className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full">
+            {name}
+            <button
+                type="button"
+                onClick={() => handleRemoveAssignee(assignedToIds[index])}
+                className="ml-2 text-blue-800 hover:text-blue-900 focus:outline-none"
+            >
+                ×
+            </button>
+        </span>
+    ))}
+        
+        {/* The Input field remains for typing search queries */}
+        <div className="relative flex-1 min-w-[150px]">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-prism-primary" />
+            <Input
+                ref={inputRef}
+                type="text"
+                placeholder={assignedToNames.length === 0 ? "Search for assignees..." : ""}
+                value={query}
+                onChange={handleInputChange}
+                autoFocus
+                id="searchInput"
+                // Adjusted classes for multi-select input area
+                className="h-full min-h-[3rem] w-full pl-10 pr-4 text-base focus:outline-none bg-transparent"
+                style={{ height: '100%' }}
+                onFocus={() => setIsOpen(true)} // Show dropdown when focused
+                onBlur={() => setTimeout(() => setIsOpen(false), 200)} // Hide dropdown when focus leaves (with slight delay)
+            />
+        </div>
+    </div>
+    
+    {isOpen && query.length > 0 && (
+        <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
+            {loadingSearch ? (
+                <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
+                    Loading...
+                </li>
+            ) : assigneeResults.length > 0 ? (
+                assigneeResults.map((assignee) => (
+                    <li
+                        key={assignee.value}
+                        className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-prism-primary hover:text-white"
+                        onClick={() => {
                             handleAssigneeSelect(assignee)
-                          }}
-                        >
-                          {assignee.text}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
-                        No results found
-                      </li>
-                    )}
-                  </ul>
-                )}
-              </div>
+                        }}
+                    >
+                        {assignee.text}
+                    </li>
+                ))
+            ) : (
+                <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
+                    No results found
+                </li>
+            )}
+        </ul>
+    )}
+</div>
 
                <div className="flex justify-between items-end  mb-4">
                 <div className="flex flex-col">
@@ -1191,7 +1224,7 @@ const payload = {
               </div>
 
               {isContactResultsOpen && (contactQuery.length > 0 || contactResults.length > 0) && (
-                <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
+                <ul className="absolute z-20 mt--1 max-h-40 w-45 overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
                   {loadingContacts ? (
                     <li key="loading" className="p-2 text-gray-700">
                       Loading...
