@@ -1,681 +1,1248 @@
-        
-    <script>
-/*
-  Drop-in replacement script
-  - Preserves all your layout classes and markup (no layout/style changes)
-  - Fixes rating/star rendering and numeric normalization
-  - Fixes handler typos and small bugs while keeping functionality intact
-*/
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import { ChevronDownIcon, ChevronUpIcon, EyeIcon, PencilIcon, PlusIcon, Search, Trash2Icon, TrashIcon} from 'lucide-react'
+import {  MagnifyingGlassIcon, TableCellsIcon, FunnelIcon } from '@heroicons/react/24/outline';
 
-let allProducts = [];
-let lastCategoryId = null;
-let currentFilter = null;
-let categories = [];
+import DatePicker from 'react-datepicker'
 
-function resolveImageUrl(imagePath) {
-  if (!imagePath) return 'https://via.placeholder.com/400x250?text=No+Image';
-  imagePath = String(imagePath).trim();
-  if (!imagePath) return 'https://via.placeholder.com/400x250?text=No+Image';
+import { Input } from '@/components/ui/input'
+import { useToast } from '@/hooks/use-toast'
+import { API_CONFIG } from '@/lib/constants'
+import { createAuthHeaders } from '@/lib/legacyUtils'
+import { prismStorage } from '@/lib/prismStorage'
 
-  if (/^\s*data:/i.test(imagePath)) return imagePath;
+import 'react-datepicker/dist/react-datepicker.css'
 
-  const trimmed = imagePath.replace(/\s+/g, '');
-  const b64sig = trimmed.substring(0, 8);
-  if (/^[A-Za-z0-9+/=]+$/.test(trimmed) && trimmed.length > 50) {
-    if (b64sig.startsWith('/9j/')) return 'data:image/jpeg;base64,' + trimmed;
-    if (b64sig.startsWith('iVBOR')) return 'data:image/png;base64,' + trimmed;
-    if (b64sig.startsWith('R0lG')) return 'data:image/gif;base64,' + trimmed;
-    if (b64sig.startsWith('UklG') || trimmed.substring(0,4) === 'RIFF') return 'data:image/webp;base64,' + trimmed;
-    return 'data:image/jpeg;base64,' + trimmed;
-  }
+import TimePicker from 'react-time-picker';
+import 'react-time-picker/dist/TimePicker.css';
+import 'react-clock/dist/Clock.css';
+import { 
+  useReactTable, 
+  getCoreRowModel, 
+  getPaginationRowModel, 
+  getFilteredRowModel,
+  flexRender,
+  ColumnDef,
+  VisibilityState,
+} from '@tanstack/react-table';
+import moment from 'moment-timezone';
 
-  if (/^https?:\/\//i.test(imagePath)) return imagePath;
 
-  if (imagePath.startsWith('/')) return window.location.origin + imagePath;
 
-  if (imagePath.indexOf('Ecommerce_Website') !== -1) {
-    return window.location.origin + (imagePath.startsWith('/') ? imagePath : '/' + imagePath);
-  }
 
-  return window.location.origin + '/Ecommerce_Website/' + imagePath.replace(/^\/+/, '');
+type TaskItem = {
+  taskId: string
+  taskName?: string
+  taskComment?: string
+  taskDate?: string
+  taskAssignedName?: string
+  taskAssignedId?: string
+  taskType?: string
+  taskStatus?: string
+  contacts?: string[]
+  contactName?: string[]
+  accountName?: string[]
+  taskComments?: string
+  reminder?: any[]
 }
 
-function toast(msg, ms = 1400) {
-  if ($('#toast').length === 0) $('body').append('<div id="toast" style="position:fixed;top:20px;right:20px;display:none;z-index:10000;background:#111827;color:#fff;padding:8px 12px;border-radius:6px;"></div>');
-  $('#toast').stop(true,true).text(msg).fadeIn(200).delay(ms).fadeOut(300);
+interface AssigneeOption {
+  text?: string
+  value?: string
+  code?: string
+  style?: string
+  docName?: string | null
+  docId?: string | null
 }
 
-function escapeHtml(s){
-  if (s == null) return '';
-  return String(s).replace(/[&<>"'`]/g, function(ch){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;'})[ch]; });
+interface ContactOption {
+  text?: string
+  value?: string
+  code?: string
+  style?: string
+  docName?: string | null
+  docId?: string | null
+  account_name?: string 
 }
 
-/* Fixed star rendering (numeric input expected) */
-function renderStars(rating) {
-  rating = Number(rating);
-  if (!isFinite(rating)) rating = 0;
-  if (rating < 0) rating = 0;
-  if (rating > 5) rating = 5;
+export default function TasksWidget() {
+  const { toast } = useToast()
+  const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [editTask, setEditTask] = useState<TaskItem | null>(null)
+  const [subject, setSubject] = useState('')
+  const [assignedTo, setAssignedTo] = useState('')
+  const [taskType, setTaskType] = useState('')
+  const [status, setStatus] = useState('')
+  const [description, setDescription] = useState('')
+  const [dueDate, setDueDate] = useState<Date | null>(new Date())
+  // const [timeStr, setTimeStr] = useState('10:00')
+  const [timeStr, setTimeStr] = useState<string | null>(''); 
+  const [query, setQuery] = useState('')
+  const [assigneeResults, setAssigneeResults] = useState<AssigneeOption[]>([])
+  const [loadingSearch, setLoadingSearch] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [isModalOpen, setModalOpen] = useState(false)
+  const inputRef = useRef(null)
+  const [assignedToName, setAssignedToName] = useState('')
 
-  const fullStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z" /></svg>';
-  const outlineStar = '<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-gray-300" viewBox="0 0 20 20" fill="none"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z" stroke="currentColor" stroke-width="1" /></svg>';
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
 
-  const full = Math.floor(rating);
-  const remainder = rating - full;
-  const half = remainder >= 0.5 ? 1 : 0;
-  let html = '';
-  for (let i=0;i<full;i++) html += fullStar;
-  if (half) {
-    // show a slightly different class for half (keeps layout). You can replace with actual half SVG later.
-    html += `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline text-yellow-300" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.175c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.784.57-1.838-.197-1.539-1.118l1.287-3.966a1 1 0 00-.364-1.118L2.174 9.393c-.783-.57-.38-1.81.588-1.81h4.175a1 1 0 00.95-.69l1.286-3.966z" /></svg>`;
-  }
-  for (let i = full + half; i < 5; i++) html += outlineStar;
-  return html;
-}
+  const [assignedToId, setAssignedToId] = useState('')
 
-function buildProductCardHtml(p) {
-  const id = p.productId ?? p.id ?? p.product_id;
-  const name = p.productName ?? p.name ?? p.product_name ?? "Unnamed";
+  const [contactNames, setContactNames] = useState<string[]>([])
+  const [contacts, setContacts] = useState<string[]>([])
+  const [contactQuery, setContactQuery] = useState('')
+  const [contactResults, setContactResults] = useState<ContactOption[]>([])
+  const [loadingContacts, setLoadingContacts] = useState(false)
+  const [isContactResultsOpen, setIsContactResultsOpen] = useState(false)
 
-  // normalize rating values
-  let avgRating = Number(p.averageRating ?? p.average_rating ?? p.stars ?? 0);
-  if (!isFinite(avgRating)) avgRating = 0;
-  if (avgRating < 0) avgRating = 0;
-  if (avgRating > 5) avgRating = 5;
-  let ratingCount = parseInt(p.ratingCount ?? p.rating_count ?? 0, 10);
-  if (!isFinite(ratingCount)) ratingCount = 0;
+   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [taskToDeleteData, setTaskToDeleteData] = useState(null);
 
-  console.log(avgRating);
-  console.log(ratingCount);
+   const [showAllTasks, setShowAllTasks] = useState(false);
 
-  let image = 'https://via.placeholder.com/400x250?text=No+Image';
-  if (Array.isArray(p.images) && p.images.length) {
-    image = resolveImageUrl(p.images[0]);
-  } else if (p.imageUrl) {
-    image = resolveImageUrl(p.imageUrl);
-  } else if (p.image) {
-    image = resolveImageUrl(p.image);
-  }
+    const tasksToShow = showAllTasks ? tasks : tasks.slice(0, 3);
+  const hasMoreTasks = tasks.length > 3;
 
-  const stars = renderStars(avgRating);
-  const ratingDisplay = ratingCount > 0
-    ? `<div class="flex justify-center items-center mb-2">
-         ${stars}
-         <span class="ml-2 text-yellow-600 font-semibold">${avgRating.toFixed(1)}</span>
-         <span class="ml-1 text-xs text-gray-500">(${ratingCount})</span>
-       </div>`
-    : `<div class="flex justify-center items-center mb-2 text-gray-400 text-sm">No ratings yet</div>`;
+  //   const DataTableAllTasks = () => (
+  //   <div className="overflow-x-auto mt-4">
+  //     <table className="min-w-full divide-y divide-gray-200 shadow-sm rounded-lg overflow-hidden">
+  //       <thead className="bg-gray-100">
+  //         <tr>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Name</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Type</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignee</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Name</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Comments</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date/Time</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+  //         </tr>
+  //       </thead>
+  //       <tbody className="bg-white divide-y divide-gray-200">
+  //         {tasks.map((t) => (
+  //           <tr key={t.taskId} className="hover:bg-gray-50">
+  //             <td className="px-3 py-4 whitespace-nowrap">
+  //               <div className="flex gap-2">
+  //                   {/* View icon was removed in previous requests, just Edit/Delete remain */}
+  //                   <button
+  //                       className="p-1 text-yellow-600 hover:text-yellow-800"
+  //                       onClick={() => openEditModal(t)}
+  //                       title="Edit Task"
+  //                   >
+  //                       <PencilIcon className="h-4 w-4" />
+  //                   </button>
+  //                   <button
+  //                       className="p-1 text-red-600 hover:text-red-800"
+  //                       onClick={() => handleDeleteClick(t.taskId, t)}
+  //                       title="Delete Task"
+  //                   >
+  //                       <TrashIcon className="h-4 w-4" />
+  //                   </button>
+  //               </div>
+  //             </td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{t.taskName}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskType}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskAssignedName}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.contactName?.join(', ') || 'N/A'}</td>
+  //             <td className="px-3 py-4 text-sm text-gray-500 truncate max-w-xs">{t.taskComment||'-'}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskDate}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskStatus|| '-'}</td>
+  //           </tr>
+  //         ))}
+  //       </tbody>
+  //     </table>
+  //   </div>
+  // );
 
-  const price = parseFloat(p.price ?? 0);
-  const discount = parseFloat(p.discountPercent ?? 0);
-  const discountedPrice = (discount > 0) ? (Math.round((price - price * discount / 100) * 100) / 100) : null;
-  const stock = (p.stock != null) ? p.stock : 0;
-  const oos = stock <= 0;
+  const DataTableAllTasks = ({ tasks, openEditModal, handleDeleteClick }) => {
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [pageSize, setPageSize] = useState(10); 
 
-  const priceHtml = (discount > 0)
-    ? `<div><span class="line-through text-gray-500 mr-2">₹${price}</span><span class="font-bold text-green-600">₹${discountedPrice}</span><span class="ml-2 text-sm text-red-600 font-semibold">${discount}% OFF</span></div>`
-    : `<div class="font-bold text-green-600 mt-2">₹${price}</div>`;
+  const columns = useMemo<ColumnDef<TaskItem>[]>(
+    () => [
+      {
+        header: 'Action',
+        id: 'actions',
+        cell: ({ row }) => (
+          <div className="flex gap-2">
+            <button
+              className="p-1 text-yellow-600 hover:text-yellow-800"
+              onClick={() => openEditModal(row.original)}
+              title="Edit Task"
+            >
+              <PencilIcon className="h-4 w-4" />
+            </button>
+            <button
+              className="p-1 text-red-600 hover:text-red-800"
+              onClick={() => handleDeleteClick(row.original.taskId, row.original)}
+              title="Delete Task"
+            >
+              <TrashIcon className="h-4 w-4" />
+            </button>
+          </div>
+        ),
+        enableHiding: false,
+      },
+      { header: 'Task Name', accessorKey: 'taskName' },
+      { header: 'Task Type', accessorKey: 'taskType' },
+      { header: 'Assignee', accessorKey: 'taskAssignedName' },
+      { header: 'Contact Name', accessorKey: 'contactName', cell: info => info.getValue()?.join(', ') || '-' },
+      { header: 'Task Comments', accessorKey: 'taskComment' },
+      { header: 'Due Date/Time', accessorKey: 'taskDate' },
+      { header: 'Status', accessorKey: 'taskStatus', cell: info => info.getValue() || '-' },
+    ],
+    [openEditModal, handleDeleteClick]
+  );
 
-  const isWish = p.inWishlist === true;
-  const heartClass = isWish ? 'wishlist-btn filled' : 'wishlist-btn';
-  const heartHtml = `
-    <button class="${heartClass}" data-id="${id}" aria-label="Wishlist" title="${isWish ? 'Remove from wishlist' : 'Add to wishlist'}">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
-        <path d="M12 21s-7-4.35-9-7.2C-1.1 8.8 4.5 3 8.4 6.2 10.8 8.3 12 10 12 10s1.2-1.7 3.6-3.8C19.5 3 25.1 8.8 21 13.8 19 16.65 12 21 12 21z"></path>
-      </svg>
-    </button>
-  `;
+  const table = useReactTable({
+    data: tasks,
+    columns,
+    state: {
+      globalFilter,
+      columnVisibility,
+      pagination: {
+        pageIndex: 0,
+        pageSize: pageSize,
+      },
+    },
+    onGlobalFilterChange: setGlobalFilter,
+    onColumnVisibilityChange: setColumnVisibility,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+  });
 
-  return `
-    <div class="bg-white p-4 rounded-lg shadow-md text-center product-card" data-id="${id}">
-      ${heartHtml}
-      <img src="${image}" class="product-image mb-3 mx-auto rounded" alt="${escapeHtml(name)}" style="width:100%;height:200px;object-fit:cover;">
-      <h4 class="font-semibold text-gray-800">${escapeHtml(name)}</h4>
-      <div class="flex justify-center items-center mb-2">${stars}<span class="ml-2 text-yellow-600 font-semibold">${avgRating.toFixed(1)}</span></div>
-      ${priceHtml}
-      <p class="stock-text text-sm mt-1 ${oos ? 'text-red-600 font-semibold' : 'text-gray-600'}">
-        ${ oos ? 'Out of stock' : ('In stock: ' + stock) }
-      </p>
-      <div class="mt-3 button-container" ${oos ? 'style="display:none;"' : ''}>
-        <button class="add-cart bg-green-600 text-white px-4 py-2 rounded-md"
-          data-id="${id}" data-name="${escapeHtml(name)}" data-price="${(discountedPrice ?? price)}" data-image="${image}">
-          Add to Cart
-        </button>
-        <button class="buy-now bg-yellow-500 text-white px-4 py-2 rounded-md ml-2"
-          data-id="${id}" data-name="${escapeHtml(name)}" data-price="${(discountedPrice ?? price)}" data-image="${image}">
-          Buy Now
-        </button>
+  return (
+    <div className="mt-4">
+      {/* --- Top Controls (Search, Visibility, Export, Page Size) --- */}
+      <div className="flex justify-between items-center mb-4">
+        {/* Search Input with Icon */}
+        <div className="relative">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+                type="text"
+                placeholder="Search..."
+                value={globalFilter}
+                onChange={e => setGlobalFilter(e.target.value)}
+                className="pl-10 pr-4 py-2 border rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+        </div>
+
+        {/* Right side controls group */}
+        <div className="flex items-center gap-4">
+            {/* Page Size Selector */}
+            <select 
+                value={pageSize} 
+                onChange={e => {
+                    setPageSize(Number(e.target.value));
+                    table.setPageSize(Number(e.target.value));
+                }}
+                className="py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm text-sm"
+            >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+            </select>
+            
+            {/* Export to Excel (Placeholder functionality) */}
+            <button onClick={() => alert('Exporting to Excel...')} className="p-2 border rounded-lg bg-gray-100 hover:bg-gray-200" title="Export to Excel">
+                <FunnelIcon className='h-4 w-4'/>
+            </button>
+            
+            {/* Change Column Visibility (Placeholder functionality) */}
+            <button onClick={() => alert('Implement Column Visibility logic')} className="p-2 border rounded-lg bg-gray-100 hover:bg-gray-200" title="Change column visibility">
+                <TableCellsIcon className='h-4 w-4'/>
+            </button>
+        </div>
+      </div>
+
+      {/* --- Table Display --- */}
+      <div className="overflow-x-auto shadow-sm rounded-lg border">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-100">
+            {table.getHeaderGroups().map(headerGroup => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map(header => (
+                  <th
+                    key={header.id}
+                    className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                  >
+                    {flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {table.getRowModel().rows.map(row => (
+              <tr key={row.id} className="hover:bg-gray-50">
+                {row.getVisibleCells().map(cell => (
+                  <td key={cell.id} className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* --- Bottom Controls (Pagination) --- */}
+      <div className="mt-4 flex justify-between items-center">
+        <span>
+            Showing {Math.min(table.getState().pagination.pageIndex * pageSize + 1, tasks.length)} 
+            to {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, tasks.length)} 
+            of {tasks.length} entries
+        </span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+            className="px-4 py-2 border rounded-lg text-sm disabled:opacity-50 hover:bg-gray-100"
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+            className="px-4 py-2 border rounded-lg text-sm disabled:opacity-50 hover:bg-gray-100"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
-  `;
+  );
 }
 
-function fetchCategoriesAndInit() {
-  $.getJSON("/Ecommerce_Website/CategoryServlet")
-    .done(function(data){
-      categories = Array.isArray(data) ? data.map(c => ({ id: c.categoryId ?? c.category_id, name: c.categoryName ?? c.category_name })) : [];
 
-      if ($('#category-select').length) {
-        $('#category-select').empty().append(`<option value="">All</option>`);
-        categories.forEach(c => $('#category-select').append(`<option value="${c.id}">${c.name}</option>`));
-      }
+  const handleDeleteClick = (taskId, taskData) => {
+    setTaskToDeleteData({ taskId, taskData });
+    setIsDeleteModalOpen(true);
+  };
 
-      renderCategoryButtons();
 
-      const $mobileBtns = $('#category-buttons-mobile');
-      if ($mobileBtns.length) {
-        $mobileBtns.empty();
-        $mobileBtns.append(`<button class="cat-btn" data-cat="">All</button>`);
-        categories.forEach(c => $mobileBtns.append(`<button class="cat-btn" data-cat="${c.id}">${c.name}</button>`));
-        $mobileBtns.find('.cat-btn[data-cat=""]').addClass('active');
 
-        $mobileBtns.off('click', '.cat-btn').on('click', '.cat-btn', function(){
-          const cat = $(this).attr('data-cat');
-          setActiveCategory(cat);
-          lastCategoryId = cat ? parseInt(cat) : null;
-          fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-        });
-      }
-
-      fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-    })
-    .fail(function(){
-      categories = [];
-      renderCategoryButtons();
-      fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-    });
-}
-
-function renderCategoryButtons() {
-  const $catButtons = $('#category-buttons');
-  if ($catButtons.length === 0) return;
-  $catButtons.empty();
-  $catButtons.append(`<button class="cat-btn" data-cat="">All</button>`);
-  categories.forEach(c => $catButtons.append(`<button class="cat-btn" data-cat="${c.id}">${c.name}</button>`));
-
-  $catButtons.off('click', '.cat-btn').on('click', '.cat-btn', function(){
-    const cat = $(this).attr('data-cat');
-    setActiveCategory(cat);
-    lastCategoryId = cat ? parseInt(cat) : null;
-    fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-  });
-
-  $catButtons.find('.cat-btn[data-cat=""]').addClass('active');
-}
-
-function showProducts(list) {
-  if (!list || list.length===0) {
-   $("#product-list").html("<p class='text-center text-gray-500'>No products found.</p>");
-   return;
-  }
-  let html = "";
-  const chunkSize = 4;
-  for (let i=0;i<list.length;i+=chunkSize){
-   html += '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 mb-10">';
-   const row = list.slice(i,i+chunkSize);
-   html += row.map(p => buildProductCardHtml(p)).join('');
-   html += '</div>';
-  }
-  $("#product-list").html(html);
-
-  $('#product-list').off('click', '.product-card').on('click', '.product-card', function(e){
-    if ($(e.target).closest('.add-cart, .buy-now, .wishlist-btn').length) return;
-    const id = $(this).data('id');
-    if (id) window.location.href = 'product-details.html?productId=' + encodeURIComponent(id);
-  });
-}
-
-function setActiveCategory(catId) {
-  const cstr = (catId === null || catId === '' || typeof catId === 'undefined') ? '' : String(catId);
-
-  $('#category-buttons .cat-btn, #category-buttons-mobile .cat-btn').removeClass('active');
-  $(`#category-buttons .cat-btn[data-cat='${cstr}']`).addClass('active');
-  $(`#category-buttons-mobile .cat-btn[data-cat='${cstr}']`).addClass('active');
-
-  $('#category-visible-list .dropdown-category').removeClass('cat-active').attr('aria-pressed','false');
-
-  const idToKey = { '1':'mobiles', '2':'laptops', '3':'tvs', '4':'speakers', '7':'cameras', '8':'tablets', '':'' };
-  const key = (cstr === '' ? '' : idToKey[cstr] ?? '');
-  if (key) {
-    $(`#category-visible-list .dropdown-category[data-cat='${key}']`).addClass('cat-active').attr('aria-pressed','true');
-  }
-
-  if ($('#category-select').length) $('#category-select').val(cstr);
-}
-
-function fetchProducts(categoryId = null, query = '', filter = currentFilter) {
-  lastCategoryId = (categoryId === null || categoryId === '' ? null : categoryId);
-  setActiveCategory(categoryId);
-
-  if (query && typeof query === 'object' && query.q) query = query.q;
-
-  let url = "/Ecommerce_Website/ProductServlet";
-  const params = [];
-
-  if (categoryId) params.push("category_id=" + encodeURIComponent(categoryId));
-  if (query && query.trim() !== "") params.push("query=" + encodeURIComponent(query));
-  if (filter) params.push("filter=" + encodeURIComponent(filter));
-
-  if (params.length) url += "?" + params.join("&");
-
-  $.getJSON(url)
-   .done(data => {
-    allProducts = Array.isArray(data) ? data : [];
-
-    const detailPromises = [];
-    allProducts.forEach(p => {
-
-      if ((typeof p.discountPercent === 'undefined' || !Array.isArray(p.images)) && (p.productId || p.product_id || p.id)) {
-        const pid = p.productId ?? p.product_id ?? p.id;
-        detailPromises.push(
-          $.getJSON("/Ecommerce_Website/ProductServlet?productId=" + encodeURIComponent(pid))
-            .done(function(details){
-              if (!details) return;
-              if (typeof details.discountPercent !== 'undefined') p.discountPercent = details.discountPercent;
-              if (details.discountedPrice) p.discountedPrice = details.discountedPrice;
-              if (Array.isArray(details.images) && details.images.length) p.images = details.images;
-              else if (details.image) p.image = details.image;
-              if (typeof details.averageRating !== 'undefined') p.averageRating = details.averageRating;
-              if (typeof details.ratingCount !== 'undefined') p.ratingCount = details.ratingCount;
-              if (typeof details.stars !== 'undefined') p.stars = details.stars;
-            })
-            .fail(function(){})
-        );
-      }
-    });
-
-    function markWishlistOnProducts(wishlistIds) {
-      if (!Array.isArray(wishlistIds)) wishlistIds = [];
-      const idSet = {};
-      wishlistIds.forEach(id => { idSet[Number(id)] = true; });
-      allProducts.forEach(p => {
-        const pid = Number(p.productId ?? p.product_id ?? p.id);
-        p.inWishlist = !!idSet[pid];
-      });
+  const handleConfirmDelete = async () => {
+    if (taskToDeleteData) {
+      setIsDeleteModalOpen(false); 
+      await deleteTask(taskToDeleteData.taskId, taskToDeleteData.taskData);
+      setTaskToDeleteData(null);
     }
+  };
 
-    if (detailPromises.length > 0) {
-      $.when.apply($, detailPromises).always(function(){
-        fetchWishlistIdsForCurrentUser().always(function(ids){
-          markWishlistOnProducts(ids);
-          showProducts(allProducts);
-        });
-      });
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+    setTaskToDeleteData(null);
+  };
+
+  const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
+        <h2 className="text-xl font-bold mb-4 text-gray-800">Delete Task</h2>
+        <p className="mb-6 text-gray-600">Are you sure you want to delete this task?</p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
+          >
+            No
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
+          >
+            Yes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+  // const openViewModal = (task: TaskItem) => {
+  //   setSelectedTask(task)
+  //   setIsViewModalOpen(true)
+  // }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value)
+    if (!e.target.value) {
+      setIsOpen(false)
     } else {
-      fetchWishlistIdsForCurrentUser().always(function(ids){
-        markWishlistOnProducts(ids);
-        showProducts(allProducts);
-      });
+      setIsOpen(true)
     }
-   })
-   .fail(() => {
-    $("#product-list").html("<p class='text-center text-red-500'>Failed to load products.</p>");
-   });
-}
+    setSelectedIndex(-1)
+    if (!isModalOpen) setModalOpen(true)
+  }
 
-function refreshBadge() {
-  const user = localStorage.getItem("user");
-  if(!user) { $('#cart-badge').text(0); return; }
-  $.getJSON("/Ecommerce_Website/CartServlet")
-   .done(data=>{
-     const total = Array.isArray(data)?data.reduce((sum,it)=>sum+(it.qty??0),0):0;
-     $('#cart-badge').text(total);
-   }).fail(()=>$('#cart-badge').text(0));
-}
+  // const closeViewModal = () => {
+  //   setIsViewModalOpen(false)
+  //   setSelectedTask(null)
+  // }
 
-function getCurrentUserIdFromLocalStorage() {
-  const user = localStorage.getItem('user');
-  if (!user) return null;
-  try {
-    const u = JSON.parse(user);
-    return u ? (u.userId || u.id || u.user_id) : null;
-  } catch (e) { return null; }
-}
+  // interface ViewTaskModalProps {
+  //   isOpen: boolean
+  //   onClose: () => void
+  //   task: TaskItem
+  // }
 
-function fetchWishlistIdsForCurrentUser() {
-  const deferred = $.Deferred();
-  const uid = getCurrentUserIdFromLocalStorage();
-  $.getJSON('/Ecommerce_Website/WishlistServlet', { userId: uid })
-    .done(function(res){
-      if (Array.isArray(res)) {
-        const ids = res.map(function(item){ return Number(item.productId ?? item.product_id ?? item.id); }).filter(Boolean);
-        deferred.resolve(ids);
-      } else if (res && typeof res.count !== 'undefined' && (res.count === 0)) {
-        deferred.resolve([]);
+  // const ViewTaskModal: React.FC<ViewTaskModalProps> = ({ isOpen, onClose, task }) => {
+  //   return (
+  //     <Dialog.Root open={isOpen} onOpenChange={onClose}>
+  //       <Dialog.Portal>
+  //         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
+
+  //         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl">
+  //           <Dialog.Title className="mb-4 text-2xl font-bold">
+  //             Task Details: {task.taskName}
+  //           </Dialog.Title>
+
+  //           <div className="space-y-3">
+  //             <p>
+  //               <strong>Status:</strong> {task.taskStatus}
+  //             </p>
+  //             <p>
+  //               <strong>Due Date:</strong>
+  //               {task.taskDate && new Date(task.taskDate).toLocaleString()}
+  //             </p>
+  //             <p>
+  //               <strong>Assignee:</strong> {task.taskAssignedName}
+  //             </p>
+  //             <p>
+  //               <strong>Task Type:</strong> {task.taskType}
+  //             </p>
+  //             <p>
+  //               <strong>Description:</strong> {task.taskComment}
+  //             </p>
+  //             <p>
+  //               <strong>Account:</strong> {task.accountName?.join(', ')}
+  //             </p>
+  //             <p>
+  //               <strong>ContactName:</strong> {task.contactName?.join(', ')}
+  //             </p>
+  //           </div>
+
+  //           <div className="mt-6 flex justify-end">
+  //             <Dialog.Close asChild>
+  //               <button onClick={onClose} className="rounded bg-gray-300 px-4 py-2">
+  //                 Close
+  //               </button>
+  //             </Dialog.Close>
+  //           </div>
+  //         </Dialog.Content>
+  //       </Dialog.Portal>
+  //     </Dialog.Root>
+  //   )
+  // }
+
+  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
+
+
+  // To fetch tasks from API
+  async function fetchTasks() {
+    setLoading(true)
+    try {
+      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
+      const body = new URLSearchParams({ summaryFilter }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        setTasks(Array.isArray(data.data) ? data.data : [])
+
+        const rawTasks = Array.isArray(data.data) ? data.data : []
+        const normalizedTasks = rawTasks.map((task: any) => {
+          const contactIds = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
+            : []
+
+          const contactNames = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_name)
+            : []
+          const accountNames = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.account_name)
+            : []
+          return {
+            ...task,
+
+            contacts: contactIds,
+            contactName: contactNames,
+            accountName: accountNames,
+          }
+        })
+
+        setTasks(normalizedTasks)
       } else {
-        try {
-          if (res && typeof res === 'object') {
-            if (res.productId || res.product_id) {
-              deferred.resolve([Number(res.productId ?? res.product_id)]);
-            } else {
-              deferred.resolve([]);
-            }
-          } else {
-            deferred.resolve([]);
-          }
-        } catch (e) { deferred.resolve([]); }
+        setTasks([])
       }
-    })
-    .fail(function(){
-      deferred.resolve([]);
-    });
-  return deferred.promise();
-}
-
-function ensureWishlistStyles() {
-  if ($('#_wishlist_styles').length) return;
-  const css = `
-    .wishlist-btn { position: absolute; top:12px; right:12px; background: transparent; border: none; cursor: pointer; padding:6px; border-radius: 50%; transition: transform .12s; }
-    .wishlist-btn svg { width:20px; height:20px; fill: transparent; stroke: #666; stroke-width: 1; transition: fill .12s, stroke .12s; }
-    .wishlist-btn.filled svg { fill: #e11d48; stroke: #e11d48; }
-    .wishlist-btn:active { transform: scale(.96); }
-  `;
-  $('<style id="_wishlist_styles"></style>').text(css).appendTo('head');
-}
-
-function refreshWishlistBadge() {
-  const user = localStorage.getItem("user");
-  if (!user) { $('#wishlist-badge').text(0); return; }
-  let userObj;
-  try { userObj = JSON.parse(user); } catch(e) { userObj = null; }
-  const userId = userObj ? (userObj.userId || userObj.id || userObj.user_id) : null;
-
-  $.getJSON('/Ecommerce_Website/WishlistServlet', { count:1, userId: userId })
-    .done(function(res){
-      const cnt = res && typeof res.count !== 'undefined' ? res.count : 0;
-      $('#wishlist-badge').text(cnt);
-    }).fail(function(){ $('#wishlist-badge').text(0); });
-}
-
-$(document).ready(function(){
-
-  if (typeof $ === 'undefined') {
-   console.error("jQuery is not loaded. Ensure you included jQuery before this script");
-   return;
-  }
-
-  ensureWishlistStyles();
-
-  if ($('#category-select').length) {
-    $('#category-select').off('change').on('change', function(){
-      const val = $(this).val();
-      setActiveCategory(val);
-      lastCategoryId = val ? parseInt(val) : null;
-      fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-    });
-  }
-
-  $('#mobile-cat-toggle').off('click').on('click', function(){ $('#category-container').toggleClass('hidden'); });
-
-  function updateAuthUI() {
-    const logged = !!localStorage.getItem('user');
-    if (logged) $('#nav-login, #nav-register').hide(); else $('#nav-login, #nav-register').show();
-    if (logged) $('#nav-profile, #nav-logout, #cart-link, #nav-back').show();
-    else { $('#nav-profile, #nav-logout').hide(); $('#cart-badge').text(0); }
-  }
-  updateAuthUI();
-
-  $(document).off('click.wishlistLink').on('click.wishlistLink', '#wishlist-link', function(){
-    const user = localStorage.getItem("user");
-    if(!user) { alert("Please login to see your wishlist"); window.location.href = "login.html"; return; }
-    window.location.href = "whishlist.html";
-  });
-
-  $("#nav-login").off('click').on('click', () => {
-    const user = localStorage.getItem("user");
-    if(user) { alert("You are already logged in!"); window.location.href = "navbar.html"; } else window.location.href = "login.html";
-  });
-  $("#nav-register").off('click').on('click', () => {
-    const user = localStorage.getItem("user");
-    if(user) { alert("You are already registered and logged in!"); window.location.href = "index.html"; } else window.location.href = "register.html";
-  });
-  $("#cart-link").off('click').on('click', () => {
-    const user = localStorage.getItem("user");
-    if(!user) { alert("Please login first to view your cart!"); window.location.href = "login.html"; } else window.location.href = "cart.html";
-  });
-  $("#nav-profile").off('click').on('click', () => {
-    const user = localStorage.getItem("user");
-    if(!user) { alert("Please login first to view your profile!"); window.location.href = "login.html"; } else window.location.href = "profile.html";
-  });
-  $("#home-btn").off('click').on('click', () => window.location.href='navbar.html');
-
-  $('#nav-logout').off('click').on('click', function () {
-    $('#nav-logout').prop('disabled', true);
-    $.ajax({
-      url: '/Ecommerce_Website/LogoutServlet',
-      type: 'POST',
-      dataType: 'json',
-      timeout: 4000
-    }).always(function(resRaw, textStatus, jqXHRorUndefined) {
-      var res = resRaw;
-      if (typeof resRaw === 'string') {
-        try { res = JSON.parse(resRaw); } catch(e){ res = null; }
-      } else if (jqXHRorUndefined && jqXHRorUndefined.getResponseHeader) {
-        try {
-          res = (resRaw && resRaw.responseJSON) ? resRaw.responseJSON : resRaw;
-        } catch(e){ }
-      }
-      localStorage.clear();
-      localStorage.removeItem('buyNowItem');
-      $('#cart-badge').text(0);
-      updateAuthUI();
-      if (res && res.status === 'success') {
-        toast('Logged out successfully');
-      } else {
-        toast('Logged out (server may not have a session)');
-      }
-      setTimeout(function(){ window.location.href = 'login.html'; }, 700);
-    }).fail(function(){
-      localStorage.clear();
-      localStorage.removeItem('buyNowItem');
-      $('#cart-badge').text(0);
-      updateAuthUI();
-      toast('Logged out (network/server error)');
-      setTimeout(function(){ window.location.href = 'login.html'; }, 700);
-    }).always(function(){ $('#nav-logout').prop('disabled', false); });
-  });
-
-  $("#search-input").off('input').on("input", function () {
-    let query = $("#search-input").val().toLowerCase().trim();
-    if (!query) { fetchProducts(lastCategoryId,'',currentFilter); return; }
-    const filtered = (allProducts || []).filter(p => ((p.productName || p.name) + '').toLowerCase().includes(query));
-    showProducts(filtered);
-  });
-
-  $('#search-btn').off('click').on('click', function() {
-    const q = $('#search-input').val().trim();
-    fetchProducts(lastCategoryId, q, currentFilter);
-  });
-
-  $('#search-input').off('keydown').on('keydown', function(e) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const q = $(this).val().trim();
-      fetchProducts(lastCategoryId, q, currentFilter);
+    } catch (err) {
+      console.error('fetchTasks error', err)
+      toast({ title: 'Error', description: 'Failed to fetch tasks' })
+    } finally {
+      setLoading(false)
     }
-  });
+  }
 
-  $('#filter-btn').off('click').on('click', function(e){
-    e.stopPropagation();
-    $('#filter-options').toggle();
-  });
-  $(document).off('click.filterHide').on('click.filterHide', function(){ $('#filter-options').hide(); });
+  // To fetch full task details by ID
 
-  $(document).off('click.filterOption').on('click.filterOption', '.filter-option', function() {
-    currentFilter = $(this).data('type');
-    $('#filter-options').hide();
-    const q = $('#search-input').val().trim();
-    fetchProducts(lastCategoryId, q, currentFilter);
-  });
-
-  $(document).on('click', '#category-visible-list .dropdown-category', function(e){
-    e.preventDefault();
-    const key = $(this).data('cat');
-    const map = { mobiles:1, laptops:2, tvs:3, speakers:4, cameras:7, tablets:8 };
-    const catId = map[key] ?? null;
-    setActiveCategory(catId);
-    lastCategoryId = catId;
-    fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-  });
-
-  $(document).off('click.wishlist').on('click.wishlist', '.wishlist-btn', function(e){
-    e.stopPropagation();
-    const $btn = $(this);
-    const productId = $btn.data('id');
-    const user = localStorage.getItem('user');
-    if (!user) {
-      alert('Please login to use wishlist');
-      window.location.href = 'login.html';
-      return;
+  async function fetchTaskDetails(taskId: string) {
+    try {
+      const body = new URLSearchParams({ taskId }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        if (Array.isArray(data.data) && data.data.length > 0) return data.data[0]
+        return data.data || null
+      }
+      return null
+    } catch (err) {
+      return null
     }
-    let userObj;
-    try { userObj = JSON.parse(user); } catch(e){ userObj = null; }
-    const userId = userObj ? (userObj.userId || userObj.id || userObj.user_id) : null;
+  }
 
-    const currentlyFilled = $btn.hasClass('filled');
-    $btn.toggleClass('filled', !currentlyFilled);
-    $btn.attr('title', !currentlyFilled ? 'Remove from wishlist' : 'Add to wishlist');
+  useEffect(() => {
+    fetchTasks()
+  }, [])
 
-    const action = currentlyFilled ? 'remove' : 'add';
 
-    $.post("/Ecommerce_Website/WishlistServlet",
-      { action: action, productId: productId, userId: userId },
-      function(res){
-        if (typeof res === 'string') {
-          try { res = JSON.parse(res); } catch(e){}
-        }
-        if (res && res.status === 'ok') {
-          if (typeof res.count !== 'undefined') {
-            $('#wishlist-badge').text(res.count);
-          } else {
-            refreshWishlistBadge();
-          }
+  // Fetch assignees based on query
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!query.trim()) {
+        setAssigneeResults([])
+        return
+      }
 
-          if (action === 'add') {
-            if (typeof res.added !== 'undefined' && res.added === false) {
-              toast('Already wishlisted', 1200);
-              $btn.addClass('filled').attr('title', 'Remove from wishlist');
-            }
-            else {
-              toast('Added to wishlist', 1000);
-              $btn.addClass('filled').attr('title', 'Remove from wishlist');
-            }
-          } else if (action === 'remove') {
-            if (typeof res.removed !== 'undefined' && res.removed === false) {
-              toast('Item was not in wishlist', 1200);
-              $btn.addClass('filled').attr('title', 'Remove from wishlist');
-            }
-             else {
-              toast('Removed from wishlist', 1000);
-              $btn.removeClass('filled').attr('title', 'Add to wishlist');
-            }
-          }
+      setLoadingSearch(true)
 
-          if (action === 'remove' && window.location.pathname.endsWith('wishlist.html')) {
-            $(`.product-card[data-id='${productId}']`).fadeOut(200, function(){ $(this).remove(); });
-          }
+      const payload = {
+        filtertype: 'employee',
+        filterrpttype: 'Outlook',
+        showuser: true,
+        searchtext: query,
+      }
+
+      const queryString = new URLSearchParams(payload).toString()
+
+      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
+
+      try {
+        const res = await fetch(requestUrl, {
+          method: 'GET',
+          headers: createAuthHeaders({
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+          }),
+          credentials: 'include',
+        })
+
+        const data: AssigneeOption[] = await res.json()
+
+        if (Array.isArray(data)) {
+          setAssigneeResults(data)
         } else {
-          $btn.toggleClass('filled', currentlyFilled);
-          alert((res && res.message) ? res.message : 'Failed to update wishlist.');
+          setAssigneeResults([])
         }
-      }, 'json'
-    ).fail(function(){
-      $btn.toggleClass('filled', currentlyFilled);
-      alert('Network error: failed to update wishlist.');
-    });
-  });
+      } catch (err) {
+        console.error('Fetch assignee error:', err)
+        setAssigneeResults([])
+      } finally {
+        setLoadingSearch(false)
+      }
+    }, 300)
 
-  $(document).off('click.addCart').on("click.addCart", ".add-cart", function(e){
-    e.stopPropagation();
-    const user = localStorage.getItem("user");
-    if(!user) { alert("Please login to add items to your cart!"); window.location.href = "login.html"; return; }
-    const $btn = $(this);
-    const productId = $btn.data('id');
-    const data={ action:'add', productId:productId, qty:1 };
-    $btn.prop('disabled', true).addClass('opacity-70');
-    $.post("/Ecommerce_Website/CartServlet", data, function(res){
+    return () => clearTimeout(timer)
+  }, [query])
+
+  // fetch contacts based on contactQuery
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!contactQuery.trim()) {
+        setContactResults([])
+        return
+      }
+
+      setLoadingContacts(true)
+      const queryString = new URLSearchParams({
+        filtertype: 'contact',
+        restype: 'Detailed',
+        searchtext: contactQuery,
+      }).toString()
+
+      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
+
       try {
-        if (typeof res === 'string') res = JSON.parse(res);
-      } catch(e){}
-      if (res && res.status === 'ok') {
-        toast('Added to cart', 900);
-        refreshBadge();
-        const newStock = (res.newStock != null) ? parseInt(res.newStock) : null;
-        $(`.product-card[data-id='${productId}']`).each(function(){
-          const $card = $(this);
-          if (newStock != null) {
-            $card.find('.stock-text').text(newStock <= 0 ? 'Out of stock' : ('In stock: ' + newStock));
-            if (newStock <= 0) {
-              $card.find('.button-container').hide();
-            }
-          }
-        });
-        for (let i=0;i<allProducts.length;i++){
-          const pid = allProducts[i].productId ?? allProducts[i].id ?? allProducts[i].product_id;
-          if (pid == productId) { if (newStock != null) allProducts[i].stock = newStock; break; }
+        const res = await fetch(requestUrl, {
+          method: 'GET',
+          headers: createAuthHeaders({
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+          }),
+          credentials: 'include',
+        })
+
+        const data: ContactOption[] = await res.json()
+
+        if (Array.isArray(data)) {
+          setContactResults(data)
+        } else {
+          setContactResults([])
         }
-      } else {
-        alert((res && res.message) ? res.message : 'Failed to add to cart');
+      } catch (err) {
+        console.error('Fetch contact error:', err)
+        setContactResults([])
+      } finally {
+        setLoadingContacts(false)
       }
-      $btn.prop('disabled', false).removeClass('opacity-70');
-    }, 'json').fail(function(){
-      alert('Failed to add to cart');
-      $btn.prop('disabled', false).removeClass('opacity-70');
-    });
-  });
+    }, 300)
 
-  $(document).off('click.buyNow').on("click.buyNow", ".buy-now", function(e){
-    e.stopPropagation();
-    const user = localStorage.getItem("user");
-    if(!user) { alert("Please login to buy products!"); window.location.href = "login.html"; return; }
-    const $btn = $(this);
-    const productId = $btn.data('id');
-    const product = { productId: productId, name: $btn.data('name'), price: $btn.data('price'), qty:1, image: $btn.data('image') };
-    $btn.prop('disabled', true).addClass('opacity-70');
-    $.post("/Ecommerce_Website/CartServlet", { action:'add', productId: productId, qty:1 }, function(res){
-      try {
-        if (typeof res === 'string') res = JSON.parse(res);
-      } catch(e){}
-      if (res && res.status === 'ok') {
-        const newStock = (res.newStock != null) ? parseInt(res.newStock) : null;
-        refreshBadge();
-        $(`.product-card[data-id='${productId}']`).each(function(){
-          const $card = $(this);
-          if (newStock != null) {
-            $card.find('.stock-text').text(newStock <= 0 ? 'Out of stock' : ('In stock: ' + newStock));
-            if (newStock <= 0) {
-              $card.find('.button-container').hide();
-            }
-          }
+    return () => clearTimeout(timer)
+  }, [contactQuery])
+
+  // Handle contact selection
+  const handleContactSelect = (contact: ContactOption) => {
+    if (typeof contact.value !== 'string' || typeof contact.text !== 'string' || !contact.value || !contact.text) {
+        console.error("Invalid contact data received:", contact);
+        return;
+    }
+    if (!contacts.includes(contact.value)) {
+      setContacts((prev) => [...prev, contact.value!])
+
+      setContactNames((prev) => [...prev, contact.text!])
+    }
+    setContactQuery('')
+    setIsContactResultsOpen(false)
+  }
+
+  const handleContactInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setContactQuery(e.target.value)
+    setIsContactResultsOpen(true)
+  }
+
+  const removeContact = (contactId: string) => {
+    setContacts((prev) => prev.filter((id) => id !== contactId))
+    setContactNames((prev) => prev.filter((name, index) => contacts[index] !== contactId))
+  }
+
+  const handleAssigneeSelect = (assignee: AssigneeOption) => {
+    setQuery(assignee.text || '')
+    setAssignedToId(assignee.value || '')
+    setAssignedToName(assignee.text || '')
+    setIsOpen(false)
+  }
+
+  // Add new task
+  async function handleAddTask() {
+    try {
+
+      const isEmpty = (value: any) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
+
+      const mandatoryFields = [
+        { value: assignedToId, name: 'Assignee' },
+        { value: subject, name: 'Subject' },
+        { value: dueDate, name: 'Due Date' },
+        { value: timeStr, name: 'Time' },
+        { value: taskType, name: 'Task Type' },
+        { value: status, name: 'Status' },
+        { value: contacts, name: 'Contacts' }, 
+      ];
+
+       const missingField = mandatoryFields.find(field => isEmpty(field.value));
+
+      if (missingField) {
+        toast({ 
+          title: 'Validation Error', 
+          description: `The mandatory field "${missingField.name}" is missing. Please fill out all required fields.` 
         });
-        localStorage.setItem("buyNowItem", JSON.stringify(product));
-        try {
-          const userObj = JSON.parse(localStorage.getItem('user') || '{}');
-          const uid = userObj.userId || userObj.id || userObj.user_id || null;
-          if (uid) {
-            $.post("/Ecommerce_Website/WishlistServlet", { action:'remove', productId: productId, userId: uid })
-              .always(function(){ refreshWishlistBadge(); });
-          }
-        } catch(err) {}
-        window.location.href = "cart.html";
-      } else {
-        alert((res && res.message) ? res.message : 'Failed to add to cart');
-        $btn.prop('disabled', false).removeClass('opacity-70');
+        return; 
       }
-    }, 'json').fail(function(){
-      alert('Failed to add to cart');
-      $btn.prop('disabled', false).removeClass('opacity-70');
-    });
-  });
 
-  fetchCategoriesAndInit();
-  refreshBadge();
-  refreshWishlistBadge();
+      if (!assignedToId.trim()) {
+        toast({ title: 'Validation', description: 'Assignee required' })
+        return
+      }
+      if (!subject.trim()) {
+        toast({ title: 'Validation', description: 'Subject required' })
+        return
+      }
+      const clienttimezone = encodeURIComponent(moment.tz.guess());
 
-  setInterval(function(){
-    fetchProducts(lastCategoryId, $('#search-input').val().trim(), currentFilter);
-    refreshBadge();
-    refreshWishlistBadge();
-  }, 15000);
-});
-</script>
+const rawTaskDate = dueDate; 
+
+const formattedDateTime = rawTaskDate ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss') : '';
+
+const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm') : '';
+      const sanitizedContacts = contacts.filter((id) => id != null && id !== '')
+      const sanitizedContactNames = contactNames.filter((name) => name != null && name !== '')
+
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: formattedDueTime,
+        contacts: sanitizedContacts,
+        contactName: sanitizedContactNames,
+        assignedTo: assignedToId,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        action: 'Save',
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Added Successfully' })
+        setModalOpen(false)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
+      }
+    } catch (err) {
+      console.error('handleAddTask', err)
+      toast({ title: 'Error', description: 'Failed to add task' })
+    }
+  }
+
+  async function handleUpdateTask() {
+    try {
+      if (!editTask) return
+      const rawTaskDate = dueDate; 
+ const clienttimezone = encodeURIComponent(moment.tz.guess());
+const formattedDateTime = rawTaskDate ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss') : '';
+const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm') : '';
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: formattedDueTime,
+        contacts,
+        contactName: contactNames,
+        assignedTo: assignedToId,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        action: 'Update',
+        taskId: editTask.taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Updated Successfully' })
+        setModalOpen(false)
+        setEditTask(null)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
+      }
+ 
+    } catch (err) {
+      console.error('handleUpdateTask', err)
+      toast({ title: 'Error', description: 'Failed to update task' })
+    }
+  }
+
+
+  // To edit existing task
+  async function openEditModal(task: TaskItem) { 
+    let tdata: any = task
+    const missingContacts =!tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
+    const missingName = !tdata.taskName && !tdata.subject
+
+    if ((missingContacts || missingName) && tdata.taskId) {
+      const full = await fetchTaskDetails(tdata.taskId)
+      if (full) tdata = { ...tdata, ...full }
+    }
+
+    setEditTask(tdata)
+    setSubject(tdata.taskName || tdata.subject || '')
+    setDescription(tdata.taskComment || tdata.taskComments || '')
+    const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
+    setAssignedToId(assignedId)
+    const assignedName = tdata.taskAssignedName || ''
+    setQuery(assignedName)
+    setAssignedToName(assignedName)
+    setTaskType(tdata.taskType || '')
+    setStatus(tdata.taskStatus || '')
+
+    if (tdata.taskDate) {
+      const iso = String(tdata.taskDate).replace(' ', 'T')
+      const dt = new Date(iso)
+      if (!isNaN(dt.getTime())) {
+        setDueDate(dt)
+        const hh = dt.getHours().toString().padStart(2, '0')
+        const mm = dt.getMinutes().toString().padStart(2, '0')
+        setTimeStr(`${hh}:${mm}`)
+      } else {
+        setDueDate(new Date())
+        setTimeStr('10:00')
+      }
+    } else {
+      setDueDate(new Date())
+      setTimeStr('10:00')
+    }
+
+    const contactIds = tdata.contacts || []
+    const contactNamesForAPI = tdata.contactName || []
+
+    setContacts(contactIds)
+    setContactNames(contactNamesForAPI)
+
+    setModalOpen(true)
+  }
+
+  // To delete a task
+  async function deleteTask(taskId: string, originalTaskData: any) {
+    try {
+
+     
+
+const clienttimezone = encodeURIComponent(moment.tz.guess());
+
+const rawTaskDate = originalTaskData?.taskDate; 
+
+const formattedDateTime = rawTaskDate ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss') : '';
+
+const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm') : '';
+
+const taskContactNames = normalizeToArray(originalTaskData?.contactName)
+
+const payload = {
+  subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
+  dueDate: formattedDateTime,
+  dueTime: formattedDueTime, 
+  contacts: normalizeToArray(originalTaskData?.contacts),
+  contactName: taskContactNames,
+  assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
+  clienttimezone,
+  status: 'Dismiss',
+  taskType: originalTaskData?.taskType || '',
+  taskComments:
+    originalTaskData?.taskComments || originalTaskData?.taskComment || description,
+  module_name: 'Task',
+  action: 'Dismiss',
+  taskId: taskId,
+}
+      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+
+      if (data?.status === 1) {
+        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Delete failed' })
+      }
+    } catch (err) {
+      console.error('deleteTask', err)
+      toast({ title: 'Error', description: 'Delete failed' })
+    }
+  }
+
+  // Reset form fields
+  function resetForm() {
+    setSubject('')
+    setAssignedTo('')
+    setTaskType('')
+    setStatus('')
+    setContacts([])
+    setContactNames([])
+    setDescription('')
+    const now = new Date()
+    setDueDate(now)
+    const hh = now.getHours().toString().padStart(2, '0')
+    const mm = now.getMinutes().toString().padStart(2, '0')
+    const currentTimeString = `${hh}:${mm}`
+    setTimeStr(currentTimeString)
+  }
+
+  // Calculate time data for due date
+  const calcTimeData = (due: string | undefined) => {
+    if (!due) return null
+
+    const dueDate = new Date(due)
+    const now = new Date()
+    const diffMs = dueDate.getTime() - now.getTime()
+
+    const isOverdue = diffMs < 0
+    const absDiffMs = Math.abs(diffMs)
+
+    const days = Math.floor(absDiffMs / 86400000)
+    const hours = Math.floor((absDiffMs % 86400000) / 3600000)
+    const mins = Math.floor(((absDiffMs % 86400000) % 3600000) / 60000)
+
+    let timeDiffText
+    if (days > 0) timeDiffText = `${days} Day(s)`
+    else if (hours > 0) timeDiffText = `${hours} Hour(s)`
+    else if (mins > 0) timeDiffText = `${mins} Min(s)`
+    else timeDiffText = '0 Min(s)'
+
+    const label = isOverdue ? 'Over Due' : 'Time To Complete'
+
+    const statusClass = isOverdue ? 'bg-red-500' : 'bg-blue-500'
+
+    return {
+      text: timeDiffText,
+      fullText: `${timeDiffText} ${label}`,
+      statusClass: statusClass,
+    }
+  }
+
+ return (
+    <div className="p-5">
+  <div className="flex justify-end mb-4">
+    <button
+      onClick={() => {
+        setEditTask(null)
+        resetForm()
+        setModalOpen(true)
+      }}
+      className="rounded bg-blue-600 px-6 py-2 text-white shadow hover:bg-blue-700"
+      title="Add Task"
+    >
+      Add
+    </button>
+  </div>
+
+      <div className=''></div>
+      {loading ? (
+        <div>Loading...</div>
+      ) : tasks.length === 0 ? (
+        <p>No tasks found</p>
+      ) : (
+        <>
+          {showAllTasks ? (
+            <DataTableAllTasks 
+                tasks={tasks} 
+                openEditModal={openEditModal} 
+                handleDeleteClick={handleDeleteClick} 
+            />
+          ) : (
+            <ul className="space-y-3">
+              {tasksToShow.map((t) => {
+                const due = t.taskDate
+                const timeData =
+                  t.taskDate && t.taskStatus !== 'Completed' ? calcTimeData(t.taskDate) : null
+
+                return (
+                  <li key={t.taskId} className="relative rounded border bg-gray-50 p-3 shadow-sm">
+                    <h3 className="font-bold">{t.taskName}</h3>
+                    <p>{t.taskComment || '-'}</p>
+                    <p className="text-sm text-gray-600">
+                      DueDate/Time: {due || '-'} | Status: {t.taskStatus || '-'} | Assignee: {t.taskAssignedName || '-'} | Task Type: {t.taskType || '-'}
+                    </p>
+
+                    {timeData && (
+                      <small
+                        className={`absolute right-4 top-2 rounded px-2 py-1 text-xs text-white ${timeData.statusClass}`}
+                        title={timeData.fullText}
+                      >
+                        {timeData.fullText}
+                      </small>
+                    )}
+
+                      <div className="mt-2 flex gap-3">
+                      <button
+                        className="p-2 text-yellow-600 hover:text-yellow-800"
+                        onClick={() => openEditModal(t)}
+                        title="Edit Task"
+                      >
+                        <PencilIcon className="h-5 w-5" />
+                      </button>
+
+                       <button
+                        className="p-2 text-red-600 hover:text-red-800"
+                        onClick={() => handleDeleteClick(t.taskId, t)}
+                        title="Delete Task"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+
+          { hasMoreTasks && (
+            <div className="mt-4 text-center">
+                <button 
+                    onClick={() => setShowAllTasks(!showAllTasks)}
+                    className="flex items-center mx-auto px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition duration-150"
+                >
+                    {showAllTasks ? (
+                        <>
+                            Show Less <ChevronUpIcon className="ml-2 h-4 w-4" />
+                        </>
+                    ) : (
+                        <>
+                            More ...  <ChevronDownIcon className="ml-2 h-4 w-4" />
+                        </>
+                    )}
+                </button>
+            </div>
+          )}
+        </>
+      )}
+      
+      <DeleteConfirmationModal 
+        isOpen={isDeleteModalOpen} 
+        onClose={closeDeleteModal} 
+        onConfirm={handleConfirmDelete} 
+      />
+
+      {isModalOpen && (
+        <Dialog.Root open={isModalOpen} onOpenChange={setModalOpen}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm" />
+
+            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-5 shadow-xl">
+              <Dialog.Close className="absolute right-3 top-3 text-gray-600 hover:text-black">
+                X
+              </Dialog.Close>
+
+              <Dialog.Title className="mb-4 text-xl font-semibold">
+                {editTask ? 'Update Task' : 'Add Task'}
+              </Dialog.Title>
+
+               <label htmlFor="assignTo" className="mb-2 block">
+                Assign To (Choose Only One Employee As Assignee) <span className="text-red-500">*</span>
+              </label>
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-prism-primary" />
+                <Input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="Search..."
+                  value={query}
+                  onChange={handleInputChange}
+                  autoFocus
+                  id="searchInput"
+                  className="h-full min-h-[3rem] flex-1 rounded-md border border-gray-300 bg-gray-50 pl-10 pr-24 text-base focus:border-prism-primary focus:bg-white"
+                  style={{ paddingRight: '6rem', height: '100%' }}
+                />
+                {isOpen && query.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
+                    {loadingSearch ? (
+                      <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
+                        Loading...
+                      </li>
+                    ) : assigneeResults.length > 0 ? (
+                      assigneeResults.map((assignee) => (
+                        <li
+                          key={assignee.value}
+                          className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-prism-primary hover:text-white"
+                          onClick={() => {
+                            handleAssigneeSelect(assignee)
+                          }}
+                        >
+                          {assignee.text}
+                        </li>
+                      ))
+                    ) : (
+                      <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
+                        No results found
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
+
+               <div className="flex justify-between items-end  mb-4">
+                <div className="flex flex-col">
+                  <label>Due Date<span className="text-red-500">*</span></label>
+                  <DatePicker
+                    selected={dueDate}
+                    onChange={(d: Date | null) => setDueDate(d)}
+
+                    className=" rounded border items-baseline p-2 w-full" 
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label>Time<span className="text-red-500">*</span></label>
+                 <TimePicker
+    onChange={setTimeStr} 
+    value={timeStr}
+    format="h:mm a" 
+    className="rounded border p-2 w-48" 
+    clearIcon={null} 
+  />
+                </div>
+ 
+               </div>
+
+
+              <label>Task Type<span className="text-red-500">*</span></label>
+              <select
+                value={taskType}
+                onChange={(e) => setTaskType(e.target.value)}
+                className="mb-3 w-full rounded border p-2"
+              >
+                <option value="">-- Select --</option>
+                <option value="Call Back1">Call Back1</option>
+                <option value="Action items">Action Items</option>
+                <option value="Others">Others</option>
+                <option value="Schedule Meeting">Schedule Meeting</option>
+              </select>
+
+              <label>Status<span className="text-red-500">*</span></label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="mb-3 w-full rounded border p-2"
+              >
+                <option value="">-- Select --</option>
+                <option value="Not Started">Not Started</option>
+                <option value="Completed">Completed</option>
+                <option value="In Progress">In Progress</option>
+              </select>
+
+              <label>Subject<span className="text-red-500">*</span></label>
+              <input
+                type="text"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                className="mb-3 w-full rounded border p-2"
+              />
+
+              <label className="mb-2 block">Contacts<span className="text-red-500">*</span></label>
+              <div className="relative mb-3 h-full min-h-[3rem] rounded-md border border-gray-300 bg-gray-50 focus-within:border-prism-primary focus-within:bg-white">
+                {contacts.map((contactId, index) => {
+                  const name = contactNames[index]
+                  if (!name) return null
+
+                  return (
+                    <span
+                      key={contactId}
+                      className="flex items-center rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
+                    >
+                      {name}
+                      <button
+                        type="button"
+                        onClick={() => removeContact(contactId)}
+                        className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
+                        aria-label={`Remove contact ${name}`}
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  )
+                })}
+
+                <Input
+                  type="text"
+                  placeholder="Search and add contacts..."
+                  value={contactQuery}
+                  onChange={handleContactInputChange}
+                  onFocus={() => setIsContactResultsOpen(true)}
+                  className="w-full min-w-[150px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
+                />
+              </div>
+
+              {isContactResultsOpen && (contactQuery.length > 0 || contactResults.length > 0) && (
+                <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
+                  {loadingContacts ? (
+                    <li key="loading" className="p-2 text-gray-700">
+                      Loading...
+                    </li>
+                  ) : contactResults.length > 0 ? (
+                    contactResults.map((contact) => {
+                      return (
+                        <li
+                          key={contact.value}
+                          className="cursor-pointer p-2 hover:bg-prism-primary hover:text-white"
+                          onClick={() => handleContactSelect(contact)}
+                        >
+                          {contact.text}
+                        </li>
+                      )
+                    })
+                  ) : (
+                    <li key="no-results" className="p-2 text-gray-700">
+                      No contacts found
+                    </li>
+                  )}
+                </ul>
+              )}
+
+              <label>Description</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="mb-4 w-full rounded border p-2"
+                rows={3}
+              />
+
+              <div className="flex justify-end gap-3">
+                <Dialog.Close>
+                  <button className="rounded bg-gray-300 px-4 py-2">Cancel</button>
+                </Dialog.Close>
+
+                <button
+                  onClick={editTask ? handleUpdateTask : handleAddTask}
+                  className="rounded bg-blue-600 px-4 py-2 text-white"
+                >
+                  {editTask ? 'Update' : 'Add'}
+                </button>
+              </div>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
+    </div>
+    
+  )
+}
+
+
