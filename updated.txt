@@ -1,7 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { ChevronDownIcon, ChevronUpIcon, EyeIcon, PencilIcon, PlusIcon, Search, Trash2Icon, TrashIcon} from 'lucide-react'
-import {  MagnifyingGlassIcon, TableCellsIcon, FunnelIcon } from '@heroicons/react/24/outline';
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  EyeIcon,
+  PencilIcon,
+  PlusIcon,
+  Search,
+  Trash2Icon,
+  TrashIcon,
+} from 'lucide-react'
+import { MagnifyingGlassIcon, TableCellsIcon, FunnelIcon } from '@heroicons/react/24/outline'
 
 import DatePicker from 'react-datepicker'
 
@@ -13,22 +22,20 @@ import { prismStorage } from '@/lib/prismStorage'
 
 import 'react-datepicker/dist/react-datepicker.css'
 
-import TimePicker from 'react-time-picker';
-import 'react-time-picker/dist/TimePicker.css';
-import 'react-clock/dist/Clock.css';
-import { 
-  useReactTable, 
-  getCoreRowModel, 
-  getPaginationRowModel, 
+import TimePicker from 'react-time-picker'
+import 'react-time-picker/dist/TimePicker.css'
+import 'react-clock/dist/Clock.css'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
   getFilteredRowModel,
   flexRender,
   ColumnDef,
   VisibilityState,
-} from '@tanstack/react-table';
-import moment from 'moment-timezone';
-
-
-
+} from '@tanstack/react-table'
+import moment from 'moment-timezone'
+import ReactUtils from '@/lib/reactUtils'
 
 type TaskItem = {
   taskId: string
@@ -38,7 +45,7 @@ type TaskItem = {
   taskAssignedName?: string[]
   taskAssignedId?: string[]
   taskType?: string
-  taskStatus?: string
+  taskStatus?: strin
   contacts?: string[]
   contactName?: string[]
   accountName?: string[]
@@ -62,7 +69,12 @@ interface ContactOption {
   style?: string
   docName?: string | null
   docId?: string | null
-  account_name?: string 
+  account_name?: string
+}
+
+interface TaskOption {
+  value: string
+  text: string
 }
 
 export default function TasksWidget() {
@@ -71,13 +83,15 @@ export default function TasksWidget() {
   const [loading, setLoading] = useState(false)
   const [editTask, setEditTask] = useState<TaskItem | null>(null)
   const [subject, setSubject] = useState('')
-  const [assignedTo, setAssignedTo] = useState('')
+  // const [assignedToIds, setAssignedTo] = useState('')
+  const [assignedToIds, setAssignedTo] = useState('')
+  const [assigneeList, setAssigneeList] = useState<AssigneeOption[]>([]) // This is the list used for the UI map
   const [taskType, setTaskType] = useState('')
   const [status, setStatus] = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState<Date | null>(new Date())
   // const [timeStr, setTimeStr] = useState('10:00')
-  const [timeStr, setTimeStr] = useState<string | null>(''); 
+  const [timeStr, setTimeStr] = useState<string | null>('')
   const [query, setQuery] = useState('')
   const [assigneeResults, setAssigneeResults] = useState<AssigneeOption[]>([])
   const [loadingSearch, setLoadingSearch] = useState(false)
@@ -87,11 +101,13 @@ export default function TasksWidget() {
   const inputRef = useRef(null)
   // const [assignedToName, setAssignedToName] = useState('')
 
+  // const [assigneeList, setAssigneeList] = useState<Assignee[]>([]);
+
   const [isViewModalOpen, setIsViewModalOpen] = useState(false)
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
 
- const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
-const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
+  //  const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
+  const [assignedToNames, setAssignedToNames] = useState<string[]>([])
   const [contactNames, setContactNames] = useState<string[]>([])
   const [contacts, setContacts] = useState<string[]>([])
   const [contactQuery, setContactQuery] = useState('')
@@ -99,13 +115,21 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
   const [loadingContacts, setLoadingContacts] = useState(false)
   const [isContactResultsOpen, setIsContactResultsOpen] = useState(false)
 
-   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [taskToDeleteData, setTaskToDeleteData] = useState(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [taskToDeleteData, setTaskToDeleteData] = useState(null)
 
-   const [showAllTasks, setShowAllTasks] = useState(false);
+  const [showAllTasks, setShowAllTasks] = useState(false)
 
-    const tasksToShow = showAllTasks ? tasks : tasks.slice(0, 3);
-  const hasMoreTasks = tasks.length > 3;
+  const [taskOptions, setTaskOptions] = useState<TaskOption[]>([])
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false)
+
+  const [statusOptions, setStatusOptions] = useState<TaskOption[]>([])
+  const [isLoadingStatusOptions, setIsLoadingStatusOptions] = useState(false)
+
+  const [formKey, setFormKey] = useState(0);
+
+  const tasksToShow = showAllTasks ? tasks : tasks.slice(0, 3)
+  const hasMoreTasks = tasks.length > 3
 
   //   const DataTableAllTasks = () => (
   //   <div className="overflow-x-auto mt-4">
@@ -158,216 +182,272 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
   //   </div>
   // );
 
+
+//    const loadTableSettings = useCallback(async () => {
+//       try {
+//         // Use enhanced ReactUtils.fetchPost with URL-encoded content-type
+//         const response = await ReactUtils.fetchPost(`${API_CONFIG.IBPath}/tableconfig/gettablesetting`, {
+//           moduletype: 'taskdetails',
+//           rpttype: 'gettaskmodule
+// ',
+//           rnd: moment().valueOf().toString()
+//         }, {
+//           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+//         })
+  
+//         if (!response.ok) {
+//           throw new Error(`HTTP error! status: ${response.status}`)
+//         }
+        
+//         const result = await response.json()
+//         if (result) {
+//           // Extract dynamic table configuration from response
+//           const config = {
+//             columnHeadings: result.title || [],
+//             columnIndices: result.cols || [],
+//             colsAlign: result.colsAlign || [],
+//             tableSettings: result.table_settings || [],
+//             defColSort: result.defColSort || 0,
+//             defColSortType: result.defColSortType || 'asc',
+//             colsCnt: result.colsCnt || [],
+//             formatter: result.formatter || []
+//           }
+          
+//           setDynamicTableConfig(config)
+//           return config
+//         }
+//         throw new Error('Failed to load table settings')
+//       } catch (error) {
+//         // Silently handle table settings error to prevent UI disruption
+//         return null
+//       }
+//     }, []) 
+
   const DataTableAllTasks = ({ tasks, openEditModal, handleDeleteClick }) => {
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
-  const [pageSize, setPageSize] = useState(10); 
+    const [globalFilter, setGlobalFilter] = useState('')
+    const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
+    const [pageSize, setPageSize] = useState(10)
 
-  const columns = useMemo<ColumnDef<TaskItem>[]>(
-    () => [
-      {
-        header: 'Action',
-        id: 'actions',
-        cell: ({ row }) => (
-          <div className="flex gap-2">
-            <button
-              className="p-1 text-yellow-600 hover:text-yellow-800"
-              onClick={() => openEditModal(row.original)}
-              title="Edit Task"
-            >
-              <PencilIcon className="h-4 w-4" />
-            </button>
-            <button
-              className="p-1 text-red-600 hover:text-red-800"
-              onClick={() => handleDeleteClick(row.original.taskId, row.original)}
-              title="Delete Task"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </button>
-          </div>
-        ),
-        enableHiding: false,
+    const columns = useMemo<ColumnDef<TaskItem>[]>(
+      () => [
+        {
+          header: 'Action',
+          id: 'actions',
+          cell: ({ row }) => (
+            <div className="flex gap-2">
+              <button
+                className="p-1 text-yellow-600 hover:text-yellow-800"
+                onClick={() => openEditModal(row.original)}
+                title="Edit Task"
+              >
+                <PencilIcon className="h-4 w-4" />
+              </button>
+              <button
+                className="p-1 text-red-600 hover:text-red-800"
+                onClick={() => handleDeleteClick(row.original.taskId, row.original)}
+                title="Delete Task"
+              >
+                <TrashIcon className="h-4 w-4" />
+              </button>
+            </div>
+          ),
+          enableHiding: false,
+        },
+        { header: 'Task Name', accessorKey: 'taskName' },
+        { header: 'Task Type', accessorKey: 'taskType' },
+        { header: 'Assignee', accessorKey: 'taskAssignedName' },
+        {
+          header: 'Contact Name',
+          accessorKey: 'contactName',
+          cell: (info) => info.getValue()?.join(', ') || '-',
+        },
+        { header: 'Task Comments', accessorKey: 'taskComment' },
+        { header: 'Due Date/Time', accessorKey: 'taskDate' },
+        { header: 'Status', accessorKey: 'taskStatus', cell: (info) => info.getValue() || '-' },
+      ],
+      [openEditModal, handleDeleteClick]
+    )
+
+    const table = useReactTable({
+      data: tasks,
+      columns,
+      state: {
+        globalFilter,
+        columnVisibility,
+        pagination: {
+          pageIndex: 0,
+          pageSize: pageSize,
+        },
       },
-      { header: 'Task Name', accessorKey: 'taskName' },
-      { header: 'Task Type', accessorKey: 'taskType' },
-      { header: 'Assignee', accessorKey: 'taskAssignedName' },
-      { header: 'Contact Name', accessorKey: 'contactName', cell: info => info.getValue()?.join(', ') || '-' },
-      { header: 'Task Comments', accessorKey: 'taskComment' },
-      { header: 'Due Date/Time', accessorKey: 'taskDate' },
-      { header: 'Status', accessorKey: 'taskStatus', cell: info => info.getValue() || '-' },
-    ],
-    [openEditModal, handleDeleteClick]
-  );
+      onGlobalFilterChange: setGlobalFilter,
+      onColumnVisibilityChange: setColumnVisibility,
+      getCoreRowModel: getCoreRowModel(),
+      getFilteredRowModel: getFilteredRowModel(),
+      getPaginationRowModel: getPaginationRowModel(),
+    })
 
-  const table = useReactTable({
-    data: tasks,
-    columns,
-    state: {
-      globalFilter,
-      columnVisibility,
-      pagination: {
-        pageIndex: 0,
-        pageSize: pageSize,
-      },
-    },
-    onGlobalFilterChange: setGlobalFilter,
-    onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-  });
-
-  return (
-    <div className="mt-4">
-      {/* --- Top Controls (Search, Visibility, Export, Page Size) --- */}
-      <div className="flex justify-between items-center mb-4">
-        {/* Search Input with Icon */}
-        <div className="relative">
+    return (
+      <div className="mt-4">
+        {/* --- Top Controls (Search, Visibility, Export, Page Size) --- */}
+        <div className="mb-4 flex items-center justify-between">
+          {/* Search Input with Icon */}
+          <div className="relative">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
-                type="text"
-                placeholder="Search..."
-                value={globalFilter}
-                onChange={e => setGlobalFilter(e.target.value)}
-                className="pl-10 pr-4 py-2 border rounded-lg w-64 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              type="text"
+              placeholder="Search..."
+              value={globalFilter}
+              onChange={(e) => setGlobalFilter(e.target.value)}
+              className="w-64 rounded-lg border py-2 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-        </div>
+          </div>
 
-        {/* Right side controls group */}
-        <div className="flex items-center gap-4">
+          {/* Right side controls group */}
+          <div className="flex items-center gap-4">
             {/* Page Size Selector */}
-            <select 
-                value={pageSize} 
-                onChange={e => {
-                    setPageSize(Number(e.target.value));
-                    table.setPageSize(Number(e.target.value));
-                }}
-                className="py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm text-sm"
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value))
+                table.setPageSize(Number(e.target.value))
+              }}
+              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm"
             >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
             </select>
-            
+
             {/* Export to Excel (Placeholder functionality) */}
-            <button onClick={() => alert('Exporting to Excel...')} className="p-2 border rounded-lg bg-gray-100 hover:bg-gray-200" title="Export to Excel">
-                <FunnelIcon className='h-4 w-4'/>
+            <button
+              onClick={() => alert('Exporting to Excel...')}
+              className="rounded-lg border bg-gray-100 p-2 hover:bg-gray-200"
+              title="Export to Excel"
+            >
+              <FunnelIcon className="h-4 w-4" />
             </button>
-            
+
             {/* Change Column Visibility (Placeholder functionality) */}
-            <button onClick={() => alert('Implement Column Visibility logic')} className="p-2 border rounded-lg bg-gray-100 hover:bg-gray-200" title="Change column visibility">
-                <TableCellsIcon className='h-4 w-4'/>
+            <button
+              onClick={() => alert('Implement Column Visibility logic')}
+              className="rounded-lg border bg-gray-100 p-2 hover:bg-gray-200"
+              title="Change column visibility"
+            >
+              <TableCellsIcon className="h-4 w-4" />
             </button>
+          </div>
         </div>
-      </div>
 
-      {/* --- Table Display --- */}
-      <div className="overflow-x-auto shadow-sm rounded-lg border">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-100">
-            {table.getHeaderGroups().map(headerGroup => (
-              <tr key={headerGroup.id}>
-                {headerGroup.headers.map(header => (
-                  <th
-                    key={header.id}
-                    className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                  >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {table.getRowModel().rows.map(row => (
-              <tr key={row.id} className="hover:bg-gray-50">
-                {row.getVisibleCells().map(cell => (
-                  <td key={cell.id} className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+        {/* --- Table Display --- */}
+        <div className="overflow-x-auto rounded-lg border shadow-sm">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-100">
+              {table.getHeaderGroups().map((headerGroup) => (
+                <tr key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => (
+                    <th
+                      key={header.id}
+                      className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500"
+                    >
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                    </th>
+                  ))}
+                </tr>
+              ))}
+            </thead>
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {table.getRowModel().rows.map((row) => (
+                <tr key={row.id} className="hover:bg-gray-50">
+                  {row.getVisibleCells().map((cell) => (
+                    <td key={cell.id} className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      {/* --- Bottom Controls (Pagination) --- */}
-      <div className="mt-4 flex justify-between items-center">
-        <span>
-            Showing {Math.min(table.getState().pagination.pageIndex * pageSize + 1, tasks.length)} 
-            to {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, tasks.length)} 
+        {/* --- Bottom Controls (Pagination) --- */}
+        <div className="mt-4 flex items-center justify-between">
+          <span>
+            Showing {Math.min(table.getState().pagination.pageIndex * pageSize + 1, tasks.length)}
+            to {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, tasks.length)}
             of {tasks.length} entries
-        </span>
-        <div className="flex gap-2">
-          <button
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-            className="px-4 py-2 border rounded-lg text-sm disabled:opacity-50 hover:bg-gray-100"
-          >
-            Previous
-          </button>
-          <button
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-            className="px-4 py-2 border rounded-lg text-sm disabled:opacity-50 hover:bg-gray-100"
-          >
-            Next
-          </button>
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => table.previousPage()}
+              disabled={!table.getCanPreviousPage()}
+              className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => table.nextPage()}
+              disabled={!table.getCanNextPage()}
+              className="rounded-lg border px-4 py-2 text-sm hover:bg-gray-100 disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-}
-
+    )
+  }
+const handleCloseModal = () => {
+    setModalOpen(false);
+    // setFormKey(prevKey => prevKey + 1);
+  resetForm(); 
+  setEditTask(null);
+};
 
   const handleDeleteClick = (taskId, taskData) => {
-    setTaskToDeleteData({ taskId, taskData });
-    setIsDeleteModalOpen(true);
-  };
-
-
+    setTaskToDeleteData({ taskId, taskData })
+    setIsDeleteModalOpen(true)
+  }
 
   const handleConfirmDelete = async () => {
     if (taskToDeleteData) {
-      setIsDeleteModalOpen(false); 
-      await deleteTask(taskToDeleteData.taskId, taskToDeleteData.taskData);
-      setTaskToDeleteData(null);
+      setIsDeleteModalOpen(false)
+      await deleteTask(taskToDeleteData.taskId, taskToDeleteData.taskData)
+      setTaskToDeleteData(null)
     }
-  };
+  }
 
   const closeDeleteModal = () => {
-    setIsDeleteModalOpen(false);
-    setTaskToDeleteData(null);
-  };
+    setIsDeleteModalOpen(false)
+    setTaskToDeleteData(null)
+  }
 
   const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm }) => {
-  if (!isOpen) return null;
+    if (!isOpen) return null
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-sm">
-        <h2 className="text-xl font-bold mb-4 text-gray-800">Delete Task</h2>
-        <p className="mb-6 text-gray-600">Are you sure you want to delete this task?</p>
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded bg-gray-200 text-gray-800 hover:bg-gray-300"
-          >
-            No
-          </button>
-          <button
-            onClick={onConfirm}
-            className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700"
-          >
-            Yes
-          </button>
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+          <h2 className="mb-4 text-xl font-bold text-gray-800">Delete Task</h2>
+          <p className="mb-6 text-gray-600">Are you sure you want to delete this task?</p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="rounded bg-gray-200 px-4 py-2 text-gray-800 hover:bg-gray-300"
+            >
+              No
+            </button>
+            <button
+              onClick={onConfirm}
+              className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+            >
+              Yes
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    )
+  }
 
   // const openViewModal = (task: TaskItem) => {
   //   setSelectedTask(task)
@@ -446,7 +526,6 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
 
   const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
 
-
   // To fetch tasks from API
   async function fetchTasks() {
     setLoading(true)
@@ -499,6 +578,85 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
     }
   }
 
+  useEffect(() => {
+    if (isModalOpen) {
+      fetchTasks()
+    }
+  }, [isModalOpen])
+
+  const fetchTaskTypes = async () => {
+    // debugger;
+    setIsLoadingOptions(true)
+    try {
+      const payload = {
+        type: 'tasktype',
+      }
+      const encoded = new URLSearchParams(payload).toString()
+      const response = await fetch(`${API_CONFIG.baseUrl}/task/gettaskdetails`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+
+      const data = await response.json()
+
+      if (data.status === 1 && Array.isArray(data.data)) {
+        setTaskOptions(data.data)
+      } else {
+        setTaskOptions([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch task types:', error)
+    } finally {
+      setIsLoadingOptions(false)
+    }
+  }
+
+  const fetchStatusTypes = async () => {
+    setIsLoadingStatusOptions(true)
+    try {
+      const payload = { type: 'status' }
+      const encoded = new URLSearchParams(payload).toString()
+      const response = await fetch(`${API_CONFIG.baseUrl}/task/gettaskdetails`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+
+      const data = await response.json()
+      if (data.status === 1 && Array.isArray(data.data)) {
+        setStatusOptions(data.data)
+      } else {
+        setStatusOptions([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch status types:', error)
+    } finally {
+      setIsLoadingStatusOptions(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTaskTypes()
+    fetchStatusTypes()
+  }, [])
+
   // To fetch full task details by ID
 
   async function fetchTaskDetails(taskId: string) {
@@ -527,9 +685,21 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
     fetchTasks()
   }, [])
 
+  useEffect(() => {
+    if (assigneeList.length > 0) {
+      setAssignedTo(assigneeList[0]?.value || '')
+    } else {
+      setAssignedTo('')
+    }
+  }, [assigneeList, setAssignedTo])
 
   // Fetch assignees based on query
   useEffect(() => {
+    if (assigneeList.length > 0) {
+      setAssigneeResults([])
+      return
+    }
+
     const timer = setTimeout(async () => {
       if (!query.trim()) {
         setAssigneeResults([])
@@ -574,7 +744,7 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [query])
+  }, [query, assigneeList])
 
   // fetch contacts based on contactQuery
   useEffect(() => {
@@ -622,9 +792,14 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
 
   // Handle contact selection
   const handleContactSelect = (contact: ContactOption) => {
-    if (typeof contact.value !== 'string' || typeof contact.text !== 'string' || !contact.value || !contact.text) {
-        console.error("Invalid contact data received:", contact);
-        return;
+    if (
+      typeof contact.value !== 'string' ||
+      typeof contact.text !== 'string' ||
+      !contact.value ||
+      !contact.text
+    ) {
+      console.error('Invalid contact data received:', contact)
+      return
     }
     if (!contacts.includes(contact.value)) {
       setContacts((prev) => [...prev, contact.value!])
@@ -646,63 +821,69 @@ const [assignedToNames, setAssignedToNames] = useState<string[]>([]);
   }
 
   const handleAssigneeSelect = (assignee: AssigneeOption) => {
-    if (!assignedToIds.includes(assignee.value)) {
-        setAssignedToIds([...assignedToIds, assignee.value]);
-        setAssignedToNames([...assignedToNames, assignee.text || '']);
-    }
-    setQuery(assignee.text || '')
-    setAssignedToIds(assignee.value || '')
-    setAssignedToNames(assignee.text || '')
+    // Enforce single selection: replace the current list with only the new selection
+    setAssigneeList([{ value: assignee.value, text: assignee.text }])
+
+    // Clear search related states
+    setQuery('')
+    setAssigneeResults([])
     setIsOpen(false)
   }
 
-  const handleRemoveAssignee = (idToRemove: string) => {
-    setAssignedToIds(assignedToIds.filter(id => id !== idToRemove));
-    // Also remove the name corresponding to the ID (requires careful management)
-    setAssignedToNames(assignedToNames.filter((name, index) => assignedToIds[index] !== idToRemove));
-};
+  const handleRemoveAssignee = (assigneeId: string | number) => {
+    setAssigneeList([])
+  }
 
   // Add new task
   async function handleAddTask() {
     try {
-
-      const isEmpty = (value: any) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '') || (Array.isArray(value) && value.length === 0);
+      const currentAssigneeId = assigneeList.length > 0 ? assigneeList[0].value : ''
+      console.log(currentAssigneeId)
+      const isEmpty = (value: any) =>
+        value === null ||
+        value === undefined ||
+        (typeof value === 'string' && value.trim() === '') ||
+        (Array.isArray(value) && value.length === 0)
 
       const mandatoryFields = [
-        { value: assignedToIds, name: 'Assignee' },
+        { value: currentAssigneeId, name: 'Assignee' },
         { value: subject, name: 'Subject' },
         { value: dueDate, name: 'Due Date' },
         { value: timeStr, name: 'Time' },
         { value: taskType, name: 'Task Type' },
         { value: status, name: 'Status' },
-        { value: contacts, name: 'Contacts' }, 
-      ];
+        { value: contacts, name: 'Contacts' },
+      ]
 
-       const missingField = mandatoryFields.find(field => isEmpty(field.value));
+      const missingField = mandatoryFields.find((field) => isEmpty(field.value))
 
       if (missingField) {
-        toast({ 
-          title: 'Validation Error', 
-          description: `The mandatory field "${missingField.name}" is missing. Please fill out all required fields.` 
-        });
-        return; 
-      }
-
-      if (!assignedToIds) {
-        toast({ title: 'Validation', description: 'Assignee required' })
+        toast({
+          title: 'Validation Error',
+          description: `The mandatory field "${missingField.name}" is missing. Please fill out all required fields.`,
+        })
         return
       }
+
+      // if (!assignedToIds) {
+      //   toast({ title: 'Validation', description: 'Assignee required' })
+      //   return
+      // }
       if (!subject.trim()) {
         toast({ title: 'Validation', description: 'Subject required' })
         return
       }
-      const clienttimezone = encodeURIComponent(moment.tz.guess());
+      const clienttimezone = encodeURIComponent(moment.tz.guess())
 
-const rawTaskDate = dueDate; 
+      const rawTaskDate = dueDate
 
-const formattedDateTime = rawTaskDate ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss') : '';
+      const formattedDateTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
+        : ''
 
-const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm') : '';
+      const formattedDueTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
+        : ''
       const sanitizedContacts = contacts.filter((id) => id != null && id !== '')
       const sanitizedContactNames = contactNames.filter((name) => name != null && name !== '')
 
@@ -712,7 +893,7 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
         dueTime: formattedDueTime,
         contacts: sanitizedContacts,
         contactName: sanitizedContactNames,
-        assignedTo: assignedToIds,
+        assignedTo: currentAssigneeId,
         clienttimezone,
         status,
         taskType,
@@ -746,12 +927,19 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
   }
 
   async function handleUpdateTask() {
+    // debugger;
     try {
       if (!editTask) return
-      const rawTaskDate = dueDate; 
- const clienttimezone = encodeURIComponent(moment.tz.guess());
-const formattedDateTime = rawTaskDate ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss') : '';
-const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm') : '';
+      const rawTaskDate = dueDate
+      const clienttimezone = encodeURIComponent(moment.tz.guess())
+      const formattedDateTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
+        : ''
+      const formattedDueTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
+        : ''
+
+      console.log(assignedToIds)
       const payloadObj = {
         subject,
         dueDate: formattedDateTime,
@@ -787,18 +975,18 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
       } else {
         toast({ title: 'Error', description: data?.message || 'Failed to update task' })
       }
- 
     } catch (err) {
       console.error('handleUpdateTask', err)
       toast({ title: 'Error', description: 'Failed to update task' })
     }
   }
 
-
   // To edit existing task
-  async function openEditModal(task: TaskItem) { 
+  async function openEditModal(task: TaskItem) {
+    // debugger;
     let tdata: any = task
-    const missingContacts =!tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
+    const missingContacts =
+      !tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
     const missingName = !tdata.taskName && !tdata.subject
 
     if ((missingContacts || missingName) && tdata.taskId) {
@@ -810,10 +998,23 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
     setSubject(tdata.taskName || tdata.subject || '')
     setDescription(tdata.taskComment || tdata.taskComments || '')
     const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
-    setAssignedToIds(assignedId)
     const assignedName = tdata.taskAssignedName || ''
-    setQuery(assignedName)
+
+    console.log('Extracted ID:', assignedId, 'Extracted Name:', assignedName)
+    setAssignedTo(assignedId)
+    // const assignedName = tdata.taskAssignedName || ''
+    // setQuery(assignedName)
+    // setAssignedTo(assignedId);
     setAssignedToNames(assignedName)
+
+    if (assignedId && assignedName) {
+      setAssigneeList([{ value: assignedId, text: assignedName }])
+    } else {
+      setAssigneeList([])
+      console.warn('Assignee data was missing, assignee list set to empty.')
+    }
+
+    setQuery('')
     setTaskType(tdata.taskType || '')
     setStatus(tdata.taskStatus || '')
 
@@ -846,35 +1047,36 @@ const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss
   // To delete a task
   async function deleteTask(taskId: string, originalTaskData: any) {
     try {
+      const clienttimezone = encodeURIComponent(moment.tz.guess())
 
-     
+      const rawTaskDate = originalTaskData?.taskDate
 
-const clienttimezone = encodeURIComponent(moment.tz.guess());
+      const formattedDateTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
+        : ''
 
-const rawTaskDate = originalTaskData?.taskDate; 
+      const formattedDueTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
+        : ''
 
-const formattedDateTime = rawTaskDate ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss') : '';
+      const taskContactNames = normalizeToArray(originalTaskData?.contactName)
 
-const formattedDueTime = rawTaskDate ?  moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm') : '';
-
-const taskContactNames = normalizeToArray(originalTaskData?.contactName)
-
-const payload = {
-  subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
-  dueDate: formattedDateTime,
-  dueTime: formattedDueTime, 
-  contacts: normalizeToArray(originalTaskData?.contacts),
-  contactName: taskContactNames,
-  assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
-  clienttimezone,
-  status: 'Dismiss',
-  taskType: originalTaskData?.taskType || '',
-  taskComments:
-    originalTaskData?.taskComments || originalTaskData?.taskComment || description,
-  module_name: 'Task',
-  action: 'Dismiss',
-  taskId: taskId,
-}
+      const payload = {
+        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
+        dueDate: formattedDateTime,
+        dueTime: formattedDueTime,
+        contacts: normalizeToArray(originalTaskData?.contacts),
+        contactName: taskContactNames,
+        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
+        clienttimezone,
+        status: 'Dismiss',
+        taskType: originalTaskData?.taskType || '',
+        taskComments:
+          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
+        module_name: 'Task',
+        action: 'Dismiss',
+        taskId: taskId,
+      }
       const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
       const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
         method: 'POST',
@@ -900,21 +1102,31 @@ const payload = {
   }
 
   // Reset form fields
-  function resetForm() {
-    setSubject('')
-    setAssignedTo('')
-    setTaskType('')
-    setStatus('')
-    setContacts([])
-    setContactNames([])
-    setDescription('')
-    const now = new Date()
-    setDueDate(now)
-    const hh = now.getHours().toString().padStart(2, '0')
-    const mm = now.getMinutes().toString().padStart(2, '0')
-    const currentTimeString = `${hh}:${mm}`
-    setTimeStr(currentTimeString)
-  }
+ function resetForm() {
+    setSubject('');
+    setAssignedTo('');
+     setAssignedToNames(''); 
+     setAssigneeList([]);
+
+    setTaskType('');
+    setStatus('');
+    setContacts([]);
+    setContactNames([]);
+    setDescription('');
+    
+   
+    
+    setTimeStr(''); 
+
+    setQuery('');
+    setAssigneeResults([]);
+    setContactQuery('');
+    setContactResults([]);    setAssignedTo('');
+    setContacts([]);
+    setContactNames([]);
+
+    setDueDate(new Date());
+}
 
   // Calculate time data for due date
   const calcTimeData = (due: string | undefined) => {
@@ -948,23 +1160,23 @@ const payload = {
     }
   }
 
- return (
+  return (
     <div className="p-5">
-  <div className="flex justify-end mb-4">
-    <button
-      onClick={() => {
-        setEditTask(null)
-        resetForm()
-        setModalOpen(true)
-      }}
-      className="rounded bg-blue-600 px-6 py-2 text-white shadow hover:bg-blue-700"
-      title="Add Task"
-    >
-      Add
-    </button>
-  </div>
+      <div className="mb-4 flex justify-end">
+        <button
+          onClick={() => {
+            setEditTask(null)
+            resetForm()
+            setModalOpen(true)
+          }}
+          className="rounded bg-blue-600 px-6 py-2 text-white shadow hover:bg-blue-700"
+          title="Add Task"
+        >
+          Add
+        </button>
+      </div>
 
-      <div className=''></div>
+      <div className=""></div>
       {loading ? (
         <div>Loading...</div>
       ) : tasks.length === 0 ? (
@@ -972,10 +1184,10 @@ const payload = {
       ) : (
         <>
           {showAllTasks ? (
-            <DataTableAllTasks 
-                tasks={tasks} 
-                openEditModal={openEditModal} 
-                handleDeleteClick={handleDeleteClick} 
+            <DataTableAllTasks
+              tasks={tasks}
+              openEditModal={openEditModal}
+              handleDeleteClick={handleDeleteClick}
             />
           ) : (
             <ul className="space-y-3">
@@ -989,7 +1201,8 @@ const payload = {
                     <h3 className="font-bold">{t.taskName}</h3>
                     <p>{t.taskComment || '-'}</p>
                     <p className="text-sm text-gray-600">
-                      DueDate/Time: {due || '-'} | Status: {t.taskStatus || '-'} | Assignee: {t.taskAssignedName || '-'} | Task Type: {t.taskType || '-'}
+                      DueDate/Time: {due || '-'} | Status: {t.taskStatus || '-'} | Assignee:{' '}
+                      {t.taskAssignedName || '-'} | Task Type: {t.taskType || '-'}
                     </p>
 
                     {timeData && (
@@ -1001,7 +1214,7 @@ const payload = {
                       </small>
                     )}
 
-                      <div className="mt-2 flex gap-3">
+                    <div className="mt-2 flex gap-3">
                       <button
                         className="p-2 text-yellow-600 hover:text-yellow-800"
                         onClick={() => openEditModal(t)}
@@ -1010,7 +1223,7 @@ const payload = {
                         <PencilIcon className="h-5 w-5" />
                       </button>
 
-                       <button
+                      <button
                         className="p-2 text-red-600 hover:text-red-800"
                         onClick={() => handleDeleteClick(t.taskId, t)}
                         title="Delete Task"
@@ -1024,39 +1237,39 @@ const payload = {
             </ul>
           )}
 
-          { hasMoreTasks && (
+          {hasMoreTasks && (
             <div className="mt-4 text-center">
-                <button 
-                    onClick={() => setShowAllTasks(!showAllTasks)}
-                    className="flex items-center mx-auto px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition duration-150"
-                >
-                    {showAllTasks ? (
-                        <>
-                            Show Less <ChevronUpIcon className="ml-2 h-4 w-4" />
-                        </>
-                    ) : (
-                        <>
-                            More ...  <ChevronDownIcon className="ml-2 h-4 w-4" />
-                        </>
-                    )}
-                </button>
+              <button
+                onClick={() => setShowAllTasks(!showAllTasks)}
+                className="mx-auto flex items-center rounded-lg bg-gray-200 px-4 py-2 text-gray-700 transition duration-150 hover:bg-gray-300"
+              >
+                {showAllTasks ? (
+                  <>
+                    Show Less <ChevronUpIcon className="ml-2 h-4 w-4" />
+                  </>
+                ) : (
+                  <>
+                    More ... <ChevronDownIcon className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </button>
             </div>
           )}
         </>
       )}
-      
-      <DeleteConfirmationModal 
-        isOpen={isDeleteModalOpen} 
-        onClose={closeDeleteModal} 
-        onConfirm={handleConfirmDelete} 
+
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={closeDeleteModal}
+        onConfirm={handleConfirmDelete}
       />
 
       {isModalOpen && (
-        <Dialog.Root open={isModalOpen} onOpenChange={setModalOpen}>
+        <Dialog.Root open={isModalOpen} onOpenChange={handleCloseModal}>
           <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-20 bg-black/40 backdrop-blur-sm" />
+            <Dialog.Overlay className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm" />
 
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-5 shadow-xl">
+            <Dialog.Content  className="fixed left-1/2 top-1/2 z-[9999] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-5 shadow-xl">
               <Dialog.Close className="absolute right-3 top-3 text-gray-600 hover:text-black">
                 X
               </Dialog.Close>
@@ -1065,123 +1278,133 @@ const payload = {
                 {editTask ? 'Update Task' : 'Add Task'}
               </Dialog.Title>
 
-              <label htmlFor="assignTo" className="mb-2 block">
-    Assign To (Choose One or More Employees As Assignee) <span className="text-red-500">*</span>
-</label>
+              <label className="mb-2 block">
+                Assign To (Choose ONLY ONE Employee As Assignee)
+                <span className="text-red-500">*</span>
+              </label>
 
-<div className="relative">
-    {/* Display selected assignees as tags/pills */}
-   <div className="flex flex-wrap gap-2 mb-2 p-2 border border-gray-300 rounded-md bg-gray-50">
-    {Array.isArray(assignedToNames) && assignedToNames.map((name, index) => (
-        <span key={assignedToIds[index]} className="flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-3 py-1 rounded-full">
-            {name}
-            <button
-                type="button"
-                onClick={() => handleRemoveAssignee(assignedToIds[index])}
-                className="ml-2 text-blue-800 hover:text-blue-900 focus:outline-none"
-            >
-                ×
-            </button>
-        </span>
-    ))}
-        
-        {/* The Input field remains for typing search queries */}
-        <div className="relative flex-1 min-w-[150px]">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-prism-primary" />
-            <Input
-                ref={inputRef}
-                type="text"
-                placeholder={assignedToNames.length === 0 ? "Search for assignees..." : ""}
-                value={query}
-                onChange={handleInputChange}
-                autoFocus
-                id="searchInput"
-                // Adjusted classes for multi-select input area
-                className="h-full min-h-[3rem] w-full pl-10 pr-4 text-base focus:outline-none bg-transparent"
-                style={{ height: '100%' }}
-                onFocus={() => setIsOpen(true)} // Show dropdown when focused
-                onBlur={() => setTimeout(() => setIsOpen(false), 200)} // Hide dropdown when focus leaves (with slight delay)
-            />
-        </div>
-    </div>
-    
-    {isOpen && query.length > 0 && (
-        <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
-            {loadingSearch ? (
-                <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
-                    Loading...
-                </li>
-            ) : assigneeResults.length > 0 ? (
-                assigneeResults.map((assignee) => (
-                    <li
-                        key={assignee.value}
-                        className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-prism-primary hover:text-white"
-                        onClick={() => {
-                            handleAssigneeSelect(assignee)
-                        }}
+              <div
+                className="relative mb-3 flex max-h-28 min-h-[3rem] items-center gap-2 overflow-x-auto whitespace-nowrap rounded-md border border-gray-300 bg-gray-50 p-2 focus-within:border-prism-primary focus-within:bg-white"
+              >
+                {assigneeList.map((assignee) => (
+                  <span
+                    key={assignee.value}
+                    className="inline-flex items-center rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800 max-w-[220px] truncate"
+                  >
+                    <span className="truncate inline-block max-w-[180px]">{assignee.text}</span>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAssignee(assignee.value ?? '')}
+                      className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
                     >
-                        {assignee.text}
-                    </li>
-                ))
-            ) : (
-                <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
-                    No results found
-                </li>
-            )}
-        </ul>
-    )}
-</div>
+                      &times;
+                    </button>
+                  </span>
+                ))}
 
-               <div className="flex justify-between items-end  mb-4">
+                <Input
+                  ref={inputRef}
+                  type="text"
+                  placeholder="Search..."
+                  value={query}
+                  onChange={handleInputChange}
+                  onFocus={() => setIsOpen(true)}
+                  className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
+                />
+              </div>
+
+              {isOpen && query.length > 0 && (
+                <ul className="w-45 absolute z-20 mt--1 max-h-40 overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
+                  {loadingSearch ? (
+                    <li key="loading" className="p-2 text-gray-700">
+                      Loading...
+                    </li>
+                  ) : assigneeResults.length > 0 ? (
+                    assigneeResults.map((assignee) => (
+                      <li
+                        key={assignee.value}
+                        className="cursor-pointer p-2 hover:bg-prism-primary hover:text-white"
+                        onClick={() => handleAssigneeSelect(assignee)}
+                      >
+                        {assignee.text}
+                      </li>
+                    ))
+                  ) : (
+                    assigneeList.length === 0 && (
+                      <li key="no-results" className="p-2 text-gray-700">
+                        No results found
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+
+              <div className="mb-4 flex items-end  justify-between">
                 <div className="flex flex-col">
-                  <label>Due Date<span className="text-red-500">*</span></label>
+                  <label>
+                    Due Date<span className="text-red-500">*</span>
+                  </label>
                   <DatePicker
                     selected={dueDate}
                     onChange={(d: Date | null) => setDueDate(d)}
-
-                    className=" rounded border items-baseline p-2 w-full" 
+                    className=" w-full items-baseline rounded border p-2"
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label>Time<span className="text-red-500">*</span></label>
-                 <TimePicker
-    onChange={setTimeStr} 
-    value={timeStr}
-    format="h:mm a" 
-    className="rounded border p-2 w-48" 
-    clearIcon={null} 
-  />
+                  <label>
+                    Time<span className="text-red-500">*</span>
+                  </label>
+                  <TimePicker
+                    onChange={setTimeStr}
+                    value={timeStr}
+                    format="h:mm a"
+                    className="w-48 rounded border p-2"
+                    clearIcon={null}
+                  />
                 </div>
- 
-               </div>
+              </div>
 
-
-              <label>Task Type<span className="text-red-500">*</span></label>
+              <label>
+                Task Type<span className="text-red-500">*</span>
+              </label>
               <select
                 value={taskType}
                 onChange={(e) => setTaskType(e.target.value)}
                 className="mb-3 w-full rounded border p-2"
+                disabled={isLoadingOptions}
               >
-                <option value="">-- Select --</option>
-                <option value="Call Back1">Call Back1</option>
-                <option value="Action items">Action Items</option>
-                <option value="Others">Others</option>
-                <option value="Schedule Meeting">Schedule Meeting</option>
+                <option value="">{isLoadingOptions ? '-- Loading --' : '-- Select --'}</option>
+
+                {taskOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.text}
+                  </option>
+                ))}
               </select>
 
-              <label>Status<span className="text-red-500">*</span></label>
+              <label>
+                Status<span className="text-red-500">*</span>
+              </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="mb-3 w-full rounded border p-2"
+                disabled={isLoadingStatusOptions}
               >
-                <option value="">-- Select --</option>
-                <option value="Not Started">Not Started</option>
-                <option value="Completed">Completed</option>
-                <option value="In Progress">In Progress</option>
+                <option value="">
+                  {isLoadingStatusOptions ? '-- Loading --' : '-- Select --'}
+                </option>
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.text}
+                  </option>
+                ))}
               </select>
 
-              <label>Subject<span className="text-red-500">*</span></label>
+              <label>
+                Subject<span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 value={subject}
@@ -1189,10 +1412,19 @@ const payload = {
                 className="mb-3 w-full rounded border p-2"
               />
 
-              <label className="mb-2 block">Contacts<span className="text-red-500">*</span></label>
-              <div className="relative mb-3 h-full min-h-[3rem] rounded-md border border-gray-300 bg-gray-50 focus-within:border-prism-primary focus-within:bg-white">
+              <label className="mb-2 block">
+                Contacts<span className="text-red-500">*</span>
+              </label>
+              <div
+                className="relative mb-3 flex max-h-28 min-h-[3rem] flex-wrap items-center
+
+  gap-2 overflow-y-auto rounded-md border border-gray-300
+
+  bg-gray-50 p-2 focus-within:border-prism-primary focus-within:bg-white"
+              >
                 {contacts.map((contactId, index) => {
                   const name = contactNames[index]
+
                   if (!name) return null
 
                   return (
@@ -1201,11 +1433,11 @@ const payload = {
                       className="flex items-center rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
                     >
                       {name}
+
                       <button
                         type="button"
                         onClick={() => removeContact(contactId)}
                         className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
-                        aria-label={`Remove contact ${name}`}
                       >
                         &times;
                       </button>
@@ -1219,12 +1451,12 @@ const payload = {
                   value={contactQuery}
                   onChange={handleContactInputChange}
                   onFocus={() => setIsContactResultsOpen(true)}
-                  className="w-full min-w-[150px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
+                  className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
                 />
               </div>
 
               {isContactResultsOpen && (contactQuery.length > 0 || contactResults.length > 0) && (
-                <ul className="absolute z-20 mt--1 max-h-40 w-45 overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
+                 <ul className="w-45 absolute z-[100000] mt--1 max-h-40 overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
                   {loadingContacts ? (
                     <li key="loading" className="p-2 text-gray-700">
                       Loading...
@@ -1274,8 +1506,2305 @@ const payload = {
         </Dialog.Root>
       )}
     </div>
-    
   )
+}
+-------------------------------------------------------------------------------------------
+
+import { X, Search, ChevronDown, Plus, Minus } from 'lucide-react'
+import moment from 'moment'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
+
+import { Button } from '@/components/ui/button'
+import { DataTable } from '@/components/ui/DataTable'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
+import { Slider } from '@/components/ui/slider'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { useToast } from '@/hooks/use-toast'
+import { API_CONFIG } from '@/lib/constants'
+import { useDataTableState, DataTableFormatters, DrawDataTableCore, DataTableSettings, type UserTableSettings, type DataTableColumn } from '@/lib/datatable-utils'
+import { ReactUtils } from '@/lib/reactUtils'
+import { createTearsheetCommon } from '@/lib/tearsheet-common'
+import { searchTypeService } from '@/services/searchTypeService'
+import type { RootState } from '@/store'
+import type { GlobalPeriodFilterData } from '@/store/slices/globalFiltersSlice'
+
+// Type definitions for Prism-specific ReactUtils extensions
+
+// Dynamic import to avoid circular dependency with tabsSlice
+
+interface PanelData {
+  id?: string
+  dashId?: string
+  pageId?: string  
+  title?: string
+  name?: string
+  reportFunction?: string
+  callback?: string
+  config?: Record<string, unknown>
+  searchCode?: string
+  children?: unknown[]
+}
+
+interface ClosedDealsProps {
+  id: string
+  clientId: string
+  searchCode?: string
+  _dashId?: string
+  _pageId?: string
+  _searchParams?: Record<string, unknown>
+  _config?: Record<string, unknown>
+  currentPanel?: PanelData | null
+}
+
+interface FilterOption {
+  value: string
+  text: string
+}
+
+interface FilterOptionsState {
+  clients: FilterOption[]
+  tickers: FilterOption[]
+  products: FilterOption[]
+  transactions: FilterOption[]
+  [key: string]: FilterOption[]  // Allow string indexing
+}
+
+interface FilterConfig {
+  containerId: string
+  type: string
+  id: string
+  tokenType: string
+  label: string
+  inputType: 'tokenizer' | 'slider'
+  containerClassName: string
+  placeHolder?: string
+  searchParam?: string
+  apiParam: string
+  filterParam: string
+  additionalParam?: string
+  minsrchLen?: number
+  searchUrl?: string
+  newElements?: boolean
+  nbDropdownElements?: number
+  enable: number
+  filterLabelText: string
+  filterLabelSpanClass: string
+  replaceHTMLStrings?: number
+  defaultValue: unknown[]
+  userBasedEnable?: string
+  inclExclShow?: number
+  includeExclude?: Array<{
+    enable: number
+    name: string
+    value: 'include' | 'exclude'
+    title: string
+    defaultChk: number
+  }>
+  visibility?: unknown[]
+  dependOnField?: {
+    id: string
+    url: string
+  }
+  minValue?: number
+  maxValue?: number
+  stepValue?: number
+  key?: string
 }
 
 
+
+interface ClosedDeal {
+  id: number
+  dealname: string
+  clientname: string
+  ticker: string
+  product: string
+  transaction: string
+  dealsize: number
+  grossfee: number
+  expensesholdback: number
+  netfee: number
+  invoicefee: number
+  dealdate: string
+  status: string
+}
+
+interface SliderRangeResponse {
+  text: string
+  minVal: string
+  maxVal: string
+}
+
+
+
+const ClosedDeals: React.FC<ClosedDealsProps> = ({ 
+  id, 
+  clientId: _clientId, 
+  searchCode: _searchCode,
+  currentPanel,
+  _searchParams
+}) => {
+  const { toast } = useToast()
+  const dispatch = useDispatch()
+  
+  // Get searchType loading state from Redux store  
+  const searchTypeLoading = useSelector((state: RootState) => {
+    const tabs = state.tabs as { searchTypeLoading?: boolean }
+    return tabs?.searchTypeLoading ?? false
+  })
+  
+  // Get form settings from Redux store (replaces _prismFormSettingValues)
+  const formSettings = useSelector((state: RootState) => state.auth.formSettings)
+
+  // Initialize searchTypeService with dispatch function
+  useMemo(() => {
+    searchTypeService.setDispatch(dispatch)
+  }, [dispatch])
+
+  // Initialize common tearsheet helper
+  const tearsheetCommon = useMemo(() => {
+    return createTearsheetCommon({
+      dispatch,
+      searchTypeService,
+      toast,
+      currentPanel: currentPanel || undefined,
+      strictSanitization: Boolean(currentPanel?.config?.strictHtmlSanitization) || false
+    })
+  }, [dispatch, currentPanel, toast])
+
+  // Ensure global functions are properly set up
+  useEffect(() => {
+    // Check if global functions are available
+    const globalStatus = tearsheetCommon.checkGlobalFunctions()
+    
+    if (!globalStatus.addSearchMenu || !globalStatus.executeSafeEvent) {
+      // Re-initialize if they're not available
+      tearsheetCommon.reinitializeGlobalFunctions()
+    }
+    
+    // Set up a periodic check to ensure functions remain available
+    const intervalId = setInterval(() => {
+      const status = tearsheetCommon.checkGlobalFunctions()
+      if (!status.addSearchMenu || !status.executeSafeEvent) {
+        tearsheetCommon.reinitializeGlobalFunctions()
+      }
+    }, 1000) // Check every second
+    
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [tearsheetCommon])
+
+  // Simple DataTable state management (no infinite scroll)
+  const {
+    data,
+    setData,
+    loading: tableLoading,
+    setLoading: setTableLoading
+  } = useDataTableState([])
+
+  // Data source for DataTable (search and filtering handled by DataTable component)
+  // displayedData removed to prevent unnecessary config re-initialization
+
+
+
+  const [isLoading, setIsLoading] = useState(false)
+  const [showFilters, setShowFilters] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
+  
+  // DataTable state
+  const [sortConfig] = useState<{
+    field?: string;
+    order?: 'asc' | 'desc';
+  }>({})
+  
+  // Modern confirmation dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean
+    title: string
+    description: string
+    onConfirm: () => void
+    dealId?: string
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {}
+  })
+
+  // State for dynamic table configuration from API
+  const [dynamicTableConfig, setDynamicTableConfig] = useState<{
+    columnHeadings: string[]
+    columnIndices: string[]
+    colsAlign: string[]
+    tableSettings: Array<{ blockchk: boolean }>
+    defColSort: number
+    defColSortType: string
+    colsCnt: string[]
+    formatter: string[]
+  } | null>(null)
+  
+  // Filter states
+  const [clientFilter, setClientFilter] = useState<FilterOption[]>([])
+  const [tickerFilter, setTickerFilter] = useState<FilterOption[]>([])
+  const [productFilter, setProductFilter] = useState<FilterOption[]>([])
+  const [transactionFilter, setTransactionFilter] = useState<FilterOption[]>([])
+  
+  // Slider ranges with proper formatting
+  const [dealSizeRange, setDealSizeRange] = useState([0, 99999999999])
+  const [revenueGrossRange, setRevenueGrossRange] = useState([0, 99999999999])
+  
+  // Store default slider ranges loaded from API (for filter label comparison)
+  const [defaultSliderRanges, setDefaultSliderRanges] = useState({
+    dealSize: [0, 99999999999],
+    revenueGross: [0, 99999999999]
+  })
+  
+  // Include/Exclude toggles
+  const [includeExclude, setIncludeExclude] = useState({
+    client: 'include',
+    ticker: 'include',
+    product: 'include', 
+    transaction: 'include'
+  })
+
+  // DataTable parameters (matching jQuery implementation)
+  const [dataTableParams, setDataTableParams] = useState({
+    start: 0,
+    length: 50, // Larger page size for infinite loading
+    search: { value: '', regex: false },
+    order: [] as Array<{ column: number; dir: 'asc' | 'desc' }>,
+    columns: [] as Array<{ data: string; searchable: boolean; orderable: boolean; search: { value: string; regex: boolean } }>
+  })
+
+
+  // Filter options from API
+  const [filterOptions, setFilterOptions] = useState<FilterOptionsState>({
+    clients: [] as FilterOption[],
+    tickers: [] as FilterOption[],
+    products: [] as FilterOption[],
+    transactions: [] as FilterOption[]
+  })
+
+  // Use global period filter from Redux store
+  const globalPeriodFilter = useSelector((state: RootState) => state.globalFilters?.periodFilter)
+
+  // jQuery filter configuration (closedDealShowFilter from jQuery implementation)
+  const closedDealShowFilter = useMemo<FilterConfig[]>(() => {
+    const baseFilters: FilterConfig[] = [
+      {
+        containerId: "closed_deals_client_token",
+        type: "client",
+        id: "closedDealsClient", 
+        tokenType: "additionaltokenizer",
+        label: "Client",
+        inputType: "tokenizer",
+        containerClassName: "closedDealsClient",
+        placeHolder: "Type to search...",
+        searchParam: "searchtext",
+        apiParam: "accountidarr",
+        filterParam: "client",
+        additionalParam: "&filtertype=allaccount",
+        minsrchLen: 1,
+        searchUrl: `${API_CONFIG.baseUrl}/userconfig/searchfilters`,
+        newElements: false,
+        nbDropdownElements: 100,
+        enable: 1,
+        filterLabelText: "clientText",
+        filterLabelSpanClass: "bg-client",
+        replaceHTMLStrings: 0,
+        defaultValue: [],
+        userBasedEnable: "",
+        inclExclShow: 0,
+        includeExclude: [
+          {
+            enable: 0,
+            name: "closedDealClientTokenInEx",
+            value: "include",
+            title: "Include", 
+            defaultChk: 1
+          },
+          {
+            enable: 0,
+            name: "closedDealClientTokenInEx",
+            value: "exclude",
+            title: "Exclude",
+            defaultChk: 0
+          }
+        ],
+        visibility: []
+      },
+      {
+        containerId: "closed_deals_ticker_token",
+        type: "ticker",
+        id: "closedDealsTicker",
+        tokenType: "additionaltokenizer",
+        label: "Ticker",
+        inputType: "tokenizer",
+        containerClassName: "closedDealsTicker", 
+        placeHolder: "Type to search...",
+        searchParam: "searchtext",
+        apiParam: "tickerarr",
+        filterParam: "ticker",
+        additionalParam: "&filtertype=ticker",
+        minsrchLen: 1,
+        searchUrl: `${API_CONFIG.baseUrl}/userconfig/searchfilters`,
+        newElements: false,
+        nbDropdownElements: 100,
+        enable: 1,
+        filterLabelText: "tickerText",
+        filterLabelSpanClass: "bg-ticker",
+        replaceHTMLStrings: 0,
+        defaultValue: [],
+        userBasedEnable: "",
+        inclExclShow: 0,
+        includeExclude: [
+          {
+            enable: 0,
+            name: "closedDealTickerTokenInEx",
+            value: "include",
+            title: "Include",
+            defaultChk: 1
+          },
+          {
+            enable: 0,
+            name: "closedDealTickerTokenInEx", 
+            value: "exclude",
+            title: "Exclude",
+            defaultChk: 0
+          }
+        ],
+        visibility: []
+      },
+      {
+        containerId: "closed_deals_product_token",
+        type: "product",
+        id: "closedDealsProduct",
+        tokenType: "additionaltokenizer",
+        label: "Product",
+        inputType: "tokenizer",
+        containerClassName: "closedDealsProduct",
+        placeHolder: "Type to search...",
+        searchParam: "searchtext", 
+        apiParam: "product",
+        filterParam: "product",
+        additionalParam: "&type=productDropdown&isfilter=true&istextvalue=1",
+        minsrchLen: 1,
+        searchUrl: `${API_CONFIG.IBPath}/dealv1/getdealdetails`,
+        newElements: false,
+        nbDropdownElements: 100,
+        enable: 1,
+        filterLabelText: "productText",
+        filterLabelSpanClass: "bg-product",
+        replaceHTMLStrings: 0,
+        defaultValue: [],
+        userBasedEnable: "",
+        inclExclShow: 0,
+        dependOnField: {
+          id: "closedDealsTransaction",
+          url: `${API_CONFIG.IBPath}/dealv1/getdealdetails?1=1&type=subProductDropdown&isfilter=true`
+        },
+        includeExclude: [
+          {
+            enable: 0,
+            name: "closedDealProductTokenInEx",
+            value: "include",
+            title: "Include",
+            defaultChk: 1
+          },
+          {
+            enable: 0,
+            name: "closedDealProductTokenInEx",
+            value: "exclude", 
+            title: "Exclude",
+            defaultChk: 0
+          }
+        ],
+        visibility: []
+      },
+      {
+        containerId: "closed_deals_transaction_token",
+        type: "transaction",
+        id: "closedDealsTransaction",
+        tokenType: "additionaltokenizer",
+        label: "Transaction",
+        inputType: "tokenizer",
+        containerClassName: "closedDealsTransaction",
+        placeHolder: "Type to search...",
+        searchParam: "searchtext",
+        apiParam: "subProduct",
+        filterParam: "transaction",
+        additionalParam: "&type=subProductDropdown&isfilter=true",
+        minsrchLen: 1,
+        searchUrl: `${API_CONFIG.IBPath}/dealv1/getdealdetails`,
+        newElements: false,
+        nbDropdownElements: 100,
+        enable: 1,
+        filterLabelText: "transactionText",
+        filterLabelSpanClass: "bg-transaction",
+        replaceHTMLStrings: 0,
+        defaultValue: [],
+        userBasedEnable: "",
+        inclExclShow: 0,
+        includeExclude: [
+          {
+            enable: 0,
+            name: "closedDealTransactionTokenInEx",
+            value: "include", 
+            title: "Include",
+            defaultChk: 1
+          },
+          {
+            enable: 0,
+            name: "closedDealTransactionTokenInEx",
+            value: "exclude",
+            title: "Exclude",
+            defaultChk: 0
+          }
+        ],
+        visibility: []
+      },
+      {
+        containerId: "closed_deals_dealsize_token",
+        type: "dealsize",
+        key: "dealsize",
+        id: "dealsize_slider",
+        tokenType: "additionalslider",
+        label: "Deal Size",
+        inputType: "slider",
+        containerClassName: "dealsize_slider",
+        filterParam: "dealSize",
+        apiParam: "dealsizeobj",
+        enable: 1,
+        filterLabelText: "dealsizeText",
+        filterLabelSpanClass: "bg-dealsize",
+        userBasedEnable: "",
+        defaultValue: [],
+        visibility: [],
+        minValue: 0,
+        maxValue: 100000000,
+        stepValue: 1000000
+      },
+      {
+        containerId: "closed_deals_revenuegross_token",
+        type: "revenuegross",
+        key: "revenuegross", 
+        id: "revenuegross_slider",
+        tokenType: "additionalslider",
+        label: "Revenue Gross",
+        inputType: "slider",
+        containerClassName: "revenuegross_slider",
+        filterParam: "revGross",
+        apiParam: "revgrossobj",
+        enable: 1,
+        filterLabelText: "revenuegrossText",
+        filterLabelSpanClass: "bg-revenuegross",
+        userBasedEnable: "",
+        defaultValue: [],
+        visibility: [],
+        minValue: 0,
+        maxValue: 100000000,
+        stepValue: 1000000
+      }
+    ]
+
+    // Try to get custom filter configuration from settings (matching jQuery behavior)
+    try {
+      const customFilter = formSettings?.['CLOSEDDEALSFILTER']
+      if (customFilter && typeof customFilter === 'string') {
+        return JSON.parse(customFilter)
+      }
+    } catch (e) {
+      // Fall back to default filters if parsing fails
+    }
+    
+    return baseFilters
+  }, [formSettings])
+
+  // HTML content handling is now centralized in DataTableFormatters
+
+
+
+  // State for table field settings (column visibility)
+  // Column settings for user customization (handled by modern DataTable internally)
+  const [tableFieldSettings, setTableFieldSettings] = useState<UserTableSettings[] | null>(null)
+
+
+
+  // Load table settings from API
+  const loadTableSettings = useCallback(async () => {
+    try {
+      // Use enhanced ReactUtils.fetchPost with URL-encoded content-type
+      const response = await ReactUtils.fetchPost(`${API_CONFIG.IBPath}/tableconfig/gettablesetting`, {
+        moduletype: 'Deal',
+        rpttype: 'IB_Closed_Deal',
+        rnd: moment().valueOf().toString()
+      }, {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      if (result) {
+        // Extract dynamic table configuration from response
+        const config = {
+          columnHeadings: result.title || [],
+          columnIndices: result.cols || [],
+          colsAlign: result.colsAlign || [],
+          tableSettings: result.table_settings || [],
+          defColSort: result.defColSort || 0,
+          defColSortType: result.defColSortType || 'asc',
+          colsCnt: result.colsCnt || [],
+          formatter: result.formatter || []
+        }
+        
+        setDynamicTableConfig(config)
+        return config
+      }
+      throw new Error('Failed to load table settings')
+    } catch (error) {
+      // Silently handle table settings error to prevent UI disruption
+      return null
+    }
+  }, [])  
+  
+  // Load table fields configuration from API using common function
+  const loadTableFields = useCallback(async () => {
+    try {
+      // Use common function from datatable-utils instead of manual API call
+      // Match jQuery implementation: thisRepId + 'closedDealTable'
+      const tableId = `${id}closedDealTable`; // Table identifier for closed deals
+      const result = await DrawDataTableCore.loadTableFields(tableId);
+      
+      if (result.success && result.settings) {
+        // Store table field settings to apply column visibility
+        setTableFieldSettings(result.settings);
+        return result.settings;
+      }
+      
+      // If no settings found, create default settings (show first 3 columns)
+      if (dynamicTableConfig?.columnIndices) {
+        const defaultSettings: UserTableSettings[] = dynamicTableConfig.columnIndices.map((colIndex, index) => ({
+          data: colIndex,
+          checked: index < 3 // Show first 3 columns by default (matching jQuery behavior)
+        }));
+        setTableFieldSettings(defaultSettings);
+        return defaultSettings;
+      }
+      
+      throw new Error('Failed to load table fields');
+    } catch (error) {
+      // Silently handle table fields error to prevent UI disruption
+      return null;
+    }
+  }, [id, dynamicTableConfig])
+
+
+
+  // Load slider ranges from API
+  const loadSliderRanges = useCallback(async () => {
+    try {
+      const response = await ReactUtils.fetchGet(`${API_CONFIG.IBPath}/dealv1/getdealdetails`, {
+        type: 'dealrangeslider'
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      if (result) {
+        const ranges = result
+        
+        ranges.forEach((range: SliderRangeResponse) => {
+          const minVal = parseInt(range.minVal)
+          const maxVal = parseInt(range.maxVal)
+          
+          if (range.text === 'dealSize') {
+            setDealSizeRange([minVal, maxVal])
+            // Store as default range for filter label comparison
+            setDefaultSliderRanges(prev => ({
+              ...prev,
+              dealSize: [minVal, maxVal]
+            }))
+          } else if (range.text === 'revGross') {
+            setRevenueGrossRange([minVal, maxVal])
+            // Store as default range for filter label comparison
+            setDefaultSliderRanges(prev => ({
+              ...prev,
+              revenueGross: [minVal, maxVal]
+            }))
+          }
+        })
+      }
+    } catch (error) {
+      // Use default ranges if API fails
+      // Silently fail and use default ranges
+    }
+  }, [])
+
+
+
+  // Handle include/exclude changes (simplified to prevent re-render loops)
+  const handleIncludeExcludeChangeOptimized = useCallback((filterType: string, mode: 'include' | 'exclude') => {
+    setIncludeExclude(prev => ({
+      ...prev,
+      [filterType]: mode
+    }))
+    // Note: Data reload will only happen when Apply button is clicked
+  }, [])
+
+  // Search filter options for dynamic dropdowns
+  const searchFilterOptions = useCallback(async (filterType: string, query: string) => {
+    if (!query || query.length < 2) return
+
+    try {
+      let url = ''
+      const searchParam = 'searchtext'
+      let additionalParam = ''
+      
+      switch (filterType) {
+        case 'client':
+          url = `${API_CONFIG.baseUrl}/userconfig/searchfilters`
+          additionalParam = '&filtertype=allaccount'
+          break
+        case 'ticker':
+          url = `${API_CONFIG.baseUrl}/userconfig/searchfilters`  
+          additionalParam = '&filtertype=ticker'
+          break
+        case 'product':
+          url = `${API_CONFIG.IBPath}/dealv1/getdealdetails`
+          additionalParam = '&type=productDropdown&isfilter=true&istextvalue=1'
+          break
+        case 'transaction':
+          url = `${API_CONFIG.IBPath}/dealv1/getdealdetails`
+          additionalParam = '&type=subProductDropdown&isfilter=true'
+          // Add product dependency for transaction filter
+          if (productFilter.length > 0) {
+            additionalParam += `&1=1&value=${encodeURIComponent(JSON.stringify(productFilter.map(f => f.text)))}`
+          }
+          break
+        default:
+          return
+      }
+      
+      // Parse existing query params from additionalParam
+      const queryParams: Record<string, string> = {}
+      queryParams[searchParam] = query
+      
+      // Parse additionalParam if it exists (e.g., "&rnd=123456")
+      if (additionalParam && additionalParam.startsWith('&')) {
+        const params = new URLSearchParams(additionalParam.substring(1))
+        params.forEach((value, key) => {
+          queryParams[key] = value
+        })
+      }
+      
+      const response = await ReactUtils.fetchGet(url, queryParams)
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      
+      // Handle different response formats from the API
+      let responseData = null
+      if (result.success && result.data) {
+        responseData = result.data
+      } else if (result && Array.isArray(result)) {
+        // Some APIs return array directly
+        responseData = result
+      } else if (result && result.results) {
+        // Some APIs use 'results' key
+        responseData = result.results
+      } else if (result && typeof result === 'object') {
+        // If result is an object but not in expected format, check for data properties
+        responseData = result
+      }
+      
+      if (responseData && Array.isArray(responseData)) {
+        const options: FilterOption[] = responseData
+          .filter(item => item && typeof item === 'object') // Filter out null/invalid items
+          .map((item: Record<string, unknown>) => {
+            const value = String(item.value || item.id || item.code || item.Value || item.ID || '');
+            const text = String(item.text || item.name || item.label || item.description || item.title || item.Text || item.Name || value);
+            
+            // Ensure we have both value and text
+            if (!value || !text) {
+              return null;
+            }
+            
+            return { value, text };
+          })
+          .filter(Boolean) as FilterOption[]; // Remove null entries
+        
+        // Use callback form to avoid potential stale closure issues
+        setFilterOptions(prev => {
+          const key = `${filterType}s` as keyof FilterOptionsState;
+
+          
+          // Validate the key exists in our state structure
+          if (!(key in prev)) {
+            return prev;
+          }
+          
+          // Only update if the options are different to prevent unnecessary re-renders
+          if (JSON.stringify(prev[key]) !== JSON.stringify(options)) {
+            return {
+              ...prev,
+              [key]: options
+            };
+          }
+          return prev;
+        });
+      } else {
+        // Invalid response data for filter type - silently handle
+      }
+    } catch (error) {
+      // Silently fail on search error
+      // Could add user notification here if needed
+    }
+  }, [productFilter])
+
+  // Filter handlers for modern React components
+  const handleFilterChange = useCallback((filterType: string, values: FilterOption[]) => {
+    switch (filterType) {
+      case 'client':
+        setClientFilter(values)
+        break
+      case 'ticker':
+        setTickerFilter(values)
+        break
+      case 'product':
+        setProductFilter(values)
+        // Clear transaction filter when product changes (dependency)
+        setTransactionFilter([])
+        break
+      case 'transaction':
+        setTransactionFilter(values)
+        break
+    }
+  }, [])
+
+  // Handle include/exclude toggle (replaced with optimized version above)
+  const handleIncludeExcludeChange = handleIncludeExcludeChangeOptimized
+
+  // Handle slider changes
+  const handleSliderChange = useCallback((sliderType: string, values: number[]) => {
+    if (sliderType === 'dealsize') {
+      setDealSizeRange(values)
+    } else if (sliderType === 'revenuegross') {
+      setRevenueGrossRange(values)
+    }
+  }, [])
+
+  // Memoized currency formatter for sliders
+  const formatCurrencyValue = useCallback((value: number) => `$${Number(value || 0).toLocaleString()}`, [])
+
+  // Clear all filters (matching jQuery clearAllBtn logic)
+  const clearAllFilters = useCallback(() => {
+    setClientFilter([])
+    setTickerFilter([])
+    setProductFilter([])
+    setTransactionFilter([])
+    // Reset sliders to their loaded default values from API
+    setDealSizeRange([...defaultSliderRanges.dealSize])
+    setRevenueGrossRange([...defaultSliderRanges.revenueGross])
+    setIncludeExclude({
+      client: 'include',
+      ticker: 'include',
+      product: 'include',
+      transaction: 'include'
+    })
+    
+    // Clear filter labels immediately when clearing filters
+    setFilterLabels({})
+    
+    // Trigger clearing of tokenizer search inputs
+    setClearTrigger(Date.now())
+    
+    toast({
+      title: "Filters Cleared",
+      description: "All filters have been reset",
+    })
+  }, [toast, defaultSliderRanges])
+
+  // Apply filters (matching jQuery applyAllBtn logic)  
+  const applyAllFilters = useCallback(() => {
+    // Note: Data reload will be handled by the useEffect
+    setFilterTrigger(Date.now())
+  }, [])
+
+  // Apply filters - force re-render by updating a timestamp
+  const [filterTrigger, setFilterTrigger] = useState(0)
+
+  // Clear trigger for tokenizer inputs
+  const [clearTrigger, setClearTrigger] = useState(0)
+
+  // State for filter labels (matching jQuery setFilteredText)
+  const [filterLabels, setFilterLabels] = useState<Record<string, string>>({})
+
+  // Set filtered text labels (matching jQuery setFilteredText function)
+  const updateFilterLabels = useCallback(() => {
+    const labels: Record<string, string> = {}
+    
+    closedDealShowFilter.forEach((filterConfig) => {
+      if (filterConfig.enable === 1) {
+        const labelKey = filterConfig.filterLabelText
+        const inputType = filterConfig.inputType
+        const filterType = filterConfig.type
+        
+        let filterValues: FilterOption[] = []
+        let hasValues = false
+        
+        if (inputType === 'tokenizer') {
+          // Use filtersRef values (applied filters) instead of current state values
+          switch (filterType) {
+            case 'client':
+              filterValues = filtersRef.current.clientFilter
+              break
+            case 'ticker':
+              filterValues = filtersRef.current.tickerFilter
+              break
+            case 'product':
+              filterValues = filtersRef.current.productFilter
+              break
+            case 'transaction':
+              filterValues = filtersRef.current.transactionFilter
+              break
+          }
+          hasValues = filterValues.length > 0
+          
+          if (hasValues) {
+            const displayTexts = filterValues.map(f => {
+              // Strip HTML tags and decode HTML entities for clean display
+              const cleanText = f.text
+                .replace(/<[^>]*>/g, '') // Remove HTML tags
+                .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
+                .replace(/&amp;/g, '&') // Replace &amp; with &
+                .replace(/&lt;/g, '<') // Replace &lt; with <
+                .replace(/&gt;/g, '>') // Replace &gt; with >
+                .replace(/&quot;/g, '"') // Replace &quot; with "
+                .replace(/&#39;/g, "'") // Replace &#39; with '
+                .trim() // Remove extra whitespace
+              return cleanText
+            }).join(', ')
+            labels[labelKey] = displayTexts
+          }
+        } else if (inputType === 'slider') {
+          let minVal = 0, maxVal = 0
+          let defaultMin = 0, defaultMax = 99999999999 // Fallback defaults
+          
+          if (filterType === 'dealsize') {
+            minVal = filtersRef.current.dealSizeRange[0] ?? 0
+            maxVal = filtersRef.current.dealSizeRange[1] ?? 99999999999
+            // Use the actual loaded default values from API
+            defaultMin = defaultSliderRanges.dealSize[0] ?? 0
+            defaultMax = defaultSliderRanges.dealSize[1] ?? 99999999999
+          } else if (filterType === 'revenuegross') {
+            minVal = filtersRef.current.revenueGrossRange[0] ?? 0
+            maxVal = filtersRef.current.revenueGrossRange[1] ?? 99999999999
+            // Use the actual loaded default values from API
+            defaultMin = defaultSliderRanges.revenueGross[0] ?? 0
+            defaultMax = defaultSliderRanges.revenueGross[1] ?? 99999999999
+          }
+          
+          // Check if slider values have been changed from their loaded default values
+          // Only show filter label if user has actually modified the slider from API defaults
+          hasValues = (minVal !== defaultMin) || (maxVal !== defaultMax)
+          
+          if (hasValues) {
+            const formattedMin = minVal === 0 ? '0' : DataTableFormatters.formatCurrency(minVal) || minVal.toString()
+            const formattedMax = maxVal === 0 ? '0' : DataTableFormatters.formatCurrency(maxVal) || maxVal.toString()
+            
+            // Clean the label text to remove HTML tags and entities
+            const cleanLabel = filterConfig.label
+              .replace(/<[^>]*>/g, '') // Remove HTML tags
+              .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
+              .replace(/&amp;/g, '&') // Replace &amp; with &
+              .replace(/&lt;/g, '<') // Replace &lt; with <
+              .replace(/&gt;/g, '>') // Replace &gt; with >
+              .replace(/&quot;/g, '"') // Replace &quot; with "
+              .replace(/&#39;/g, "'") // Replace &#39; with '
+              .trim() // Remove extra whitespace
+              
+            labels[labelKey] = `${cleanLabel}: ${formattedMin} to ${formattedMax}`
+          }
+        }
+      }
+    })
+    
+    setFilterLabels(labels)
+  }, [closedDealShowFilter, defaultSliderRanges])
+
+  // Refs to hold current values without causing re-renders
+  const filtersRef = useRef({
+    clientFilter: [] as FilterOption[],
+    tickerFilter: [] as FilterOption[],
+    productFilter: [] as FilterOption[],
+    transactionFilter: [] as FilterOption[],
+    includeExclude: {
+      client: 'include',
+      ticker: 'include',
+      product: 'include',
+      transaction: 'include'
+    },
+    dealSizeRange: [0, 99999999999],
+    revenueGrossRange: [0, 99999999999],
+    globalPeriodFilter: null as GlobalPeriodFilterData | null
+  })
+
+  // Update refs when state changes
+  useEffect(() => {
+    filtersRef.current = {
+      clientFilter,
+      tickerFilter,
+      productFilter,
+      transactionFilter,
+      includeExclude,
+      dealSizeRange,
+      revenueGrossRange,
+      globalPeriodFilter
+    }
+  }, [clientFilter, tickerFilter, productFilter, transactionFilter, includeExclude, dealSizeRange, revenueGrossRange, globalPeriodFilter])
+  
+  // Update filter labels when Apply button is clicked (matching jQuery setFilteredText)
+  // Only update labels after filters are applied, not when inputs change
+  useEffect(() => {
+    updateFilterLabels()
+  }, [filterTrigger, updateFilterLabels])
+
+
+
+  // Process filter data according to jQuery closedDealsTockenizeArray logic
+  const processFilterData = useCallback(() => {
+    const filterData: Record<string, unknown> = {}
+    
+    // Process each filter based on configuration
+    closedDealShowFilter.forEach((filterConfig) => {
+      if (filterConfig.enable === 1) {
+        const apiParam = filterConfig.apiParam
+        const inputType = filterConfig.inputType
+        const filterType = filterConfig.type
+        
+        if (inputType === 'tokenizer') {
+          let filterValues: string[] = []
+          
+          switch (filterType) {
+            case 'client':
+              filterValues = clientFilter.map(f => f.value)
+              break
+            case 'ticker':
+              filterValues = tickerFilter.map(f => f.value)
+              break
+            case 'product':
+              filterValues = productFilter.map(f => f.value)
+              break
+            case 'transaction':
+              filterValues = transactionFilter.map(f => f.value)
+              break
+          }
+          
+          // Apply include/exclude logic if enabled
+          if (filterConfig.inclExclShow === 1) {
+            const includeExcludeMode = filtersRef.current.includeExclude[filterType as keyof typeof filtersRef.current.includeExclude]
+            filterData[apiParam] = {
+              filter: includeExcludeMode,
+              value: filterValues
+            }
+          } else {
+            filterData[apiParam] = filterValues
+          }
+        } else if (inputType === 'slider') {
+          let sliderData: { minVal: number; maxVal: number } = { minVal: 0, maxVal: 0 }
+          
+          if (filterType === 'dealsize') {
+            sliderData = {
+              minVal: filtersRef.current.dealSizeRange[0] ?? 0,
+              maxVal: filtersRef.current.dealSizeRange[1] ?? 0
+            }
+          } else if (filterType === 'revenuegross') {
+            sliderData = {
+              minVal: filtersRef.current.revenueGrossRange[0] ?? 0, 
+              maxVal: filtersRef.current.revenueGrossRange[1] ?? 0
+            }
+          }
+          
+          if (filterConfig.inclExclShow === 1) {
+            filterData[apiParam] = sliderData
+          } else {
+            filterData[apiParam] = sliderData
+          }
+        }
+      }
+    })
+    
+    // Add account ID and search code (matching jQuery logic)
+    if (_searchCode) {
+      // const accId = (window as WindowWithPrism).prismGetActiveTsheetAccountID?.() || _clientId // Currently unused
+      let dataParam = ''
+      
+      if (_searchCode === 'TC') {
+        dataParam = decodeURIComponent(_clientId)
+      } else {
+        dataParam = _clientId || ''
+      }
+      
+      filterData.accountId = dataParam
+      filterData.searchCode = _searchCode
+    }
+    
+    return filterData
+  }, [closedDealShowFilter, clientFilter, tickerFilter, productFilter, transactionFilter, 
+      _searchCode, _clientId])
+
+  // Enhanced data loader matching jQuery implementation (no pagination, scroll-based)
+  const loadClosedDealsData = useCallback(async (
+    dataTableParams: {
+      start?: number
+      length?: number
+      search?: { value: string; regex: boolean }
+      order?: Array<{ column: number; dir: 'asc' | 'desc' }>
+      columns?: Array<{ data: string; searchable: boolean; orderable: boolean; search: { value: string; regex: boolean } }>
+    } = {}
+  ) => {
+    try {
+      setIsLoading(true)
+      setTableLoading(true)
+      
+      const filters = filtersRef.current
+      
+      // Process filter data using jQuery logic (closedDealsTockenizeArray equivalent)
+      const filterData = processFilterData()
+      
+      // Get period dates for filtering from dynamic filter
+      const periodData = filters.globalPeriodFilter ? {
+        period: filters.globalPeriodFilter.label,
+        start: moment(filters.globalPeriodFilter.start).format('YYYY-MM-DD'),
+        end: moment(filters.globalPeriodFilter.end).format('YYYY-MM-DD')
+      } : {
+        period: 'YTD',
+        start: moment().startOf('year').format('YYYY-MM-DD'),
+        end: moment().format('YYYY-MM-DD')
+      }
+
+      // Build complete DataTable request (matching jQuery formDataTableReqObj)
+      const dataTableRequest: Record<string, unknown> = {
+        top: 'expanded',
+        period: periodData.period,
+        startdate: periodData.period === 'custom' ? periodData.start : '',
+        enddate: periodData.period === 'custom' ? periodData.end :'',
+        data: JSON.stringify(filterData),
+        columns: dataTableParams.columns || [],
+        order: dataTableParams.order || (dynamicTableConfig ? [{ 
+          column: dynamicTableConfig.defColSort, 
+          dir: dynamicTableConfig.defColSortType as 'asc' | 'desc',
+          name: dynamicTableConfig.columnIndices[dynamicTableConfig.defColSort] || ''
+        }] : []),
+        search: { value: '', regex: false },
+        start: dataTableParams.start || 0,
+        length: -1, // Load all data at once like jQuery (-1 means all records)
+      }
+      
+      // Use ReactUtils.fetchPost with proper headers (matching jQuery implementation)
+      const response = await ReactUtils.fetchPost(`${API_CONFIG.IBPath}/dealv1/getcloseddeals`, dataTableRequest, {
+        'Accept': 'application/json, text/javascript, */*; q=0.01'
+      })
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      // Parse JSON response with enhanced error handling
+      let result
+      try {
+        result = await response.json()
+      } catch (jsonError) {
+        // If JSON parsing fails, try to get response text for error context
+        try {
+          const responseText = await response.text()
+          const contentType = response.headers.get('content-type') || 'unknown'
+          const errorContext = {
+            contentType,
+            statusCode: response.status,
+            responsePreview: responseText.substring(0, 200),
+            url: response.url
+          }
+          
+          // Try to extract JSON from HTML response if wrapped
+          const jsonMatch = responseText.match(/(\{.*\})/)
+          if (jsonMatch && jsonMatch[1]) {
+            try {
+              result = JSON.parse(jsonMatch[1])
+            } catch (extractError) {
+              throw new Error(`Failed to parse JSON response: ${JSON.stringify(errorContext)}`)
+            }
+          } else {
+            throw new Error(`Invalid JSON response format: ${JSON.stringify(errorContext)}`)
+          }
+        } catch (textError) {
+          // If we can't even get the response text, throw the original error
+          throw new Error(`JSON parsing failed: ${jsonError}`)
+        }
+      }
+
+      if (result && result.data) {
+        const responseData = result.data
+        const deals = responseData || []
+        
+        // Transform API data with proper formatting (matching jQuery rowCallback)
+        const transformedDeals = deals.map((deal: ClosedDeal, index: number) => {
+          // Apply number formatting matching jQuery getConvertData function
+          const formatMoney = (value: number) => {
+            if (!value && value !== 0) return ''
+            // Use simple string formatting for currency
+            const millions = value / 1000000
+            return `${millions.toFixed(1)} mm`
+          }
+          
+          return {
+            ...deal,
+            // Format monetary values (matching jQuery implementation)
+            dealsize_display: formatMoney(deal.dealsize),
+            grossfee_display: formatMoney(deal.grossfee),
+            expensesholdback_display: formatMoney(deal.expensesholdback),
+            netfee_display: formatMoney(deal.netfee),
+            invoicefee_display: formatMoney(deal.invoicefee),
+            // Keep original values for calculations
+            dealsize: deal.dealsize,
+            grossfee: deal.grossfee,
+            expensesholdback: deal.expensesholdback,
+            netfee: deal.netfee,
+            invoicefee: deal.invoicefee,
+            // Add CSS classes for negative values (matching jQuery getFormatterClass)
+            dealsize_class: deal.dealsize < 0 ? 'numFormatRed' : '',
+            grossfee_class: deal.grossfee < 0 ? 'numFormatRed' : '',
+            expensesholdback_class: deal.expensesholdback < 0 ? 'numFormatRed' : '',
+            netfee_class: deal.netfee < 0 ? 'numFormatRed' : '',
+            invoicefee_class: deal.invoicefee < 0 ? 'numFormatRed' : '',
+            // Add row index for DataTable compatibility
+            rowIndex: (Number(dataTableRequest.start) || 0) + index
+          }
+        })
+
+        // Set the transformed data (matching jQuery: no pagination, load all)
+        setData(transformedDeals)
+        
+        // Store DataTable metadata for export (matching jQuery)
+        const tableMetadata = {
+          recordsTotal: result.recordsTotal || deals.length,
+          recordsFiltered: result.recordsFiltered || deals.length,
+          exportUrl: `${API_CONFIG.IBPath}/dealv1/getcloseddeals?top=expanded&period=${periodData.period}&startdate=${periodData.start}&enddate=${periodData.end}&data=${encodeURIComponent(JSON.stringify(filterData))}`
+        };
+        // Update total records
+        
+        // Store globally for DataTable integration
+        (window as unknown as Record<string, unknown>).closedDealsMetadata = tableMetadata
+        
+      } else {
+        // Set empty data if no results
+        setData([])
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to load closed deals data'
+      ReactUtils.handleReportError('ClosedDeals', error as Error, 'loadClosedDealsData')
+      toast({
+        title: "Error", 
+        description: errorMsg,
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+      setTableLoading(false)
+    }
+  }, [setData, setTableLoading, toast, dynamicTableConfig, processFilterData])
+
+  // Apply filters function (matching jQuery applyAllBtn logic)
+  const applyFilters = useCallback(() => {
+    // Use the jQuery-based apply filters logic
+    applyAllFilters()
+    // Note: setFilterTrigger is already called in applyAllFilters, no need to call again
+  }, [applyAllFilters])
+
+  // Tearsheet actions are now handled directly by tearsheetCommon
+
+  // Cleanup global functions when component unmounts
+  useEffect(() => {
+    return () => {
+      tearsheetCommon.cleanup()
+    }
+  }, [tearsheetCommon])
+
+  // Load table fields when dynamic table config changes (for column visibility)
+  useEffect(() => {
+    if (dynamicTableConfig && dynamicTableConfig.columnIndices.length > 0) {
+      loadTableFields()
+    }
+  }, [dynamicTableConfig, loadTableFields])
+
+  // Initialize configuration and data on mount
+  useEffect(() => {
+    const initializeComponent = async () => {
+      try {
+        // Initialize legacy functions for backward compatibility
+        
+        // Initialize searchType configurations from API
+        if (!searchTypeLoading) {
+          await searchTypeService.searchType({ type: 'Dashboard' })
+        }
+        
+        // Load configuration in sequence: table settings → table fields → slider ranges
+        // Table settings contains the dynamic column configuration
+        const tableConfig = await loadTableSettings()
+        
+        // Load table fields after table config is loaded (needed for column visibility)
+        if (tableConfig) {
+          await loadTableFields()  
+        }
+        
+        // Load slider ranges
+        await loadSliderRanges()
+        
+        // If we have table config and component is not initialized, trigger initial data load
+        if (tableConfig && !isInitialized) {
+          setIsInitialized(true)
+          // Wait for DataTable columns to be initialized before loading data
+          // The consolidated useEffect will handle the actual data loading
+        }
+      } catch (error) {
+        // Silently handle initialization errors to prevent app crash
+        // Silently handle initialization errors
+      }
+    }
+    
+    // Note: Styles are now handled via Tailwind CSS classes in the JSX instead of direct DOM manipulation
+    
+    // Modern utility functions using React patterns (instead of direct window manipulation)
+    const utilityFunctions = {
+      showNotification: (message: string) => {
+        toast({
+          title: 'Navigation',
+          description: message,
+        })
+      },
+
+    }
+
+    // Legacy compatibility - only set window functions if needed for backwards compatibility
+    if (typeof window !== 'undefined') {
+      const globalWindow = window as unknown as Record<string, unknown>
+      
+      // Expose utility functions for legacy code if needed
+      if (!globalWindow.showToast) {
+        globalWindow.showToast = utilityFunctions.showNotification
+      }
+      
+
+    }
+    
+    // Note: Styles are now handled via Tailwind CSS classes instead of direct DOM injection
+    initializeComponent()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty dependency array - only run on mount
+
+  // All filters now only apply when Apply button is clicked
+  // Removed memoized filter strings as they're no longer used for automatic reloading
+
+  // Trigger data reload when filters change
+  const triggerDataReload = useMemo(() => {
+    let timeoutId: NodeJS.Timeout
+    return () => {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(() => {
+        if (isInitialized) {
+          loadClosedDealsData(dataTableParams) // Reload data with current DataTable params
+        }
+      }, 300)
+    }
+  }, [loadClosedDealsData, isInitialized, dataTableParams])
+
+  // Watch for filter changes and dataTable parameter changes - consolidated reload
+  useEffect(() => {
+    if (!isInitialized) return
+    // Only trigger if we have columns (DataTable is initialized)
+    if (dataTableParams.columns.length > 0) {
+      triggerDataReload()
+    }
+  }, [globalPeriodFilter,
+    dataTableParams,
+    isInitialized, 
+    filterTrigger,
+    triggerDataReload
+  ])
+
+  // Trigger table layout recalculation when filter panel visibility changes
+  useEffect(() => {
+    // Add a small delay to allow CSS transitions to complete before triggering resize
+    const timeoutId = setTimeout(() => {
+      if (typeof window !== 'undefined') {
+        // Trigger a resize event to help the table recalculate its dimensions
+        window.dispatchEvent(new Event('resize'))
+      }
+    }, 350) // Slightly longer than the transition duration (300ms)
+
+    return () => clearTimeout(timeoutId)
+  }, [showFilters])
+
+
+  // Initialize DataTable columns from API response (dynamicTableConfig)
+  useEffect(() => {
+    if (!dynamicTableConfig) return
+
+    // Build columns from API response exactly like jQuery implementation
+    const { columnHeadings, columnIndices, defColSort, defColSortType } = dynamicTableConfig
+    
+    const columns = columnHeadings.map((heading, index) => {
+      const columnIndex = columnIndices[index]
+      return {
+        data: columnIndex || `col_${index}`, // Ensure data is always a string
+        searchable: true,
+        orderable: true,
+        search: { value: '', regex: false } // Remove columnsearch property
+      }
+    })
+    
+    setDataTableParams(prev => ({
+      ...prev,
+      columns,
+      // Set default order from API response
+      order: [{ 
+        column: defColSort || 0, 
+        dir: (defColSortType || 'desc') as 'asc' | 'desc'
+      }]
+    }))
+  }, [dynamicTableConfig])
+
+  // Handle global search with debouncing
+
+
+  // NOTE: Removed separate useEffect for DataTable parameters to prevent duplicate API calls 
+  // All data loading is now consolidated and handled by triggerDataReload
+
+  // Data loading is now handled in the initialization sequence above
+  // Export functions using DataTable utilities
+
+  // Modern DataTable configuration for dynamic reusable DataTable component
+  const modernDataTableConfig = useMemo(() => {
+    // Build columns configuration from API response for modern DataTable
+    if (!dynamicTableConfig) {
+      return null;
+    }
+
+    const { columnHeadings, columnIndices, colsAlign, tableSettings, colsCnt } = dynamicTableConfig;
+    
+    // Transform to modern DataTable column format
+    const columns: DataTableColumn[] = columnHeadings.map((heading, index) => {
+      const columnIndex = columnIndices[index];
+      const alignment = colsAlign[index] || 'left';
+      const isNumberFormat = colsCnt.includes(index.toString());
+      const isDefault = tableSettings[index]?.blockchk || false;
+      
+      return {
+        key: columnIndex || `col_${index}`,
+        title: heading,
+        dataIndex: columnIndex,
+        width: isNumberFormat ? 130 : (
+          heading.toLowerCase().includes('name') || 
+          heading.toLowerCase().includes('client') || 
+          heading.toLowerCase().includes('account') ? 300 : 150
+        ),
+
+        render: (value: unknown, record: unknown, _index?: number) => {
+          const closedDealRecord = record as ClosedDeal;
+          
+          // Handle currency formatting for numeric columns
+          if (isNumberFormat && value !== null && value !== undefined) {
+            const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+            if (!isNaN(numValue)) {
+              return (
+                <span className={numValue < 0 ? 'text-red-600' : ''}>
+                  {DataTableFormatters.formatCurrency(numValue)}
+                </span>
+              );
+            }
+          }
+          
+          // Handle HTML content with tearsheet links using common helper
+          if (typeof value === 'string' && value.includes('<')) {
+            return tearsheetCommon.renderHtmlWithTearsheetLinks(value, closedDealRecord as unknown as Record<string, unknown>);
+          }
+          
+          // // Handle tearsheet links for specific columns
+          // if ((columnIndex === 'clientname' || heading.toLowerCase().includes('client')) && value) {
+          //   const { searchType, searchValue } = tearsheetActions.getDynamicSearchType('clientname', closedDealRecord);
+          //   return (
+          //     <button 
+          //       onClick={() => tearsheetActions.openTearsheet(searchType, searchValue, String(value))}
+          //       className="text-blue-600 hover:underline cursor-pointer hover:text-blue-800"
+          //     >
+          //       {String(value)}
+          //     </button>
+          //   );
+          // }
+          
+          // Handle date formatting
+          if (columnIndex === 'dealdate' && value) {
+            return moment(String(value)).format('MM/DD/YYYY');
+          }
+          
+          // Default string rendering
+          return String(value || '');
+        },
+        align: alignment as 'left' | 'center' | 'right',
+        sorter: (a: unknown, b: unknown) => {
+          const recordA = a as Record<string, unknown>;
+          const recordB = b as Record<string, unknown>;
+          const fieldKey = columnIndex || `col_${index}`;
+          const aVal = recordA[fieldKey];
+          const bVal = recordB[fieldKey];
+          
+          // Handle numeric columns
+          if (isNumberFormat) {
+            const aNum = typeof aVal === 'number' ? aVal : parseFloat(String(aVal || 0));
+            const bNum = typeof bVal === 'number' ? bVal : parseFloat(String(bVal || 0));
+            return aNum - bNum;
+          }
+          
+          // Handle date columns
+          if (fieldKey === 'dealdate' || heading.toLowerCase().includes('date')) {
+            const aDate = moment(String(aVal || ''));
+            const bDate = moment(String(bVal || ''));
+            return aDate.isValid() && bDate.isValid() ? aDate.valueOf() - bDate.valueOf() : 0;
+          }
+          
+          // Handle string columns
+          return String(aVal || '').localeCompare(String(bVal || ''));
+        },
+        ellipsis: true, // Truncate long text with tooltip
+        // Responsive visibility - important columns always visible
+        responsive: heading.toLowerCase().includes('name') || 
+                   heading.toLowerCase().includes('client') || 
+                   heading.toLowerCase().includes('ticker') ||
+                   heading.toLowerCase().includes('deal') ? 
+          ['xs', 'sm', 'md', 'lg', 'xl'] : // Always show important columns
+          ['sm', 'md', 'lg', 'xl'], // Hide less important columns on extra small screens
+        visible: tableFieldSettings ? 
+          tableFieldSettings.find(setting => setting.data === columnIndex)?.checked !== false :
+          (isDefault !== false) // Use user settings if available, otherwise show by default
+      };
+    });
+
+    return {
+      columns,
+      tableId: `${id}closedDealTable`,
+      scrollConfig: {
+        x: 'max-content', // Responsive horizontal scroll
+        y: 'calc(100vh - 300px)' // Dynamic vertical scroll height
+      },
+      pagination: {
+        enabled: false, // Load all data like jQuery implementation
+        pageSize: -1 // Show all records
+      },
+      sorting: {
+        enabled: true,
+        defaultSort: dynamicTableConfig.defColSort ? {
+          field: columnIndices[dynamicTableConfig.defColSort],
+          order: dynamicTableConfig.defColSortType as 'asc' | 'desc'
+        } : undefined
+      },
+      export: {
+        enabled: true,
+        formats: ['csv', 'excel'] as Array<'csv' | 'excel'>,
+        filename: 'closed_deals'
+      },
+      selection: {
+        enabled: false // No row selection for this report
+      },
+      responsive: true,
+      stickyHeader: true,
+      loading: isLoading || tableLoading
+    };
+  }, [id, dynamicTableConfig, tearsheetCommon, isLoading, tableLoading, tableFieldSettings])
+
+  // Prepare data for modern DataTable with proper transformations
+  const processedTableData = useMemo(() => {
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    const processedData = data.map((deal, index) => ({
+      ...deal,
+      // Ensure all required fields exist with proper fallbacks
+      id: deal.id || index,
+      key: deal.id?.toString() || index.toString(),
+      // Add computed fields for sorting/filtering
+      dealdate_sort: deal.dealdate ? moment(deal.dealdate).valueOf() : 0,
+      dealsize_sort: deal.dealsize || 0,
+      grossfee_sort: deal.grossfee || 0,
+      netfee_sort: deal.netfee || 0,
+      // Add row metadata
+      _rowIndex: index
+    }));
+
+    return processedData;
+  }, [data])
+
+
+
+  // Simple and clean UI
+  return (
+    <div 
+      className={`flex flex-col lg:flex-row gap-4 closedDealsDash${id} [&_a]:text-blue-600 [&_a]:no-underline hover:[&_a]:underline [&_a:hover]:text-blue-700 [&_a]:cursor-pointer h-full w-full`}
+      data-current-panel={JSON.stringify(currentPanel)}
+      data-report-id={id}
+    >
+      <div className={`${showFilters ? 'lg:w-3/4' : 'w-full'} ${id}showfiltertype min-w-0 flex-1`}>
+        <div className="bg-white h-full w-full">
+          <div className="p-0 h-full w-full">
+            {/* ReactDataTable - Modern React DataTable with automatic jQuery config conversion */}
+            <div 
+              className={`transition-all duration-300 ease-in-out ${showFilters ? 'w-full' : 'w-full max-w-full'}`}
+              style={{
+                opacity: 1,
+                transform: 'translateX(0)',
+                visibility: 'visible'
+              }}
+            >
+              {/* Filter Labels Display */}
+              {Object.keys(filterLabels).length > 0 && (
+                <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                  <div className="flex flex-wrap gap-2">
+                    <span className="text-sm font-medium text-gray-600 mr-2">Active Filters:</span>
+                    {Object.entries(filterLabels).map(([key, label]) => (
+                      <span
+                        key={key}
+                        className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 border border-blue-200"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {modernDataTableConfig ? (
+                <div className="overflow-hidden w-full">
+                  <DataTable
+                    key={`datatable-${showFilters ? 'filtered' : 'fullwidth'}`}
+                    id={modernDataTableConfig.tableId}
+                    columns={modernDataTableConfig.columns}
+                    dataSource={processedTableData}
+                    loading={modernDataTableConfig.loading}
+                    toolbarActions={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowFilters(!showFilters)}
+                        className="flex items-center gap-2"
+                      >
+                        {showFilters ? 'Hide Filters' : 'Show Filters'}
+                      </Button>
+                    }
+                    pagination={{
+                      pageSize: 50,
+                      pageSizeOptions: ['25', '50', '100', '200', '500'],
+                      showSizeChanger: true,
+                      showTotal: (total: number, range: [number, number]) => 
+                        `${range[0]}-${range[1]} of ${total} closed deals`,
+                      onChange: (_page: number, _pageSize: number) => {
+                        // Handle pagination changes
+                      },
+                      onShowSizeChange: (_current: number, _size: number) => {
+                        // Handle page size changes
+                      }
+                    }}
+                    scroll={modernDataTableConfig.scrollConfig}
+                    size="middle"
+                    bordered={true}
+                    stickyHeader={modernDataTableConfig.stickyHeader}
+                    responsive={modernDataTableConfig.responsive}
+                    exportOptions={{
+                      enabled: true,
+                      formats: ['csv', 'excel', 'json'],
+                      filename: `closed_deals_${moment().format('YYYY-MM-DD')}`,
+                      onExport: (format: string, data: unknown[]) => {
+                        // Custom export handling if needed
+                        toast({
+                          title: 'Export Started',
+                          description: `Exporting ${data.length} records as ${format.toUpperCase()}...`,
+                        })
+                      }
+                    }}
+                    columnSettings={{
+                      enabled: true,
+                      onColumnChange: async (visibleColumns: string[]) => {
+                        // Save column visibility preferences to backend
+                        const tableId = `${id}closedDealTable`
+                        const preferences = {
+                          tableId,
+                          visibleColumns,
+                          timestamp: Date.now()
+                        }
+                        
+                        // Store in localStorage for immediate persistence
+                        try {
+                          localStorage.setItem(`dataTable_${tableId}_columns`, JSON.stringify(preferences))
+                        } catch (error) {
+                          // Handle storage errors silently
+                        }
+                        
+                        // Save to backend - convert column visibility to UserTableSettings format
+                        try {
+                          const userTableSettings = modernDataTableConfig?.columns.map((column) => ({
+                            data: column.dataIndex || column.key,
+                            checked: visibleColumns.includes(column.key),
+                            title: column.title || '',
+                            isDefault: false,
+                            order: modernDataTableConfig.columns.indexOf(column) + 1
+                          })) || []
+                          
+                          const success = await DataTableSettings.setTableSettings(
+                            tableId, 
+                            userTableSettings,
+                            {
+                              setTblIdUser: true // Include user role in table ID
+                            }
+                          )
+                          
+                          if (success) {
+                            toast({
+                              title: 'Column Visibility Saved',
+                              description: `${visibleColumns.length} columns visible - settings saved to server`,
+                            })
+                          } else {
+                            toast({
+                              title: 'Column Visibility Updated',
+                              description: `${visibleColumns.length} columns visible - saved locally only`,
+                              variant: 'destructive'
+                            })
+                          }
+                        } catch (error) {
+                          // Fallback to local storage notification
+                          toast({
+                            title: 'Column Visibility Updated',
+                            description: `${visibleColumns.length} columns visible - saved locally`,
+                            variant: 'destructive'
+                          })
+                        }
+                      }
+                    }}
+                    serverSide={false} // Client-side processing for better performance with filtered data
+                  />
+                  
+                  {/* Status Bar */}
+                  <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-600 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                      <span>
+                        Showing {processedTableData.length} deals
+                      </span>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                      {sortConfig.field && (
+                        <span className="text-green-600">
+                          Sorted by {sortConfig.field} ({sortConfig.order})
+                        </span>
+                      )}
+                      <span className="text-xs">
+                        Last updated: {moment().format('HH:mm:ss')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-8">
+                  <div className="flex items-center space-x-2">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                    <span className="text-gray-600">Loading table configuration...</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+  
+      {/* Filter Panel */}
+      <div className={`lg:w-1/4 w-full transition-all duration-300 ease-in-out overflow-hidden ${
+        showFilters 
+          ? 'lg:opacity-100 lg:translate-x-0 opacity-100 max-h-screen' 
+          : 'lg:opacity-0 hidden lg:translate-x-4 lg:pointer-events-none opacity-0 max-h-0 lg:max-h-screen'
+      }`}>
+        {showFilters && (
+          <div className="bg-white rounded-lg border border-gray-200 p-2 sm:p-4 space-y-4 sm:space-y-6 max-h-[calc(100vh-100px)] overflow-y-auto transform transition-all duration-300 ease-in-out">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <h3 className="text-base sm:text-lg font-semibold">Filters</h3>
+                <div className="flex gap-2 flex-wrap">
+                 <Button
+                    variant="default"
+                    size="sm"
+                    onClick={applyFilters}
+                    className="text-xs flex-1 sm:flex-none"
+                  >
+                    Apply All
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={clearAllFilters}
+                    className="text-xs flex-1 sm:flex-none"
+                  >
+                    Clear All
+                  </Button>
+                </div>
+              </div>
+  
+              <div className="space-y-6">
+                {/* Dynamic Filter Rendering based on closedDealShowFilter configuration */}
+                {closedDealShowFilter.map((filterConfig) => {
+                  if (filterConfig.enable !== 1) return null;
+                  
+                  if (filterConfig.inputType === 'tokenizer') {
+                    const filterType = filterConfig.type;
+                    let selectedValues: FilterOption[] = [];
+                    let options: FilterOption[] = [];
+                    
+                    // Map filter type to state
+                    switch (filterType) {
+                      case 'client':
+                        selectedValues = clientFilter;
+                        options = filterOptions.clients || [];
+                        break;
+                      case 'ticker':
+                        selectedValues = tickerFilter;
+                        options = filterOptions.tickers || [];
+                        break;
+                      case 'product':
+                        selectedValues = productFilter;
+                        options = filterOptions.products || [];
+                        break;
+                      case 'transaction':
+                        selectedValues = transactionFilter;
+                        options = filterOptions.transactions || [];
+                        break;
+                      default:
+                        // Unknown filter type - skip rendering
+                        return null;
+                    }
+                    
+                    return (
+                      <TokenizerSection
+                        key={filterConfig.id}
+                        config={filterConfig}
+                        selectedValues={selectedValues || []}
+                        includeExclude={includeExclude[filterType as keyof typeof includeExclude] || 'include'}
+                        onFilterChange={handleFilterChange}
+                        onIncludeExcludeChange={handleIncludeExcludeChange}
+                        onSearch={searchFilterOptions}
+                        options={options}
+                        clearTrigger={clearTrigger}
+                      />
+                    );
+                  } else if (filterConfig.inputType === 'slider') {
+                    const filterType = filterConfig.type;
+                    let values: number[] = [];
+                    let onSliderChange: (vals: number[]) => void;
+                    
+                    // Map slider type to state with memoized handlers
+                    switch (filterType) {
+                      case 'dealsize':
+                        values = dealSizeRange;
+                        onSliderChange = (vals: number[]) => handleSliderChange('dealsize', vals);
+                        break;
+                      case 'revenuegross':
+                        values = revenueGrossRange;
+                        onSliderChange = (vals: number[]) => handleSliderChange('revenuegross', vals);
+                        break;
+                      default:
+                        return null;
+                    }
+                    
+                    return (
+                      <SliderSection
+                        key={filterConfig.id}
+                        config={filterConfig}
+                        values={values}
+                        onValuesChange={onSliderChange}
+                        formatValue={formatCurrencyValue}
+                        filtersRef={filtersRef}
+                      />
+                    );
+                  }
+                  
+                  return null;
+                })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Modern confirmation dialog (replaces window.confirm) */}
+      <Dialog open={confirmDialog.isOpen} onOpenChange={(open) => 
+        setConfirmDialog(prev => ({ ...prev, isOpen: open }))
+      }>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{confirmDialog.title}</DialogTitle>
+            <DialogDescription>
+              {confirmDialog.description}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={confirmDialog.onConfirm}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+}
+
+// Tokenizer Section Component (jQuery additionaltokenizer equivalent)
+interface TokenizerSectionProps {
+  config: FilterConfig
+  selectedValues: FilterOption[]
+  includeExclude: string
+  onFilterChange: (filterType: string, values: FilterOption[]) => void
+  onIncludeExcludeChange: (filterType: string, mode: 'include' | 'exclude') => void
+  onSearch: (filterType: string, query: string) => void
+  options: FilterOption[]
+  clearTrigger: number
+}
+
+const TokenizerSection: React.FC<TokenizerSectionProps> = ({
+  config,
+  selectedValues,
+  includeExclude,
+  onFilterChange,
+  onIncludeExcludeChange,
+  onSearch,
+  clearTrigger,
+  options
+}) => {
+  const [searchQuery, setSearchQuery] = useState('')
+  const [isOpen, setIsOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Clear search query when clearTrigger changes
+  useEffect(() => {
+    if (clearTrigger > 0) {
+      setSearchQuery('')
+      setIsOpen(false)
+    }
+  }, [clearTrigger])
+
+  const handleAddValue = (option: FilterOption) => {
+    if (!selectedValues.find(v => v.value === option.value)) {
+      onFilterChange(config.type, [...selectedValues, option])
+    }
+    setSearchQuery('')
+    setIsOpen(false)
+  }
+
+  const handleRemoveValue = (valueToRemove: string) => {
+    onFilterChange(config.type, selectedValues.filter(v => v.value !== valueToRemove))
+  }
+
+  // Handle search with minimum length check (matching jQuery minsrchLen)
+  useEffect(() => {
+    if (searchQuery.length >= (config.minsrchLen || 1)) {
+      setIsLoading(true)
+      const timeoutId = setTimeout(() => {
+        onSearch(config.type, searchQuery)
+        setIsLoading(false)
+      }, 300)
+      return () => {
+        clearTimeout(timeoutId)
+        // Don't call setIsLoading(false) here as it can cause re-renders after cleanup
+      }
+    } else {
+      setIsLoading(false)
+    }
+    return undefined
+  }, [searchQuery, config.type, config.minsrchLen, onSearch])
+
+  // Filter dropdown options based on nbDropdownElements limit
+  const filteredOptions = useMemo(() => {
+    // Ensure options is an array and has valid data
+    if (!Array.isArray(options) || options.length === 0) {
+      return []
+    }
+    
+    const filtered = options.filter(option => {
+      // Ensure option has valid text property
+      if (!option || typeof option.text !== 'string') return false
+      return option.text.toLowerCase().includes(searchQuery.toLowerCase())
+    })
+    
+    const maxElements = config.nbDropdownElements || 100
+    const result = filtered.slice(0, maxElements)
+    return result
+  }, [options, searchQuery, config.nbDropdownElements])
+
+  return (
+    <TooltipProvider>
+      <div className="group space-y-4 p-6 bg-gradient-to-br from-white via-indigo-50/30 to-purple-50/30 rounded-2xl border border-indigo-100/50 hover:border-indigo-200/70 transition-all duration-300 hover:shadow-lg hover:shadow-indigo-100/20 backdrop-blur-sm" id={config.containerId}>
+        
+        {/* Modern Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 shadow-sm"></div>
+            <Label className="text-base font-bold text-slate-800 group-hover:text-indigo-900 transition-colors tracking-tight">
+              {config.label}
+            </Label>
+          </div>
+
+          {/* Modern Include/Exclude Toggle */}
+          {config.inclExclShow === 1 && config.includeExclude && (
+            <div className="flex gap-1 bg-white/80 backdrop-blur-sm rounded-xl p-1.5 shadow-lg border border-white/50">
+              {config.includeExclude.map((toggleConfig) => {
+                if (toggleConfig.enable === 0) return null
+                const isActive = includeExclude === toggleConfig.value
+                return (
+                  <Tooltip key={toggleConfig.value}>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all duration-300 transform hover:scale-105 ${
+                          isActive 
+                            ? toggleConfig.value === 'include' 
+                              ? 'bg-gradient-to-r from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-200/50' 
+                              : 'bg-gradient-to-r from-rose-500 to-red-500 text-white shadow-lg shadow-rose-200/50'
+                            : 'bg-white/60 text-slate-600 hover:bg-white/80 hover:text-slate-800 border border-slate-200/50'
+                        }`}
+                        onClick={() => onIncludeExcludeChange(config.type, toggleConfig.value)}
+                      >
+                        {toggleConfig.value === 'include' ? <Plus className="h-4 w-4" /> : <Minus className="h-4 w-4" />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="text-xs">{toggleConfig.title} selected items</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Ultra-modern Selected Values Display */}
+        {selectedValues.length > 0 && (
+          <div className="space-y-1">
+            <div className="flex flex-wrap gap-1 px-0.5">
+              {selectedValues.map((value, index) => (
+                <div 
+                  key={value.value} 
+                  className={`
+                    group inline-flex items-center gap-2 
+                    px-4 py-2 text-sm font-medium
+                    bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 
+                    text-indigo-700 hover:text-indigo-800
+                    border border-indigo-200/60 hover:border-indigo-300/80
+                    rounded-xl transition-all duration-300 ease-out
+                    hover:scale-[1.05] hover:shadow-lg hover:shadow-indigo-100/50
+                    animate-in fade-in zoom-in-95
+                    backdrop-blur-sm max-w-48 cursor-default
+                    ${config.filterLabelSpanClass || ''}
+                  `}
+                  style={{
+                    animationDelay: `${index * 50}ms`
+                  }}
+                >
+                  <span className="truncate text-sm font-semibold leading-none tracking-wide">
+                    {value.text}
+                  </span>
+                  <button
+                    type="button"
+                    className="
+                      flex items-center justify-center w-5 h-5 rounded-lg
+                      text-indigo-400/70 hover:text-white hover:bg-indigo-500
+                      transition-all duration-300 ease-out
+                      hover:scale-110 focus:outline-none focus:ring-2 focus:ring-indigo-300/50
+                      group-hover:text-indigo-600
+                    "
+                    onClick={() => handleRemoveValue(value.value)}
+                    title={`Remove ${value.text}`}
+                  >
+                    <X className="h-3 w-3 stroke-[2.5]" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Modern Search Input */}
+        <div className="relative group/input">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400 group-focus-within/input:text-indigo-500 transition-all duration-300" />
+            <Input
+              placeholder={config.placeHolder || `Search ${config.label.toLowerCase()}...`}
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value)
+                setIsOpen(true)
+              }}
+              onFocus={() => setIsOpen(true)}
+              onBlur={() => {
+                setTimeout(() => setIsOpen(false), 150)
+              }}
+              className={`
+                pl-12 pr-12 py-4 text-sm font-medium bg-white/80 backdrop-blur-sm border-indigo-200/50 rounded-xl
+                focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 focus:bg-white
+                hover:border-indigo-300/70 hover:bg-white/90
+                transition-all duration-300 shadow-sm hover:shadow-md
+                placeholder:text-slate-400 placeholder:font-normal
+                ${config.containerClassName || ''}
+              `}
+              minLength={config.minsrchLen || 1}
+            />
+            {isLoading && (
+              <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
+                <div className="w-5 h-5 border-2 border-indigo-200 border-t-indigo-500 rounded-full animate-spin"></div>
+              </div>
+            )}
+            {searchQuery && !isLoading && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('')
+                  setIsOpen(false)
+                }}
+                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-indigo-600 transition-all duration-300 hover:scale-110 hover:bg-indigo-100 rounded-lg p-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            {isOpen && (
+              <ChevronDown className="absolute right-4 top-1/2 transform -translate-y-1/2 h-4 w-4 text-indigo-400 animate-bounce" />
+            )}
+            
+            {/* Modern Dropdown Results */}
+            {isOpen && (searchQuery.length >= (config.minsrchLen || 1) || filteredOptions.length > 0) && (
+              <div 
+                className="absolute top-full left-0 right-0 z-[9999] mt-2 bg-white/95 backdrop-blur-md border border-indigo-200/50 rounded-2xl shadow-2xl shadow-indigo-100/20 overflow-hidden"
+                style={{
+                  minWidth: '100%',
+                  maxHeight: '320px'
+                }}
+              >
+            {filteredOptions && filteredOptions.length > 0 ? (
+              <ScrollArea className="max-h-72">
+                <div className="p-2">
+                  {filteredOptions.map((option, index) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`
+                        w-full text-left px-4 py-3 rounded-xl hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50 
+                        text-sm transition-all group/option mb-1 last:mb-0
+                        animate-in slide-in-from-top-1 duration-300 hover:shadow-md
+                        ${selectedValues.find(v => v.value === option.value) ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-700 hover:text-indigo-700'}
+                      `}
+                      onClick={() => handleAddValue(option)}
+                      style={{
+                        animationDelay: `${index * 30}ms`
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold group-hover/option:text-indigo-800 transition-colors">
+                          {option.text}
+                        </span>
+                        {selectedValues.find(v => v.value === option.value) && (
+                          <div className="w-3 h-3 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full shadow-sm"></div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                  {options.length > (config.nbDropdownElements || 100) && (
+                    <Separator className="my-3 bg-gradient-to-r from-transparent via-indigo-200 to-transparent" />
+                  )}
+                  {options.length > (config.nbDropdownElements || 100) && (
+                    <div className="px-4 py-3 text-xs text-indigo-600 text-center bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-lg mx-2 font-medium">
+                      Showing first {config.nbDropdownElements || 100} results of {options.length} total
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            ) : (
+              <div className="p-8 text-center">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-2xl flex items-center justify-center shadow-sm">
+                  <Search className="h-8 w-8 text-indigo-400" />
+                </div>
+                <div className="text-base font-semibold text-slate-600 mb-2">
+                  {isLoading ? 'Searching...' : 'No results found'}
+                </div>
+                <div className="text-sm text-slate-400">
+                  {isLoading ? 'Please wait while we find matches' : `Try adjusting your search terms for ${config.type}`}
+                </div>
+              </div>
+            )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </TooltipProvider>
+  )
+}
+
+// Slider Section Component (jQuery additionalslider equivalent)
+interface SliderSectionProps {
+  config: FilterConfig
+  values: number[]
+  onValuesChange: (values: number[]) => void
+  formatValue: (value: number) => string
+  filtersRef: React.RefObject<{
+    clientFilter: FilterOption[]
+    tickerFilter: FilterOption[]
+    productFilter: FilterOption[]
+    transactionFilter: FilterOption[]
+    includeExclude: {
+      client: string
+      ticker: string
+      product: string
+      transaction: string
+    }
+    dealSizeRange: number[]
+    revenueGrossRange: number[]
+    globalPeriodFilter: GlobalPeriodFilterData | null
+  }>
+}
+
+const SliderSection: React.FC<SliderSectionProps> = ({
+  config,
+  values,
+  onValuesChange,
+  formatValue,
+  filtersRef
+}) => {
+  const minValue = config.minValue || 0
+  
+  // Get maxValue from filtersRef based on slider type
+  const getMaxValueFromFiltersRef = () => {
+    if (!filtersRef.current) return config.maxValue || 100000000
+    
+    const filterType = config.type
+    if (filterType === 'dealsize') {
+      return filtersRef.current.dealSizeRange[1] || (config.maxValue || 100000000)
+    } else if (filterType === 'revenuegross') {
+      return filtersRef.current.revenueGrossRange[1] || (config.maxValue || 100000000)
+    }
+    
+    return config.maxValue || 100000000
+  }
+  
+  const maxValue = getMaxValueFromFiltersRef()
+  const stepValue = config.stepValue || 1
+
+  return (
+    <TooltipProvider>
+      <div className="group space-y-6 p-6 bg-gradient-to-br from-white via-emerald-50/30 to-teal-50/30 rounded-2xl border border-emerald-100/50 hover:border-emerald-200/70 transition-all duration-300 hover:shadow-lg hover:shadow-emerald-100/20 backdrop-blur-sm" id={config.containerId}>
+        
+        {/* Modern Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-3 h-3 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 shadow-sm"></div>
+            <Label className="text-base font-bold text-slate-800 group-hover:text-emerald-900 transition-colors tracking-tight">
+              {config.label}
+            </Label>
+          </div>
+        </div>
+
+        {/* Current range display with gradient background */}
+        {/* <div className="relative bg-white rounded-lg p-3 border border-emerald-100">
+          <div className="flex justify-between items-center mb-2">
+            <div className="text-xs font-medium text-slate-600">Current Range</div>
+            <div className="text-xs text-slate-500">
+              {formatValue((values[1] ?? maxValue) - (values[0] ?? minValue))} range
+            </div>
+          </div>
+          
+          <div className="flex justify-between items-center">
+            <div className="text-sm font-semibold text-emerald-700 px-2 py-1 bg-emerald-50 rounded-md">
+              {formatValue(values[0] ?? minValue)}
+            </div>
+            <div className="flex-1 mx-3 h-1 bg-slate-200 rounded-full relative overflow-hidden">
+              <div 
+                className="absolute h-full bg-gradient-to-r from-emerald-400 to-teal-400 rounded-full transition-all duration-300"
+                style={{
+                  left: `${minPercent}%`,
+                  width: `${maxPercent - minPercent}%`
+                }}
+              />
+            </div>
+            <div className="text-sm font-semibold text-teal-700 px-2 py-1 bg-teal-50 rounded-md">
+              {formatValue(values[1] ?? maxValue)}
+            </div>
+          </div>
+        </div> */}
+
+        {/* Enhanced Range Slider */}
+        <div className="px-2 py-1">
+          <Slider
+            value={values}
+            onValueChange={onValuesChange}
+            min={minValue}
+            max={maxValue}
+            step={stepValue}
+            className={`
+              relative w-full [&_.relative]:h-2 [&_.relative]:bg-slate-200 
+              [&_.relative]:rounded-full [&_.absolute]:h-2 [&_.absolute]:bg-gradient-to-r 
+              [&_.absolute]:from-emerald-400 [&_.absolute]:to-teal-400 [&_.absolute]:rounded-full
+              [&_[role=slider]]:h-5 [&_[role=slider]]:w-5 [&_[role=slider]]:border-2 
+              [&_[role=slider]]:border-white [&_[role=slider]]:bg-gradient-to-r 
+              [&_[role=slider]]:from-emerald-500 [&_[role=slider]]:to-teal-500
+              [&_[role=slider]]:shadow-lg [&_[role=slider]]:transition-all 
+              [&_[role=slider]]:hover:scale-110 [&_[role=slider]]:focus:scale-110
+              ${config.containerClassName || ''}
+            `}
+          />
+        </div>
+
+        {/* Range bounds indicator */}
+        <div className="flex justify-between text-xs text-slate-500 px-2 pt-1 border-t border-emerald-100">
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-slate-300 rounded-full"></div>
+            {formatValue(values[0] ?? minValue)}
+          </span>
+          <span className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-slate-300 rounded-full"></div>
+            {formatValue((values[1] ?? 0) || maxValue)}
+          </span>
+        </div>
+      </div>
+    </TooltipProvider>
+  )
+}
+
+export default ClosedDeals
