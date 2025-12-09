@@ -1,0 +1,269 @@
+import { useSelector } from 'react-redux'
+import type { RootState } from '@/store'
+
+const userDetails = useSelector((state: RootState) => state.auth.userDetails)
+
+const userDetails = useSelector((state: RootState) => state.auth.userDetails)
+
+const fetchUserSettings = async (currentTableId: string) => {
+  setTableLoading(true)
+  try {
+    const rnd = Date.now()
+    const url = `${API_CONFIG.baseUrl}/tableconfig/gettblfields?tblid=${currentTableId}&rnd=${rnd}`
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: createAuthHeaders({
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+      }),
+      credentials: 'include',
+    })
+
+    if (!response.ok) return null
+
+    const rawSettings = await response.json()
+    
+    if (rawSettings.status === 1 && rawSettings.settings?.column_def) {
+      const parsedColumnDefs = JSON.parse(rawSettings.settings.column_def)
+      setTableFieldSettings(parsedColumnDefs)
+      return parsedColumnDefs
+    }
+    
+    return null
+  } catch (error) {
+    console.error('Error fetching table field settings:', error)
+    return null
+  } finally {
+    setTableLoading(false)
+  }
+}
+
+onColumnChange: async (visibleColumns: string[]) => {
+  try {
+    if (!userDetails) throw new Error('User details not available')
+    
+    const currentTableId = `task_${userDetails.roleId}_${userDetails.used_id}_${userDetails.empId}`
+    
+    const columnDefSettings = modernDataTableConfig?.columns.map((column, index) => ({
+      data: column.dataIndex || column.key,
+      title: column.title || '',
+      isDefault: index === 0 ? 'true' : 'false',
+      checked: visibleColumns.includes(column.key)
+    })) || []
+
+    const payload = {
+      tblid: currentTableId,
+      column_def: JSON.stringify(columnDefSettings),
+      column_sort: '0',
+      is_visible: '1'
+    }
+
+    const encoded = new URLSearchParams(payload).toString()
+
+    const response = await fetch(`${API_CONFIG.baseUrl}/tableconfig/settblfields`, {
+      method: 'POST',
+      headers: createAuthHeaders({
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+      }),
+      body: encoded,
+      credentials: 'include',
+    })
+
+    const result = await response.json()
+
+    if (result.status === 1) {
+      setTableFieldSettings(columnDefSettings)
+      toast({
+        title: 'Column Settings Saved',
+        description: `${visibleColumns.length} columns visible`,
+      })
+    }
+  } catch (error) {
+    console.error('Error saving column settings:', error)
+    toast({
+      title: 'Error',
+      description: 'Failed to save column settings',
+      variant: 'destructive',
+    })
+  }
+}
+
+useEffect(() => {
+  if (!userDetails) return
+  
+  const currentTableId = `task_${userDetails.roleId}_${userDetails.used_id}_${userDetails.empId}`
+  fetchUserSettings(currentTableId)
+}, [userDetails])
+
+-----------------------------------------------------------------------------------------------------------------------
+
+const fetchUserSettings = async (tableId: string) => {
+  setTableLoading(true)
+  try {
+    const rnd = Date.now()
+    
+    // Use the SAME table ID format for fetch and save
+    const url = `${API_CONFIG.baseUrl}/tableconfig/gettblfields?tblid=${tableId}&rnd=${rnd}`
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: createAuthHeaders({
+        Accept: 'application/json, text/javascript, */*; q=0.01',
+      }),
+      credentials: 'include',
+    })
+
+    if (!response.ok) {
+      console.log('No saved settings found, using defaults')
+      return null
+    }
+
+    const rawSettings = await response.json()
+    
+    // Check if we got valid settings
+    if (rawSettings.status === 1 && rawSettings.settings?.column_def) {
+      const parsedColumnDefs = JSON.parse(rawSettings.settings.column_def)
+      setTableFieldSettings(parsedColumnDefs)
+      return parsedColumnDefs
+    }
+    
+    return null
+  } catch (error) {
+    console.error('Error fetching table field settings:', error)
+    return null
+  } finally {
+    setTableLoading(false)
+  }
+}
+
+
+columnSettings={{
+  enabled: true,
+  onColumnChange: async (visibleColumns: string[]) => {
+    try {
+      // Get user details from Redux
+      const userDetails = {
+        roleId: 'YOUR_ROLE_ID',    // From Redux state.auth.userDetails.roleId
+        used_id: 'YOUR_USER_ID',   // From Redux state.auth.userDetails.used_id
+        empId: 'YOUR_EMP_ID'       // From Redux state.auth.userDetails.empId
+      }
+      
+      // Build table ID EXACTLY like jQuery: task_{roleId}_{used_id}_{empId}
+      const tableId = `task_${userDetails.roleId}_${userDetails.used_id}_${userDetails.empId}`
+      
+      // Build settings in the EXACT format jQuery uses
+      const columnDefSettings = modernDataTableConfig?.columns.map((column, index) => ({
+        data: column.dataIndex || column.key,
+        title: column.title || '',
+        isDefault: index === 0 ? 'true' : 'false', // First column default visible
+        checked: visibleColumns.includes(column.key)
+      })) || []
+
+      // CRITICAL: Match jQuery payload structure exactly
+      const payload = {
+        tblid: tableId,
+        column_def: JSON.stringify(columnDefSettings),
+        column_sort: '0', // Default sort column index
+        is_visible: '1'   // Table is visible
+      }
+
+      const encoded = new URLSearchParams(payload).toString()
+
+      const response = await fetch(`${API_CONFIG.baseUrl}/tableconfig/settblfields`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save column settings')
+      }
+
+      const result = await response.json()
+
+      if (result.status === 1) {
+        // Update local state
+        setTableFieldSettings(columnDefSettings)
+        
+        toast({
+          title: 'Column Settings Saved',
+          description: `${visibleColumns.length} columns visible`,
+        })
+      } else {
+        throw new Error(result.message || 'Failed to save settings')
+      }
+    } catch (error) {
+      console.error('Error saving column settings:', error)
+      toast({
+        title: 'Error Saving Settings',
+        description: 'Column visibility saved locally only',
+        variant: 'destructive',
+      })
+    }
+  }
+}}
+
+
+useEffect(() => {
+  const initializeTable = async () => {
+    try {
+      // 1. Get user details (from Redux)
+      const userDetails = {
+        roleId: 'YOUR_ROLE_ID',
+        used_id: 'YOUR_USER_ID', 
+        empId: 'YOUR_EMP_ID'
+      }
+      
+      // 2. Generate proper table ID
+      const tableId = `task_${userDetails.roleId}_${userDetails.used_id}_${userDetails.empId}`
+      
+      // 3. Fetch saved settings using proper ID
+      const savedSettings = await fetchUserSettings(tableId)
+      
+      // 4. If no saved settings, fetch table config
+      if (!savedSettings) {
+        await loadTableSettings()
+      }
+    } catch (error) {
+      console.error('Error initializing table:', error)
+    }
+  }
+  
+  initializeTable()
+}, []) // Run once on mount
+
+
+useEffect(() => {
+  const initializeTable = async () => {
+    try {
+      // 1. Get user details (from Redux)
+      const userDetails = {
+        roleId: 'YOUR_ROLE_ID',
+        used_id: 'YOUR_USER_ID', 
+        empId: 'YOUR_EMP_ID'
+      }
+      
+      // 2. Generate proper table ID
+      const tableId = `task_${userDetails.roleId}_${userDetails.used_id}_${userDetails.empId}`
+      
+      // 3. Fetch saved settings using proper ID
+      const savedSettings = await fetchUserSettings(tableId)
+      
+      // 4. If no saved settings, fetch table config
+      if (!savedSettings) {
+        await loadTableSettings()
+      }
+    } catch (error) {
+      console.error('Error initializing table:', error)
+    }
+  }
+  
+  initializeTable()
+}, []) // Run once on mount
+
+------------------------------------------------------------------------------
