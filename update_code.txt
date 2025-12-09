@@ -1,1 +1,1866 @@
 
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import * as Dialog from '@radix-ui/react-dialog'
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  EyeIcon,
+  PencilIcon,
+  PlusIcon,
+  Search,
+  Trash2Icon,
+  TrashIcon,
+} from 'lucide-react'
+import { MagnifyingGlassIcon, TableCellsIcon, FunnelIcon } from '@heroicons/react/24/outline'
+
+import DatePicker from 'react-datepicker'
+
+import { Input } from '@/components/ui/input'
+import { useToast } from '@/hooks/use-toast'
+import { API_CONFIG } from '@/lib/constants'
+import { createAuthHeaders } from '@/lib/legacyUtils'
+import { prismStorage } from '@/lib/prismStorage'
+
+import 'react-datepicker/dist/react-datepicker.css'
+
+import TimePicker from 'react-time-picker'
+import 'react-time-picker/dist/TimePicker.css'
+import 'react-clock/dist/Clock.css'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getFilteredRowModel,
+  flexRender,
+  ColumnDef,
+  VisibilityState,
+} from '@tanstack/react-table'
+import moment from 'moment-timezone'
+import ReactUtils from '@/lib/reactUtils'
+import { DataTableColumn, DataTableSettings, DrawDataTableCore, useDataTableState, UserTableSettings } from '@/lib/datatable-utils'
+import DataTableFormatters from '@/lib/data-table-formatters'
+import { TearsheetCommon } from '@/lib/tearsheet-common'
+import DataTable, { TableColumn } from 'react-data-table-component'
+
+type TaskItem = {
+  taskId: string
+  taskName?: string
+  taskComment?: string
+  taskDate?: string
+  taskAssignedName?: string[]
+  taskAssignedId?: string[]
+  taskType?: string
+  taskStatus?: string
+  contacts?: string[]
+  contactName?: string[]
+  accountName?: string[]
+  taskComments?: string
+  reminder?: any[]
+}
+
+interface AssigneeOption {
+  text?: string
+  value?: string
+  code?: string
+  style?: string
+  docName?: string | null
+  docId?: string | null
+}
+
+interface ContactOption {
+  text?: string
+  value?: string
+  code?: string
+  style?: string
+  docName?: string | null
+  docId?: string | null
+  account_name?: string
+}
+interface TaskOption {
+  value: string
+  text: string
+}
+
+type ClientConfigType = {
+  columnHeadings: string[];
+  columnIndices: string[];
+  colsAlign: string[];
+  tableSettings: { blockchk: boolean; }[];
+  defColSort: number;
+  defColSortType: string;
+  colsCnt: string[];
+  // Assuming 'formatter' property exists in your original structure
+  formatter: string[]; 
+};
+
+  export interface DataTableProps {
+    id?:string;
+    columns: TableColumn<unknown>[]; 
+    dataSource: any[];
+    loading?: boolean;
+  pagination?: {
+        pageSize?: number;
+        pageSizeOptions?: string[];
+        showSizeChanger?: boolean;
+        showTotal?: (total: number, range: [number, number]) => string;
+        onChange?: (page: number, pageSize: number) => void;
+        onShowSizeChange?: (current: number, size: number) => void;
+    } | boolean;
+    rowSelection?: RowSelectionConfig;
+    scroll?: { x?: number | string; y?: number | string };
+    size?: 'small' | 'middle' | 'large';
+    bordered?: boolean;
+    showHeader?: boolean;
+    currentPanel?: any;
+  }
+export interface PaginationConfig {
+  current?: number;
+  pageSize?: number;
+  total?: number;
+  showSizeChanger?: boolean;
+  showQuickJumper?: boolean;
+  showTotal?: (total: number, range: [number, number]) => React.ReactNode;
+  pageSizeOptions?: string[];
+  onChange?: (page: number, pageSize: number) => void;
+  onShowSizeChange?: (current: number, size: number) => void;
+}
+
+export interface RowSelectionConfig {
+  type?: 'checkbox' | 'radio';
+  selectedRowKeys?: React.Key[];
+  onChange?: (selectedRowKeys: React.Key[], selectedRows: any[]) => void;
+  onSelect?: (record: any, selected: boolean, selectedRows: any[]) => void;
+  onSelectAll?: (selected: boolean, selectedRows: any[], changeRows: any[]) => void;
+  getCheckboxProps?: (record: any) => { disabled?: boolean };
+}
+
+interface DynamicTableConfigResponse {
+    status: number;
+    message: string | null;
+    reason: string | null;
+    defColSort: string | null;
+    defColSortType: 'asc' | 'desc' | null;
+    reportName: string | null;
+    cols: string[]; // dataIndex keys
+    tabCols: (string | null)[];
+    title: string[]; // Column Headings
+    data: any[]; // The actual table data rows (can be typed more specifically if needed)
+    recordsTotal?: number;
+    recordsFiltered?: number;
+    draw?: number;
+    colsCnt?: string[];
+     formatter: string[]; 
+}
+
+interface TaskPayload {
+    top: 'collapsed' | 'expanded'; // Assuming these are the only options
+    action: 'expanded' | 'collapsed'; // Assuming these are the only options
+    clienttimezone: string;
+    enablelink: boolean;
+    start: number;
+    length: number;
+    search: {
+        value: string;
+        regex: boolean;
+    };
+    order: Array<{
+        column: number;
+        dir: 'asc' | 'desc';
+        name: string;
+    }>;
+    columns: Array<{
+        data: string;
+        name: string;
+        searchable: boolean;
+        orderable: boolean;
+        search: {
+            value: string;
+            regex: boolean;
+        };
+    }>;
+}
+
+
+export default function TasksWidget() {
+  const { toast } = useToast()
+  const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [editTask, setEditTask] = useState<TaskItem | null>(null)
+  const [subject, setSubject] = useState('')
+  // const [assignedToIds, setAssignedTo] = useState('')
+  const [assignedToIds, setAssignedTo] = useState('')
+  const [assigneeList, setAssigneeList] = useState<AssigneeOption[]>([]) // This is the list used for the UI map
+  const [taskType, setTaskType] = useState('')
+  const [status, setStatus] = useState('')
+  const [description, setDescription] = useState('')
+  const [dueDate, setDueDate] = useState<Date | null>(new Date())
+  // const [timeStr, setTimeStr] = useState('10:00')
+  const [timeStr, setTimeStr] = useState<string | null>('')
+  const [query, setQuery] = useState('')
+  const [assigneeResults, setAssigneeResults] = useState<AssigneeOption[]>([])
+  const [loadingSearch, setLoadingSearch] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [isModalOpen, setModalOpen] = useState(false)
+  const inputRef = useRef(null)
+  // const [assignedToName, setAssignedToName] = useState('')
+
+  // const [assigneeList, setAssigneeList] = useState<Assignee[]>([]);
+
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
+
+  //  const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
+  const [assignedToNames, setAssignedToNames] = useState<string[]>([])
+  const [contactNames, setContactNames] = useState<string[]>([])
+  const [contacts, setContacts] = useState<string[]>([])
+  const [contactQuery, setContactQuery] = useState('')
+  const [contactResults, setContactResults] = useState<ContactOption[]>([])
+  const [loadingContacts, setLoadingContacts] = useState(false)
+  const [isContactResultsOpen, setIsContactResultsOpen] = useState(false)
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [taskToDeleteData, setTaskToDeleteData] = useState(null)
+
+  const [showAllTasks, setShowAllTasks] = useState(false)
+
+  const [taskOptions, setTaskOptions] = useState<TaskOption[]>([])
+  const [isLoadingOptions, setIsLoadingOptions] = useState(false)
+
+  const [statusOptions, setStatusOptions] = useState<TaskOption[]>([])
+  const [isLoadingStatusOptions, setIsLoadingStatusOptions] = useState(false)
+
+  const [formKey, setFormKey] = useState(0);
+
+  const tasksToShow = showAllTasks ? tasks : tasks.slice(0, 3)
+  const hasMoreTasks = tasks.length > 3
+
+    const [isLoading, setIsLoading] = useState(false)
+
+     const [sortConfig] = useState<{
+        field?: string
+        order?: 'asc' | 'desc';
+      }>({})
+
+      const [isInitialized, setIsInitialized] = useState(false)
+
+      
+ const [tableFieldSettings, setTableFieldSettings] = useState<UserTableSettings[] | null>(null)
+
+  const {
+    data,
+    setData,
+    loading: tableLoading,
+    setLoading: setTableLoading
+  } = useDataTableState([])
+
+  const [dynamicTableConfig, setDynamicTableConfig] = useState<{
+    columnHeadings: string[]
+    columnIndices: string[]
+    colsAlign: string[]
+    tableSettings: Array<{ blockchk: boolean }>
+    defColSort: number
+    defColSortType: string
+    colsCnt: string[]
+    formatter: string[]
+  } | null>(null)
+
+  const [processedTableData, setProcessedTableData] = useState<any[]>([]);
+
+ const fetchTaskData = async () => {
+    setIsLoading(true);
+    
+    try {
+        const clienttimezone = encodeURIComponent(moment.tz.guess());
+
+        // Define the payload using the new interface
+        const payloadObj: TaskPayload = {
+            top: "collapsed",
+            action: "expanded",
+            clienttimezone: clienttimezone,
+            enablelink: true,
+            start: 0,
+            length: 50,
+            search: { value: "", regex: false },
+            order: [{ column: 11, dir: "desc", name: "taskDate" }],
+            columns: [
+              {"data":"action","name":"Action","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskName","name":"Task Name","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskType","name":"Task Type","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskAssignedName","name":"Assignee","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"contactId","name":"Contact Id","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"contactName","name":"Contact Name","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"accountId","name":"Account Id","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"accountName","name":"Account Name","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskId","name":"Task Id","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"assignBy","name":"Assign By","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskComment","name":"Task Comments","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskDate","name":"Task Due Date","searchable":true,"orderable":true,"search":{"value":"","regex":false}},
+              {"data":"taskStatus","name":"Status","searchable":true,"orderable":true,"search":{"value":"","regex":false}}
+            ],
+        };
+
+        const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString();
+        // ... (rest of your fetch logic) ...
+
+
+        const response = await fetch(`${API_CONFIG.baseUrl}/task/getTaskTable`, { 
+            method: 'POST',
+            headers: createAuthHeaders({
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              Accept: 'application/json, text/javascript, */*; q=0.01',
+            }),
+            body: encoded,
+            credentials: 'include',
+        });
+        
+        if (!response.ok) throw new Error('Network response was not ok');
+        
+        const rawApiData: DynamicTableConfigResponse = await response.json();
+        // console.log(rawApiData);
+
+        const transformedConfig: ClientConfigType = {
+          columnHeadings: rawApiData.title ?? [],
+          columnIndices: rawApiData.cols ?? [],
+          colsAlign: (rawApiData.tabCols ?? []).map(align => align || 'left'),
+          tableSettings: (rawApiData.tabCols ?? []).map(() => ({ blockchk: false })),
+          defColSort: parseInt(rawApiData.defColSort || '-1', 10),
+          defColSortType: rawApiData.defColSortType || 'asc',
+          colsCnt: rawApiData.colsCnt ?? [],
+          formatter: rawApiData.formatter ?? [],
+        };
+        
+        setDynamicTableConfig(transformedConfig);
+        setProcessedTableData(rawApiData.data);
+
+    } catch (error) {
+        console.error("Failed to fetch task table data:", error);
+        toast({ title: "Error fetching data", variant: "destructive" });
+    } finally {
+        setIsLoading(false);
+    }
+};
+
+useEffect(() => {
+    // This calls the function immediately when the page loads
+    fetchTaskData();
+}, []);
+
+
+
+  //   const DataTableAllTasks = () => (
+  //   <div className="overflow-x-auto mt-4">
+  //     <table className="min-w-full divide-y divide-gray-200 shadow-sm rounded-lg overflow-hidden">
+  //       <thead className="bg-gray-100">
+  //         <tr>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Name</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Type</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assignee</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact Name</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task Comments</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date/Time</th>
+  //           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+  //         </tr>
+  //       </thead>
+  //       <tbody className="bg-white divide-y divide-gray-200">
+  //         {tasks.map((t) => (
+  //           <tr key={t.taskId} className="hover:bg-gray-50">
+  //             <td className="px-3 py-4 whitespace-nowrap">
+  //               <div className="flex gap-2">
+  //                   {/* View icon was removed in previous requests, just Edit/Delete remain */}
+  //                   <button
+  //                       className="p-1 text-yellow-600 hover:text-yellow-800"
+  //                       onClick={() => openEditModal(t)}
+  //                       title="Edit Task"
+  //                   >
+  //                       <PencilIcon className="h-4 w-4" />
+  //                   </button>
+  //                   <button
+  //                       className="p-1 text-red-600 hover:text-red-800"
+  //                       onClick={() => handleDeleteClick(t.taskId, t)}
+  //                       title="Delete Task"
+  //                   >
+  //                       <TrashIcon className="h-4 w-4" />
+  //                   </button>
+  //               </div>
+  //             </td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-900">{t.taskName}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskType}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskAssignedName}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.contactName?.join(', ') || 'N/A'}</td>
+  //             <td className="px-3 py-4 text-sm text-gray-500 truncate max-w-xs">{t.taskComment||'-'}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskDate}</td>
+  //             <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">{t.taskStatus|| '-'}</td>
+  //           </tr>
+  //         ))}
+  //       </tbody>
+  //     </table>
+  //   </div>
+  // );
+
+
+
+
+
+const handleCloseModal = () => {
+    setModalOpen(false);
+    // setFormKey(prevKey => prevKey + 1);
+  resetForm(); 
+  setEditTask(null);
+};
+
+  // const handleDeleteClick = (taskId, taskData) => {
+  //   setTaskToDeleteData({ taskId, taskData })
+  //   setIsDeleteModalOpen(true)
+  // }
+
+  const handleConfirmDelete = async () => {
+    if (taskToDeleteData) {
+      setIsDeleteModalOpen(false)
+      await deleteTask(taskToDeleteData.taskId, taskToDeleteData.taskData)
+      setTaskToDeleteData(null)
+    }
+  }
+
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false)
+    setTaskToDeleteData(null)
+  }
+
+  const DeleteConfirmationModal = ({ isOpen, onClose, onConfirm }) => {
+    if (!isOpen) return null
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+        <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+          <h2 className="mb-4 text-xl font-bold text-gray-800">Delete Task</h2>
+          <p className="mb-6 text-gray-600">Are you sure you want to delete this task?</p>
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="rounded bg-gray-200 px-4 py-2 text-gray-800 hover:bg-gray-300"
+            >
+              No
+            </button>
+            <button
+              onClick={onConfirm}
+              className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
+            >
+              Yes
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // const openViewModal = (task: TaskItem) => {
+  //   setSelectedTask(task)
+  //   setIsViewModalOpen(true)
+  // }
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value)
+    if (!e.target.value) {
+      setIsOpen(false)
+    } else {
+      setIsOpen(true)
+    }
+    setSelectedIndex(-1)
+    if (!isModalOpen) setModalOpen(true)
+  }
+
+  // const closeViewModal = () => {
+  //   setIsViewModalOpen(false)
+  //   setSelectedTask(null)
+  // }
+
+  // interface ViewTaskModalProps {
+  //   isOpen: boolean
+  //   onClose: () => void
+  //   task: TaskItem
+  // }
+
+  // const ViewTaskModal: React.FC<ViewTaskModalProps> = ({ isOpen, onClose, task }) => {
+  //   return (
+  //     <Dialog.Root open={isOpen} onOpenChange={onClose}>
+  //       <Dialog.Portal>
+  //         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
+
+  //         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl">
+  //           <Dialog.Title className="mb-4 text-2xl font-bold">
+  //             Task Details: {task.taskName}
+  //           </Dialog.Title>
+
+  //           <div className="space-y-3">
+  //             <p>
+  //               <strong>Status:</strong> {task.taskStatus}
+  //             </p>
+  //             <p>
+  //               <strong>Due Date:</strong>
+  //               {task.taskDate && new Date(task.taskDate).toLocaleString()}
+  //             </p>
+  //             <p>
+  //               <strong>Assignee:</strong> {task.taskAssignedName}
+  //             </p>
+  //             <p>
+  //               <strong>Task Type:</strong> {task.taskType}
+  //             </p>
+  //             <p>
+  //               <strong>Description:</strong> {task.taskComment}
+  //             </p>
+  //             <p>
+  //               <strong>Account:</strong> {task.accountName?.join(', ')}
+  //             </p>
+  //             <p>
+  //               <strong>ContactName:</strong> {task.contactName?.join(', ')}
+  //             </p>
+  //           </div>
+
+  //           <div className="mt-6 flex justify-end">
+  //             <Dialog.Close asChild>
+  //               <button onClick={onClose} className="rounded bg-gray-300 px-4 py-2">
+  //                 Close
+  //               </button>
+  //             </Dialog.Close>
+  //           </div>
+  //         </Dialog.Content>
+  //       </Dialog.Portal>
+  //     </Dialog.Root>
+  //   )
+  // }
+
+  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
+
+  // To fetch tasks from API
+  async function fetchTasks() {
+    setLoading(true)
+    try {
+      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
+      const body = new URLSearchParams({ summaryFilter }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        setTasks(Array.isArray(data.data) ? data.data : [])
+
+        const rawTasks = Array.isArray(data.data) ? data.data : []
+        const normalizedTasks = rawTasks.map((task: any) => {
+          const contactIds = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
+            : []
+
+          const contactNames = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.contact_name)
+            : []
+          const accountNames = task.contactList
+            ? task.contactList.map((contactItem: any) => contactItem.account_name)
+            : []
+          return {
+            ...task,
+
+            contacts: contactIds,
+            contactName: contactNames,
+            accountName: accountNames,
+          }
+        })
+
+        setTasks(normalizedTasks)
+      } else {
+        setTasks([])
+      }
+    } catch (err) {
+      console.error('fetchTasks error', err)
+      toast({ title: 'Error', description: 'Failed to fetch tasks' })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (isModalOpen) {
+      fetchTasks()
+    }
+  }, [isModalOpen])
+
+  const fetchTaskTypes = async () => {
+    // debugger;
+    setIsLoadingOptions(true)
+    try {
+      const payload = {
+        type: 'tasktype',
+      }
+      const encoded = new URLSearchParams(payload).toString()
+      const response = await fetch(`${API_CONFIG.baseUrl}/task/gettaskdetails`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+
+      const data = await response.json()
+
+      if (data.status === 1 && Array.isArray(data.data)) {
+        setTaskOptions(data.data)
+      } else {
+        setTaskOptions([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch task types:', error)
+    } finally {
+      setIsLoadingOptions(false)
+    }
+  }
+
+  const fetchStatusTypes = async () => {
+    setIsLoadingStatusOptions(true)
+    try {
+      const payload = { type: 'status' }
+      const encoded = new URLSearchParams(payload).toString()
+      const response = await fetch(`${API_CONFIG.baseUrl}/task/gettaskdetails`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+
+      if (!response.ok) {
+        throw new Error('Network response was not ok')
+      }
+
+      const data = await response.json()
+      if (data.status === 1 && Array.isArray(data.data)) {
+        setStatusOptions(data.data)
+      } else {
+        setStatusOptions([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch status types:', error)
+    } finally {
+      setIsLoadingStatusOptions(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchTaskTypes()
+    fetchStatusTypes()
+  }, [])
+
+  // To fetch full task details by ID
+
+  async function fetchTaskDetails(taskId: string) {
+    try {
+      const body = new URLSearchParams({ taskId }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        }),
+        body,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        if (Array.isArray(data.data) && data.data.length > 0) return data.data[0]
+        return data.data || null
+      }
+      return null
+    } catch (err) {
+      return null
+    }
+  }
+
+    useEffect(() => {
+      // debugger;
+      const initializeComponent = async () => {
+        try {
+        
+      
+          
+      
+          const tableConfig = await loadTableSettings()
+          console.log(tableConfig)
+        
+          if (tableConfig) {
+            await loadTableFields()  
+          }
+          
+          // Load slider ranges
+          
+          
+          // If we have table config and component is not initialized, trigger initial data load
+          if (tableConfig && !isInitialized) {
+            setIsInitialized(true)
+          
+          }
+        } catch (error) {
+          // Silently handle initialization errors to prevent app crash
+          // Silently handle initialization errors
+        }
+      }
+      
+      // Note: Styles are now handled via Tailwind CSS classes in the JSX instead of direct DOM manipulation
+      
+      // Modern utility functions using React patterns (instead of direct window manipulation)
+      const utilityFunctions = {
+        showNotification: (message: string) => {
+          toast({
+            title: 'Navigation',
+            description: message,
+          })
+        },
+  
+      }
+  
+      // Legacy compatibility - only set window functions if needed for backwards compatibility
+      if (typeof window !== 'undefined') {
+        const globalWindow = window as unknown as Record<string, unknown>
+        
+        // Expose utility functions for legacy code if needed
+        if (!globalWindow.showToast) {
+          globalWindow.showToast = utilityFunctions.showNotification
+        }
+        
+  
+      }
+      
+      // Note: Styles are now handled via Tailwind CSS classes instead of direct DOM injection
+      initializeComponent()
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []) // Empty dependency array - only run on mount
+
+  const loadTableSettings = useCallback(async () => {
+    // debugger;
+    try {
+      // Use enhanced ReactUtils.fetchPost with URL-encoded content-type
+      const response = await ReactUtils.fetchPost(`${API_CONFIG.baseUrl}/tableconfig/gettablesetting`, {
+        moduletype: 'taskdetails',
+        rpttype: 'gettaskmodule',
+        rnd: moment().valueOf().toString()
+      }, {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      
+      const result = await response.json()
+      if (result) {
+        // Extract dynamic table configuration from response
+        const config = {
+          columnHeadings: result.title || [],
+          columnIndices: result.cols || [],
+          colsAlign: result.colsAlign || [],
+          tableSettings: result.table_settings || [],
+          defColSort: result.defColSort || 0,
+          defColSortType: result.defColSortType || 'asc',
+          colsCnt: result.colsCnt || [],
+          formatter: result.formatter || []
+        }
+        
+        setDynamicTableConfig(config)
+        return config
+      }
+      throw new Error('Failed to load table settings')
+    } catch (error) {
+      // Silently handle table settings error to prevent UI disruption
+      return null
+    }
+  }, [])  
+
+
+
+   const loadTableFields = useCallback(async () => {
+    // debugger
+    try {
+      // Use common function from datatable-utils instead of manual API call
+      // Match jQuery implementation: thisRepId + 'closedDealTable'
+      const tableId = `dataTable_topten_client_collapsed`; 
+      const result = await DrawDataTableCore.loadTableFields(tableId);
+      
+      if (result.success && result.settings) {
+        // Store table field settings to apply column visibility
+        setTableFieldSettings(result.settings);
+        return result.settings;
+      }
+      
+      // If no settings found, create default settings (show first 3 columns)
+      if (dynamicTableConfig?.columnIndices) {
+        const defaultSettings: UserTableSettings[] = dynamicTableConfig.columnIndices.map((colIndex, index) => ({
+          data: colIndex,
+          checked: index < 3 // Show first 3 columns by default (matching jQuery behavior)
+        }));
+        setTableFieldSettings(defaultSettings);
+        return defaultSettings;
+      }
+      
+      throw new Error('Failed to load table fields');
+    } catch (error) {
+      // Silently handle table fields error to prevent UI disruption
+      return null;
+    }
+  }, [dynamicTableConfig])
+
+  useEffect(() => {
+    fetchTasks()
+  }, [])
+
+  useEffect(() => {
+    if (assigneeList.length > 0) {
+      setAssignedTo(assigneeList[0]?.value || '')
+    } else {
+      setAssignedTo('')
+    }
+  }, [assigneeList, setAssignedTo])
+
+  // Fetch assignees based on query
+  useEffect(() => {
+    if (assigneeList.length > 0) {
+      setAssigneeResults([])
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      if (!query.trim()) {
+        setAssigneeResults([])
+        return
+      }
+
+      setLoadingSearch(true)
+
+      const payload = {
+        filtertype: 'employee',
+        filterrpttype: 'Outlook',
+        showuser: true,
+        searchtext: query,
+      }
+
+      const queryString = new URLSearchParams(payload).toString()
+
+      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
+
+      try {
+        const res = await fetch(requestUrl, {
+          method: 'GET',
+          headers: createAuthHeaders({
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+          }),
+          credentials: 'include',
+        })
+
+        const data: AssigneeOption[] = await res.json()
+
+        if (Array.isArray(data)) {
+          setAssigneeResults(data)
+        } else {
+          setAssigneeResults([])
+        }
+      } catch (err) {
+        console.error('Fetch assignee error:', err)
+        setAssigneeResults([])
+      } finally {
+        setLoadingSearch(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [query, assigneeList])
+
+  // fetch contacts based on contactQuery
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      if (!contactQuery.trim()) {
+        setContactResults([])
+        return
+      }
+
+      setLoadingContacts(true)
+      const queryString = new URLSearchParams({
+        filtertype: 'contact',
+        restype: 'Detailed',
+        searchtext: contactQuery,
+      }).toString()
+
+      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
+
+      try {
+        const res = await fetch(requestUrl, {
+          method: 'GET',
+          headers: createAuthHeaders({
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+          }),
+          credentials: 'include',
+        })
+
+        const data: ContactOption[] = await res.json()
+
+        if (Array.isArray(data)) {
+          setContactResults(data)
+        } else {
+          setContactResults([])
+        }
+      } catch (err) {
+        console.error('Fetch contact error:', err)
+        setContactResults([])
+      } finally {
+        setLoadingContacts(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [contactQuery])
+
+  // Handle contact selection
+  const handleContactSelect = (contact: ContactOption) => {
+    if (
+      typeof contact.value !== 'string' ||
+      typeof contact.text !== 'string' ||
+      !contact.value ||
+      !contact.text
+    ) {
+      console.error('Invalid contact data received:', contact)
+      return
+    }
+    if (!contacts.includes(contact.value)) {
+      setContacts((prev) => [...prev, contact.value!])
+
+      setContactNames((prev) => [...prev, contact.text!])
+    }
+    setContactQuery('')
+    setIsContactResultsOpen(false)
+  }
+
+  const handleContactInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setContactQuery(e.target.value)
+    setIsContactResultsOpen(true)
+  }
+
+  const removeContact = (contactId: string) => {
+    setContacts((prev) => prev.filter((id) => id !== contactId))
+    setContactNames((prev) => prev.filter((name, index) => contacts[index] !== contactId))
+  }
+
+  const handleAssigneeSelect = (assignee: AssigneeOption) => {
+    // Enforce single selection: replace the current list with only the new selection
+    setAssigneeList([{ value: assignee.value, text: assignee.text }])
+
+    // Clear search related states
+    setQuery('')
+    setAssigneeResults([])
+    setIsOpen(false)
+  }
+
+  const handleRemoveAssignee = (assigneeId: string | number) => {
+    setAssigneeList([])
+  }
+
+  // Add new task
+  async function handleAddTask() {
+    try {
+      const currentAssigneeId = assigneeList.length > 0 ? assigneeList[0].value : ''
+      console.log(currentAssigneeId)
+      const isEmpty = (value: any) =>
+        value === null ||
+        value === undefined ||
+        (typeof value === 'string' && value.trim() === '') ||
+        (Array.isArray(value) && value.length === 0)
+
+      const mandatoryFields = [
+        { value: currentAssigneeId, name: 'Assignee' },
+        { value: subject, name: 'Subject' },
+        { value: dueDate, name: 'Due Date' },
+        { value: timeStr, name: 'Time' },
+        { value: taskType, name: 'Task Type' },
+        { value: status, name: 'Status' },
+        { value: contacts, name: 'Contacts' },
+      ]
+
+      const missingField = mandatoryFields.find((field) => isEmpty(field.value))
+
+      if (missingField) {
+        toast({
+          title: 'Validation Error',
+          description: `The mandatory field "${missingField.name}" is missing. Please fill out all required fields.`,
+        })
+        return
+      }
+
+      // if (!assignedToIds) {
+      //   toast({ title: 'Validation', description: 'Assignee required' })
+      //   return
+      // }
+      if (!subject.trim()) {
+        toast({ title: 'Validation', description: 'Subject required' })
+        return
+      }
+      const clienttimezone = encodeURIComponent(moment.tz.guess())
+
+      const rawTaskDate = dueDate
+
+      const formattedDateTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
+        : ''
+
+      const formattedDueTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
+        : ''
+      const sanitizedContacts = contacts.filter((id) => id != null && id !== '')
+      const sanitizedContactNames = contactNames.filter((name) => name != null && name !== '')
+
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: formattedDueTime,
+        contacts: sanitizedContacts,
+        contactName: sanitizedContactNames,
+        assignedTo: currentAssigneeId,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        action: 'Save',
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Added Successfully' })
+        setModalOpen(false)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
+      }
+    } catch (err) {
+      console.error('handleAddTask', err)
+      toast({ title: 'Error', description: 'Failed to add task' })
+    }
+  }
+
+  async function handleUpdateTask() {
+    // debugger;
+    try {
+      if (!editTask) return
+      const rawTaskDate = dueDate
+      const clienttimezone = encodeURIComponent(moment.tz.guess())
+      const formattedDateTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
+        : ''
+      const formattedDueTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
+        : ''
+
+      console.log(assignedToIds)
+      const payloadObj = {
+        subject,
+        dueDate: formattedDateTime,
+        dueTime: formattedDueTime,
+        contacts,
+        contactName: contactNames,
+        assignedTo: assignedToIds,
+        clienttimezone,
+        status,
+        taskType,
+        taskComments: description,
+        module_name: 'Task',
+        action: 'Update',
+        taskId: editTask.taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+      if (data?.status === 1) {
+        toast({ title: 'Success', description: 'Task Updated Successfully' })
+        setModalOpen(false)
+        setEditTask(null)
+        resetForm()
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
+      }
+    } catch (err) {
+      console.error('handleUpdateTask', err)
+      toast({ title: 'Error', description: 'Failed to update task' })
+    }
+  }
+
+  // To edit existing task
+  async function openEditModal(task: TaskItem) {
+    // debugger;
+    let tdata: any = task
+    const missingContacts =
+      !tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
+    const missingName = !tdata.taskName && !tdata.subject
+
+    if ((missingContacts || missingName) && tdata.taskId) {
+      const full = await fetchTaskDetails(tdata.taskId)
+      if (full) tdata = { ...tdata, ...full }
+    }
+
+    setEditTask(tdata)
+    setSubject(tdata.taskName || tdata.subject || '')
+    setDescription(tdata.taskComment || tdata.taskComments || '')
+    const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
+    const assignedName = tdata.taskAssignedName || ''
+
+    console.log('Extracted ID:', assignedId, 'Extracted Name:', assignedName)
+    setAssignedTo(assignedId)
+    // const assignedName = tdata.taskAssignedName || ''
+    // setQuery(assignedName)
+    // setAssignedTo(assignedId);
+    setAssignedToNames(assignedName)
+
+    if (assignedId && assignedName) {
+      setAssigneeList([{ value: assignedId, text: assignedName }])
+    } else {
+      setAssigneeList([])
+      console.warn('Assignee data was missing, assignee list set to empty.')
+    }
+
+    setQuery('')
+    setTaskType(tdata.taskType || '')
+    setStatus(tdata.taskStatus || '')
+
+    if (tdata.taskDate) {
+      const iso = String(tdata.taskDate).replace(' ', 'T')
+      const dt = new Date(iso)
+      if (!isNaN(dt.getTime())) {
+        setDueDate(dt)
+        const hh = dt.getHours().toString().padStart(2, '0')
+        const mm = dt.getMinutes().toString().padStart(2, '0')
+        setTimeStr(`${hh}:${mm}`)
+      } else {
+        setDueDate(new Date())
+        setTimeStr('10:00')
+      }
+    } else {
+      setDueDate(new Date())
+      setTimeStr('10:00')
+    }
+
+    const contactIds = tdata.contacts || []
+    const contactNamesForAPI = tdata.contactName || []
+
+    setContacts(contactIds)
+    setContactNames(contactNamesForAPI)
+
+    setModalOpen(true)
+  }
+
+  // To delete a task
+  async function deleteTask(taskId: string, originalTaskData: any) {
+    try {
+      const clienttimezone = encodeURIComponent(moment.tz.guess())
+
+      const rawTaskDate = originalTaskData?.taskDate
+
+      const formattedDateTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
+        : ''
+
+      const formattedDueTime = rawTaskDate
+        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
+        : ''
+
+      const taskContactNames = normalizeToArray(originalTaskData?.contactName)
+
+      const payload = {
+        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
+        dueDate: formattedDateTime,
+        dueTime: formattedDueTime,
+        contacts: normalizeToArray(originalTaskData?.contacts),
+        contactName: taskContactNames,
+        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
+        clienttimezone,
+        status: 'Dismiss',
+        taskType: originalTaskData?.taskType || '',
+        taskComments:
+          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
+        module_name: 'Task',
+        action: 'Dismiss',
+        taskId: taskId,
+      }
+      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
+      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
+        method: 'POST',
+        headers: createAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          Accept: 'application/json, text/javascript, */*; q=0.01',
+        }),
+        body: encoded,
+        credentials: 'include',
+      })
+      const data = await res.json()
+
+      if (data?.status === 1) {
+        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
+        fetchTasks()
+      } else {
+        toast({ title: 'Error', description: data?.message || 'Delete failed' })
+      }
+    } catch (err) {
+      console.error('deleteTask', err)
+      toast({ title: 'Error', description: 'Delete failed' })
+    }
+  }
+
+  // Reset form fields
+ function resetForm() {
+    setSubject('');
+    setAssignedTo('');
+     setAssignedToNames(''); 
+     setAssigneeList([]);
+
+    setTaskType('');
+    setStatus('');
+    setContacts([]);
+    setContactNames([]);
+    setDescription('');
+    
+   
+    
+    setTimeStr(''); 
+
+    setQuery('');
+    setAssigneeResults([]);
+    setContactQuery('');
+    setContactResults([]);    setAssignedTo('');
+    setContacts([]);
+    setContactNames([]);
+
+    setDueDate(new Date());
+}
+
+  // Calculate time data for due date
+  const calcTimeData = (due: string | undefined) => {
+    if (!due) return null
+
+    const dueDate = new Date(due)
+    const now = new Date()
+    const diffMs = dueDate.getTime() - now.getTime()
+
+    const isOverdue = diffMs < 0
+    const absDiffMs = Math.abs(diffMs)
+
+    const days = Math.floor(absDiffMs / 86400000)
+    const hours = Math.floor((absDiffMs % 86400000) / 3600000)
+    const mins = Math.floor(((absDiffMs % 86400000) % 3600000) / 60000)
+
+    let timeDiffText
+    if (days > 0) timeDiffText = `${days} Day(s)`
+    else if (hours > 0) timeDiffText = `${hours} Hour(s)`
+    else if (mins > 0) timeDiffText = `${mins} Min(s)`
+    else timeDiffText = '0 Min(s)'
+
+    const label = isOverdue ? 'Over Due' : 'Time To Complete'
+
+    const statusClass = isOverdue ? 'bg-red-500' : 'bg-blue-500'
+
+    return {
+      text: timeDiffText,
+      fullText: `${timeDiffText} ${label}`,
+      statusClass: statusClass,
+    }
+  }
+
+
+const modernDataTableConfig = useMemo(() => {
+  // debugger;
+    if (!dynamicTableConfig) {
+      return null;
+    }
+
+    const { columnHeadings, columnIndices, colsAlign, tableSettings, colsCnt } = dynamicTableConfig;
+    
+ const columns = columnHeadings.map((heading, index) => {
+         const columnIndex = columnIndices[index];
+         const alignment = colsAlign[index] || 'left';
+         const isNumberFormat = colsCnt.includes(index.toString());
+         const isDefault = tableSettings[index]?.blockchk || false;
+
+      // Calculate the width as a number first
+      const calculatedWidth = isNumberFormat ? 130 : (
+          heading.toLowerCase().includes('name') || 
+          heading.toLowerCase().includes('client') || 
+          heading.toLowerCase().includes('account') ? 300 : 150
+      );
+      
+      return {
+        key: columnIndex || `col_${index}`,
+        title: heading,
+        dataIndex: columnIndex,
+  
+        width: `${calculatedWidth}px`, 
+
+        render: (value: unknown, record: unknown, _index?: number) => {
+          const closedDealRecord = record as TaskItem;
+          
+          if (isNumberFormat && value !== null && value !== undefined) {
+            const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+            if (!isNaN(numValue)) {
+              return (
+                <span className={numValue < 0 ? 'text-red-600' : ''}>
+                  {DataTableFormatters.formatCurrency(numValue)}
+                </span>
+              );
+            }
+          }
+          
+          // if (typeof value === 'string' && value.includes('<')) {
+          //   return TearsheetCommon.renderHtmlWithTearsheetLinks(value, closedDealRecord as unknown as Record<string, unknown>);
+          // }
+          
+          if (columnIndex === 'dealdate' && value) {
+            return moment(String(value)).format('MM/DD/YYYY');
+          }
+          
+          return String(value || '');
+        },
+        align: alignment as 'left' | 'center' | 'right',
+        sorter: (a: unknown, b: unknown) => {
+          const recordA = a as Record<string, unknown>;
+          const recordB = b as Record<string, unknown>;
+          const fieldKey = columnIndex || `col_${index}`;
+          const aVal = recordA[fieldKey];
+          const bVal = recordB[fieldKey];
+          
+          if (isNumberFormat) {
+            const aNum = typeof aVal === 'number' ? aVal : parseFloat(String(aVal || 0));
+            const bNum = typeof bVal === 'number' ? bVal : parseFloat(String(bVal || 0));
+            return aNum - bNum;
+          }
+          
+          // if (fieldKey === 'dealdate' || heading.toLowerCase().includes('date')) {
+          //   const aDate = moment(String(aVal || ''));
+          //   const bDate = moment(String(bVal || ''));
+          //   return aDate.isValid() && bDate.isValid() ? aDate.valueOf() - bDate.valueOf() : 0;
+          // }
+          
+          return String(aVal || '').localeCompare(String(bVal || ''));
+        },
+        ellipsis: true,
+        responsive: heading.toLowerCase().includes('name') || 
+                   heading.toLowerCase().includes('client') || 
+                   heading.toLowerCase().includes('ticker') ||
+                   heading.toLowerCase().includes('deal') ? 
+          ['xs', 'sm', 'md', 'lg', 'xl'] : 
+          ['sm', 'md', 'lg', 'xl'],
+        visible: tableFieldSettings ? 
+          tableFieldSettings.find(setting => setting.data === columnIndex)?.checked !== false :
+          (isDefault !== false)
+      };
+    });
+
+    return {
+      columns,
+      tableId: `dataTable_topten_client_collapsed`,
+      scrollConfig: {
+        x: 'max-content',
+        y: 'calc(100vh - 300px)'
+      },
+      pagination: { 
+        enabled: false,
+        pageSize: -1
+      },
+      sorting: {
+        enabled: true,
+        defaultSort: dynamicTableConfig.defColSort ? {
+          field: columnIndices[dynamicTableConfig.defColSort],
+          order: dynamicTableConfig.defColSortType as 'asc' | 'desc'
+        } : undefined
+      },
+      export: {
+        enabled: true,
+        formats: ['csv', 'excel'] as Array<'csv' | 'excel'>,
+        filename: 'closed_deals'
+      },
+      selection: {
+        enabled: false
+      },
+      responsive: true,
+      stickyHeader: true,
+      loading: isLoading || tableLoading
+    };
+  }, [ dynamicTableConfig,  isLoading, tableLoading, tableFieldSettings]);
+
+
+    // const processedTableData = useMemo(() => {
+    //   if (!data || data.length === 0) {
+    //     return [];
+    //   }
+  
+    //   const processedData = data.map((deal, index) => ({
+    //     ...deal,
+    //     // Ensure all required fields exist with proper fallbacks
+    //     id: deal.id || index,
+    //     key: deal.id?.toString() || index.toString(),
+    //     // Add computed fields for sorting/filtering
+    //     dealdate_sort: deal.dealdate ? moment(deal.dealdate).valueOf() : 0,
+    //     dealsize_sort: deal.dealsize || 0,
+    //     grossfee_sort: deal.grossfee || 0,
+    //     netfee_sort: deal.netfee || 0,
+    //     _rowIndex: index
+    //   }));
+  
+    //   return processedData;
+    // }, [data])
+
+return (
+  <div className="p-5">
+    <div className="mb-4 flex justify-end">
+      <button
+        onClick={() => {
+          setEditTask(null)
+          resetForm()
+          setModalOpen(true)
+        }}
+        className="rounded bg-blue-600 px-6 py-2 text-white shadow hover:bg-blue-700"
+        title="Add Task"
+      >
+        Add
+      </button>
+    </div>
+
+    <div className=""></div>
+    {console.log("Debugging processed table data:", modernDataTableConfig)}
+    {modernDataTableConfig ? (
+        <div className="overflow-hidden w-full">
+          <p>dummy</p>
+          <DataTable
+            id={modernDataTableConfig.tableId}
+            columns={modernDataTableConfig.columns}
+            dataSource={processedTableData}
+            loading={modernDataTableConfig.loading}
+            
+            // pagination={{
+            //   pageSize: 50,
+            //   pageSizeOptions: ['25', '50', '100', '200', '500'],
+            //   showSizeChanger: true,
+            //   showTotal: (total: number, range: [number, number]) => 
+            //     `${range[0]}-${range[1]} of ${total} tasks`,
+            //   onChange: (_page: number, _pageSize: number) => {
+                
+            //   },
+            //   onShowSizeChange: (_current: number, _size: number) => {
+                
+            //   }
+            // }}
+            scroll={modernDataTableConfig.scrollConfig}
+            size="middle"
+            bordered={true}
+            stickyHeader={modernDataTableConfig.stickyHeader}
+            responsive={modernDataTableConfig.responsive}
+            exportOptions={{
+              enabled: true,
+              formats: ['csv', 'excel', 'json'],
+              filename: `closed_deals_${moment().format('YYYY-MM-DD')}`,
+              onExport: (format: string, data: unknown[]) => {
+                
+                toast({
+                  title: 'Export Started',
+                  description: `Exporting ${data.length} records as ${format.toUpperCase()}...`,
+                })
+              }
+            }}
+            columnSettings={{
+              enabled: true,
+              onColumnChange: async (visibleColumns: string[]) => {
+                
+                const tableId = `dataTable_topten_client_collapsed`
+                const preferences = {
+                  tableId,
+                  visibleColumns,
+                  timestamp: Date.now()
+                }
+                
+                try {
+                  localStorage.setItem(`dataTable_${tableId}_columns`, JSON.stringify(preferences))
+                } catch (error) {
+                     
+                }
+                
+                try {
+                  const userTableSettings = modernDataTableConfig?.columns.map((column) => ({
+                    data: column.dataIndex || column.key,
+                    checked: visibleColumns.includes(column.key),
+                    title: column.title || '',
+                    isDefault: false,
+                    order: modernDataTableConfig.columns.indexOf(column) + 1
+                  })) || []
+                  
+                  const success = await DataTableSettings.setTableSettings(
+                    tableId, 
+                    userTableSettings,
+                    {
+                      setTblIdUser: true
+                    }
+                  )
+                  
+                  if (success) {
+                    toast({
+                      title: 'Column Visibility Saved',
+                      description: `${visibleColumns.length} columns visible - settings saved to server`,
+                    })
+                  } else {
+                    toast({
+                      title: 'Column Visibility Updated',
+                      description: `${visibleColumns.length} columns visible - saved locally only`,
+                      variant: 'destructive'
+                    })
+                  }
+                } catch (error) {
+                  toast({
+                    title: 'Column Visibility Updated',
+                    description: `${visibleColumns.length} columns visible - saved locally`,
+                    variant: 'destructive'
+                  })
+                }
+              }
+            }}
+            serverSide={false}
+          />
+
+          <div className="px-4 py-2 bg-gray-50 border-t border-gray-200 text-xs text-gray-600 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              <span>
+                Showing {processedTableData.length} deals
+              </span>
+            </div>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+              {sortConfig.field && (
+                <span className="text-green-600">
+                  Sorted by {sortConfig.field} ({sortConfig.order})
+                </span>
+              )}
+              <span className="text-xs">
+                Last updated: {moment().format('HH:mm:ss')}
+              </span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center p-8">
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span className="text-gray-600">Loading table configuration...</span>
+          </div>
+        </div>
+      )}
+
+
+        {hasMoreTasks && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setShowAllTasks(!showAllTasks)}
+              className="mx-auto flex items-center rounded-lg bg-gray-200 px-4 py-2 text-gray-700 transition duration-150 hover:bg-gray-300"
+            >
+              {showAllTasks ? (
+                <>
+                  Show Less <ChevronUpIcon className="ml-2 h-4 w-4" />
+                </>
+              ) : (
+                <>
+                  More ... <ChevronDownIcon className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </button>
+          </div>
+        )}
+     
+
+    <DeleteConfirmationModal
+      isOpen={isDeleteModalOpen}
+      onClose={closeDeleteModal}
+      onConfirm={handleConfirmDelete}
+    />
+
+    {isModalOpen && (
+      <Dialog.Root open={isModalOpen} onOpenChange={handleCloseModal}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm" />
+
+          <Dialog.Content className="fixed left-1/2 top-1/2 z-[9999] max-h-[90vh] w-[700px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
+            <Dialog.Close className="absolute right-3 top-3 text-gray-600 hover:text-black">
+              X
+            </Dialog.Close>
+
+            <Dialog.Title className="mb-4 text-xl font-semibold">
+              {editTask ? 'Update Task' : 'Add Task'}
+            </Dialog.Title>
+
+            <div className="space-y-4">
+             
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Assign To (Choose ONLY ONE Employee As Assignee)
+                  <span className="text-red-500">*</span>
+                </label>
+
+                <div className="relative flex max-h-28 min-h-[3rem] flex-wrap items-center gap-2 overflow-y-auto rounded-md border border-gray-300 bg-gray-50 p-2 focus-within:border-blue-500 focus-within:bg-white">
+                  {assigneeList.map((assignee) => (
+                    <span
+                      key={assignee.value}
+                      className="inline-flex max-w-[220px] items-center truncate rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
+                    >
+                      <span className="inline-block max-w-[180px] truncate">{assignee.text}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAssignee(assignee.value ?? '')}
+                        className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
+                      >
+                        &times;
+                      </button>
+                    </span>
+                  ))}
+
+                  <Input
+                    ref={inputRef}
+                    type="text"
+                    placeholder="Search..."
+                    value={query}
+                    onChange={handleInputChange}
+                    onFocus={() => setIsOpen(true)}
+                    className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
+                  />
+                </div>
+
+                {isOpen && query.length > 0 && (
+                  <ul className="absolute z-[10000] mt-1 max-h-40 w-[calc(100%-2.5rem)] overflow-auto rounded-md border border-gray-300 bg-white py-1 text-base shadow-lg">
+                    {loadingSearch ? (
+                      <li className="p-2 text-gray-700">Loading...</li>
+                    ) : assigneeResults.length > 0 ? (
+                      assigneeResults.map((assignee) => (
+                        <li
+                          key={assignee.value}
+                          className="cursor-pointer p-2 hover:bg-blue-600 hover:text-white"
+                          onClick={() => handleAssigneeSelect(assignee)}
+                        >
+                          {assignee.text}
+                        </li>
+                      ))
+                    ) : (
+                      assigneeList.length === 0 && (
+                        <li className="p-2 text-gray-700">No results found</li>
+                      )
+                    )}
+                  </ul>
+                )}
+              </div>
+
+             
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Due Date<span className="text-red-500">*</span>
+                  </label>
+                  <DatePicker
+                    selected={dueDate}
+                    onChange={(d: Date | null) => setDueDate(d)}
+                    className="w-full rounded border border-gray-300 p-2"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Time<span className="text-red-500">*</span>
+                  </label>
+                  <TimePicker
+                    onChange={setTimeStr}
+                    value={timeStr}
+                    format="h:mm a"
+                    className="w-full rounded border border-gray-300 p-2"
+                    clearIcon={null}
+                  />
+                </div>
+              </div>
+
+           
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Task Type<span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={taskType}
+                    onChange={(e) => setTaskType(e.target.value)}
+                    className="w-full rounded border border-gray-300 p-2"
+                    disabled={isLoadingOptions}
+                  >
+                    <option value="">
+                      {isLoadingOptions ? '-- Loading --' : '-- Select --'}
+                    </option>
+                    {taskOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.text}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium">
+                    Status<span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="w-full rounded border border-gray-300 p-2"
+                    disabled={isLoadingStatusOptions}
+                  >
+                    <option value="">
+                      {isLoadingStatusOptions ? '-- Loading --' : '-- Select --'}
+                    </option>
+                    {statusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.text}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium">
+                  Subject<span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full rounded border border-gray-300 p-2"
+                  placeholder="Enter Subject..."
+                />
+              </div>
+
+              
+              <div className="relative">
+                <label className="mb-2 block text-sm font-medium">
+                  Contacts<span className="text-red-500">*</span>
+                </label>
+
+                <div className="relative flex max-h-28 min-h-[3rem] flex-wrap items-center gap-2 overflow-y-auto rounded-md border border-gray-300 bg-gray-50 p-2 focus-within:border-blue-500 focus-within:bg-white">
+                  {contacts.map((contactId, index) => {
+                    const name = contactNames[index]
+                    if (!name) return null
+
+                    return (
+                      <span
+                        key={contactId}
+                        className="flex items-center rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
+                      >
+                        {name}
+                        <button
+                          type="button"
+                          onClick={() => removeContact(contactId)}
+                          className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
+                        >
+                          &times;
+                        </button>
+                      </span>
+                    )
+                  })}
+
+                  <Input
+                    type="text"
+                    placeholder="Search and add contacts..."
+                    value={contactQuery}
+                    onChange={handleContactInputChange}
+                    onFocus={() => setIsContactResultsOpen(true)}
+                    className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
+                  />
+                </div>
+
+                {isContactResultsOpen &&
+                  (contactQuery.length > 0 || contactResults.length > 0) && (
+                    <ul className="absolute z-[10000] mt-1 max-h-40 w-[calc(100%-2.5rem)] overflow-auto rounded-md border border-gray-300 bg-white py-1 text-base shadow-lg">
+                      {loadingContacts ? (
+                        <li className="p-2 text-gray-700">Loading...</li>
+                      ) : contactResults.length > 0 ? (
+                        contactResults.map((contact) => (
+                          <li
+                            key={contact.value}
+                            className="cursor-pointer p-2 hover:bg-blue-600 hover:text-white"
+                            onClick={() => handleContactSelect(contact)}
+                          >
+                            {contact.text}
+                          </li>
+                        ))
+                      ) : (
+                        <li className="p-2 text-gray-700">No contacts found</li>
+                      )}
+                    </ul>
+                  )}
+              </div>
+
+              
+              <div>
+                <label className="mb-1 block text-sm font-medium">Description</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full rounded border border-gray-300 p-2"
+                  rows={3}
+                  placeholder="Enter Description..."
+                />
+              </div>
+            </div>
+
+            
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={handleCloseModal}
+                className="rounded border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={editTask ? handleUpdateTask : handleAddTask}
+                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+              >
+                {editTask ? 'Update' : 'Save'}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    )}
+  </div>
+)
+ 
+}
+
