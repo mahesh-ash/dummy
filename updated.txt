@@ -30,7 +30,7 @@ const defaultColDef = {
 	sortable: true,
 	editable: false,
 	flex: 1,
-	filter: 'agTextColumnFilter', // Enable text filter for all columns
+	filter: 'agTextColumnFilter',
 	floatingFilter: true,
 	cellStyle: {
 		whiteSpace: 'nowrap',
@@ -39,12 +39,10 @@ const defaultColDef = {
 	},
 };
 
-
 const columns = [
 	{
 		headerName: 'Account Name',
 		field: 'accountName',
-		// filter: 'agTextColumnFilter',
 		filterParams: {
 			filterPlaceholder: (params) => {
 				return 'Search Account Name';
@@ -53,7 +51,7 @@ const columns = [
 		lockVisible: true,
 	},
 	{ headerName: 'Account ID', field: 'accountId', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
-	{ headerName: 'Invoice Date', field: 'date', headerClass: 'justify-center', filter: false, cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' }, // Disable filter for date column
+	{ headerName: 'Invoice Date', field: 'date', headerClass: 'justify-center', filter: false, cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
 	{ headerName: 'Commission', field: 'commission', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
 	{ headerName: 'Status', field: 'status', cellRenderer: 'StatusCellRenderer', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
 	{ headerName: 'Invoice', field: 'invoice', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
@@ -64,7 +62,7 @@ const columns = [
 		filter: false,
 		sortable: false,
 		editable: false,
-		menuTabs: [], // disables column menu
+		menuTabs: [],
 		cellRenderer: 'ActionCellRenderer',
 		pinned: 'right',
 		minWidth: 120,
@@ -77,119 +75,12 @@ const columns = [
 	},
 ];
 
-const dummyData = [
-	{
-		product: 'Alpha Fund',
-		date: '10/01/2025',
-		accountName: 'John Doe',
-		accountId: 'ACC123',
-		commission: '$1,000',
-		status: 'Open',
-		invoice: 'INV-001',
-		notes: 'First payment',
-	},
-	{
-		product: 'Beta Trust',
-		date: '11/02/2025',
-		accountName: 'Jane Smith',
-		accountId: 'ACC456',
-		invoiceFile: null,
-		commission: '$2,500',
-		status: 'Open',
-		invoice: 'INV-002',
-		notes: 'Awaiting approval',
-	},
-	{
-		product: 'Gamma Equity',
-		date: '10/01/2025',
-		accountName: 'Acme Corp',
-		accountId: 'ACC789',
-		commission: '$3,200',
-		status: 'Paid',
-		invoice: 'INV-003',
-		notes: 'Quarterly',
-	},
-	{
-		product: 'Delta Income',
-		date: '10/01/2025',
-		accountName: 'Global Partners',
-		accountId: 'ACC321',
-		commission: '$1,800',
-		status: 'Paid',
-		invoice: 'INV-004',
-		notes: 'Annual',
-	},
-	{
-		product: 'Omega Growth',
-		date: '10/01/2025',
-		accountName: 'Jane Smith',
-		accountId: 'ACC654',
-		commission: '$2,100',
-		status: 'Open',
-		invoice: 'INV-005',
-		notes: 'Follow up',
-	},
-	{
-		product: 'Sigma Value',
-		date: '10/01/2025',
-		accountName: 'John Doe',
-		accountId: 'ACC987',
-		commission: '$950',
-		status: 'Paid',
-		invoice: 'INV-006',
-		notes: 'Late fee applied',
-	},
-	{
-		product: 'Zeta Fund',
-		date: '10/01/2025',
-		accountName: 'Acme Corp',
-		accountId: 'ACC852',
-		commission: '$1,500',
-		status: 'Open',
-		invoice: 'INV-007',
-		notes: 'New client',
-	},
-	{
-		product: 'Theta Income',
-		date: '10/01/2025',
-		accountName: 'Global Partners',
-		accountId: 'ACC741',
-		commission: '$2,800',
-		status: 'Paid',
-		invoice: 'INV-008',
-		notes: 'Bonus included',
-	},
-	{
-		product: 'Lambda Trust',
-		date: '10/01/2025',
-		accountName: 'Jane Smith',
-		accountId: 'ACC159',
-		commission: '$1,200',
-		status: 'Paid',
-		invoice: 'INV-009',
-		notes: 'Quarterly',
-	},
-	{
-		product: 'Pi Equity',
-		date: '10/01/2025',
-		accountName: 'John Doe',
-		accountId: 'ACC357',
-		commission: '$2,000',
-		status: 'Open',
-		invoice: 'INV-010',
-		notes: 'Awaiting docs',
-	},
-];
-
-// const watchedStatus = form.watch("status");
 function DefaultCellRenderer(props) {
 	const col = props.colDef;
-	// Custom Invoice column renderer with download icon on hover
 	if (col.field === 'invoice') {
 		return (
 			<div className={col.className + ' relative flex items-center'} style={col.cellStyle} title={props.value}>
 				<span>{props.value}</span>
-
 				<button
 					type="button"
 					className="ml-2 text-blue-500 hover:text-blue-700 transition-colors"
@@ -197,7 +88,6 @@ function DefaultCellRenderer(props) {
 					title="Download Invoice"
 					onClick={() => {
 						toast.success('Download Completed');
-						/* TODO: implement download logic if needed */
 					}}
 				>
 					<Download size={18} />
@@ -238,26 +128,120 @@ function StatusCellRenderer(props) {
 }
 
 export default function ManageInvoiceTable(props) {
-	// Typeahead for Account Name
 	useSignals();
-	const dummyAccounts = [
-		{ accountName: 'John Doe', id: 'ACC123' },
-		{ accountName: 'Jane Smith', id: 'ACC456' },
-		{ accountName: 'Acme Corp', id: 'ACC789' },
-		{ accountName: 'Global Partners', id: 'ACC321' },
-	];
-	const [accountOptions, setAccountOptions] = useState(dummyAccounts);
+	
+	// Loading states
+	const [isLoadingData, setIsLoadingData] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
+	
+	// Typeahead for Account Name
+	const [accountOptions, setAccountOptions] = useState([]);
 	const [accountQuery, setAccountQuery] = useState('');
 	const [selectedAccount, setSelectedAccount] = useState([]);
 
-	// Dummy search for Account Name
-	function handleAccountSearch(query) {
+	// Grid and sheet states
+	const gridRef = useRef();
+	const [rowData, setRowData] = useState([]);
+	const { sheetOpen, setSheetOpen } = props;
+	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [editingRow, setEditingRow] = useState(null);
+	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+	const [rowToDelete, setRowToDelete] = useState(null);
+
+	// Coverage states
+	const masterCoverageOptions = [
+		{ name: 'John Doe', role: 'Manager', coverageStart: '2025/01/01', coverageEnd: '2025/12/31' },
+		{ name: 'Jane Smith', role: 'Analyst', coverageStart: '2025/03/01', coverageEnd: '2025/09/30' },
+		{ name: 'Acme Corp', role: 'Partner', coverageStart: '2025/05/01', coverageEnd: '2025/11/30' },
+	];
+	const [search, setSearch] = useState('');
+	const [showDropdown, setShowDropdown] = useState(false);
+	const [selectedCoverage, setSelectedCoverage] = useState(null);
+	const [percentage, setPercentage] = useState('');
+	const [coverageRows, setCoverageRows] = useState([]);
+	const [coverageError, setCoverageError] = useState('');
+	const [percentageInputError, setPercentageInputError] = useState('');
+
+	const filteredOptions = masterCoverageOptions.filter((opt) => opt.name.toLowerCase().includes(search.toLowerCase()));
+
+	useEffect(() => {
+		if (percentageInputError != '') {
+			toast.error(percentageInputError);
+		}
+	}, [percentageInputError]);
+
+	// Fetch invoice data on component mount
+	useEffect(() => {
+		fetchInvoiceData();
+	}, []);
+
+	// Function to fetch invoice data from API
+	const fetchInvoiceData = async () => {
+		setIsLoadingData(true);
+		try {
+			const response = await httpClient.get('/commission/GetCommissions');
+			
+			// Transform API data to match table structure
+			const transformedData = response.data.map((item) => ({
+				accountName: item.account_name || '',
+				accountId: item.account_id || '',
+				date: item.comm_date || '',
+				commission: item.commission ? `$${item.commission}` : '$0',
+				status: item.comm_status || 'Open',
+				invoice: item.comm_no || '',
+				notes: item.comments || '',
+				product: item.product || '',
+				ticker: item.ticker || '',
+				quantity: item.quantity || '',
+				price: item.price || '',
+				payOut: item.payOut || false,
+				netAmount: item.net_amount || '',
+				empSplits: item.emp_splits || '',
+				// Store original data for editing
+				_originalData: item,
+			}));
+			
+			setRowData(transformedData);
+			toast.success('Data loaded successfully');
+		} catch (error) {
+			console.error('Error fetching invoice data:', error);
+			toast.error('Failed to load data');
+			setRowData([]);
+		} finally {
+			setIsLoadingData(false);
+		}
+	};
+
+	// Dummy search for Account Name (replace with actual API call if needed)
+	async function handleAccountSearch(query) {
 		setAccountQuery(query);
-		setAccountOptions(dummyAccounts.filter((opt) => opt.accountName.toLowerCase().includes(query.toLowerCase())));
+		try {
+			// Replace with actual API endpoint for account search
+			// const response = await httpClient.get(`/accounts/search?q=${query}`);
+			// setAccountOptions(response.data);
+			
+			// For now, using local filter (replace this with API call)
+			const dummyAccounts = [
+				{ accountName: 'John Doe', id: 'ACC123' },
+				{ accountName: 'Jane Smith', id: 'ACC456' },
+				{ accountName: 'Acme Corp', id: 'ACC789' },
+				{ accountName: 'Global Partners', id: 'ACC321' },
+			];
+			setAccountOptions(dummyAccounts.filter((opt) => opt.accountName.toLowerCase().includes(query.toLowerCase())));
+		} catch (error) {
+			console.error('Error searching accounts:', error);
+		}
 	}
 
-	function dateRangeHandler(fromDate, toDate) {}
-	function dateRangeCancelHandler() {}
+	function dateRangeHandler(fromDate, toDate) {
+		// Implement date range filtering
+		console.log('Date range:', fromDate, toDate);
+	}
+	
+	function dateRangeCancelHandler() {
+		// Reset date range filter
+	}
+
 	function handleAccountChange(selected) {
 		setSelectedAccount(selected);
 		setCoverageRows([
@@ -269,7 +253,6 @@ export default function ManageInvoiceTable(props) {
 		}
 	}
 
-	// Custom menu renderer for typeahead
 	function renderAccountMenu(results, menuProps) {
 		if (accountQuery.length === 0 && accountOptions.length === 0) {
 			return null;
@@ -296,37 +279,6 @@ export default function ManageInvoiceTable(props) {
 			</Menu>
 		);
 	}
-	const gridRef = useRef();
-	const [rowData, setRowData] = useState(dummyData);
-	const { sheetOpen, setSheetOpen } = props;
-	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-	const [editingRow, setEditingRow] = useState(null);
-
-	// State for delete dialog
-	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-	const [rowToDelete, setRowToDelete] = useState(null);
-
-	// Coverage details table data and columns for Sheet
-	const masterCoverageOptions = [
-		{ name: 'John Doe', role: 'Manager', coverageStart: '2025/01/01', coverageEnd: '2025/12/31' },
-		{ name: 'Jane Smith', role: 'Analyst', coverageStart: '2025/03/01', coverageEnd: '2025/09/30' },
-		{ name: 'Acme Corp', role: 'Partner', coverageStart: '2025/05/01', coverageEnd: '2025/11/30' },
-	];
-
-	const [search, setSearch] = useState('');
-	const [showDropdown, setShowDropdown] = useState(false);
-	const [selectedCoverage, setSelectedCoverage] = useState(null);
-	const [percentage, setPercentage] = useState('');
-	const [coverageRows, setCoverageRows] = useState([]);
-	const [coverageError, setCoverageError] = useState('');
-	const [percentageInputError, setPercentageInputError] = useState('');
-
-	const filteredOptions = masterCoverageOptions.filter((opt) => opt.name.toLowerCase().includes(search.toLowerCase()));
-	useEffect(() => {
-		if (percentageInputError != '') {
-			toast.error(percentageInputError);
-		}
-	}, [percentageInputError]);
 
 	const coverageColumns = [
 		{ headerName: 'Name', field: 'name', flex: 1, cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
@@ -430,9 +382,12 @@ export default function ManageInvoiceTable(props) {
 		product: '',
 		invoiceFile: null,
 		notes: '',
+		ticker: '',
+		quantity: '',
+		price: '',
+		netAmount: '',
 	};
 
-	// Add useForm for shadcn Form context
 	const form = useForm({
 		mode: 'onChange',
 		defaultValues: defaultValues,
@@ -440,7 +395,6 @@ export default function ManageInvoiceTable(props) {
 
 	const watchedStatus = form.watch("status");
 
-	// Populate form when editingRow changes
 	useEffect(() => {
 		if (editingRow) {
 			form.reset({
@@ -454,6 +408,10 @@ export default function ManageInvoiceTable(props) {
 				product: editingRow.product || '',
 				invoiceFile: editingRow.invoiceFile || null,
 				notes: editingRow.notes || '',
+				ticker: editingRow.ticker || '',
+				quantity: editingRow.quantity || '',
+				price: editingRow.price || '',
+				netAmount: editingRow.netAmount || '',
 			});
 			setSelectedAccount(editingRow.accountName ? [{ accountName: editingRow.accountName }] : []);
 			setSheetOpen(true);
@@ -462,7 +420,6 @@ export default function ManageInvoiceTable(props) {
 
 	function cellEditingStopped(e) {
 		if (e.colDef.field === 'percentage') {
-			// ag-Grid passes the new value in e.value, but if valueSetter clamps it, use e.newValue
 			let attemptedValue = e.newValue !== undefined ? Number(e.newValue) : Number(e.value);
 			if (!isNaN(attemptedValue) && attemptedValue > 100) {
 				toast.error('Percentage cannot be more than 100.');
@@ -477,7 +434,6 @@ export default function ManageInvoiceTable(props) {
 					id: 'columns',
 					labelDefault: 'Columns',
 					labelKey: 'columns',
-
 					iconKey: 'columns',
 					toolPanel: 'agColumnsToolPanel',
 					toolPanelParams: {
@@ -495,7 +451,6 @@ export default function ManageInvoiceTable(props) {
 		[]
 	);
 
-	// ActionCellRenderer for ag-Grid Action column
 	function ActionCellRenderer(params) {
 		const row = params.data;
 		return (
@@ -530,19 +485,15 @@ export default function ManageInvoiceTable(props) {
 		);
 	}
 
-	// Track last sheet open state to detect close intent
 	const prevSheetOpenRef = useRef(sheetOpen);
 	useEffect(() => {
-		// Detect close intent (sheetOpen goes from true to false)
 		if (prevSheetOpenRef.current && !sheetOpen && form.formState.isDirty) {
 			setShowUnsavedDialog(true);
-			// Re-open the sheet until dialog resolves
 			setSheetOpen(true);
 		}
 		prevSheetOpenRef.current = sheetOpen;
 	}, [sheetOpen, form.formState.isDirty]);
 
-	// Always reset form when sheet is closed (regardless of dirty state)
 	useEffect(() => {
 		if (!sheetOpen) {
 			form.reset(defaultValues);
@@ -552,11 +503,9 @@ export default function ManageInvoiceTable(props) {
 		}
 	}, [sheetOpen]);
 
-	// Custom handler for Sheet open/close
 	function handleSheetOpenChange(nextOpen) {
 		if (!nextOpen && form.formState.isDirty) {
 			setShowUnsavedDialog(true);
-			// Keep sheet open until dialog resolves
 			setSheetOpen(true);
 		} else {
 			setSheetOpen(nextOpen);
@@ -569,66 +518,77 @@ export default function ManageInvoiceTable(props) {
 		form.reset();
 		setEditingRow(null);
 	}
+	
 	function handleDialogCancel() {
 		setShowUnsavedDialog(false);
 		setSheetOpen(true);
 	}
 
-	// Handler for confirming delete
-	function handleDeleteConfirm() {
+	async function handleDeleteConfirm() {
 		setShowDeleteDialog(false);
 		if (rowToDelete) {
-			setRowData((prev) => prev.filter((row) => row !== rowToDelete));
-			setRowToDelete(null);
+			try {
+				// Call delete API if you have one
+				// await httpClient.delete(`/commission/DeleteCommission/${rowToDelete._originalData.id}`);
+				
+				setRowData((prev) => prev.filter((row) => row !== rowToDelete));
+				setRowToDelete(null);
+				toast.success('Record deleted successfully');
+			} catch (error) {
+				console.error('Error deleting record:', error);
+				toast.error('Failed to delete record');
+			}
 		}
-		toast.success('Record deleted successfully');
 	}
+	
 	function handleDeleteCancel() {
 		setShowDeleteDialog(false);
 		setRowToDelete(null);
 	}
 
-	// Save handler for form
-	function handleFormSubmit(data) {
-		// If editing, update the row, else add new
-		if (editingRow) {
-			setRowData((prev) =>
-				prev.map((row) =>
-					row === editingRow
-						? {
-								...editingRow,
-								...data,
-								accountName: data.accountname,
-								invoice: data.invoiceNumber,
-								date: data.invoiceDate,
-								status: data.status,
-								commission: `$${data.commission}`,
-								notes: data.notes,
-								product: data.product,
-								invoiceFile: data.invoiceFile,
-							}
-						: row
-				)
-			);
-		} else {
-			setRowData((prev) => [
-				...prev,
-				{
-					product: data.product,
-					date: data.invoiceDate,
-					accountName: data.accountname,
-					accountId: '',
-					commission: `$${data.commission}`,
-					status: data.status,
-					invoice: data.invoiceNumber,
-					notes: data.notes,
-					invoiceFile: data.invoiceFile || null,
-				},
-			]);
+	// Save handler for form - POST to API
+	async function handleFormSubmit(data) {
+		setIsSaving(true);
+		
+		try {
+			// Prepare payload according to API structure
+			const payload = {
+				account_id: data.accountname,
+				comm_date: data.invoiceDate,
+				comm_no: data.invoiceNumber,
+				comm_status: data.status,
+				commission: data.commission,
+				product: data.product,
+				ticker: data.ticker || '',
+				quantity: data.quantity || '',
+				price: data.price || '',
+				payOut: false, // Set based on your logic
+				net_amount: data.netAmount || '',
+				comments: data.notes,
+				emp_splits: coverageRows.length > 0 ? JSON.stringify(coverageRows) : '',
+			};
+
+			// Make POST request to save commission
+			const response = await httpClient.post('/commission/SaveCommission', payload);
+			
+			if (response.success || response.data) {
+				toast.success(editingRow ? 'Invoice updated successfully' : 'Invoice created successfully');
+				
+				// Refresh data after save
+				await fetchInvoiceData();
+				
+				setSheetOpen(false);
+				form.reset();
+				setEditingRow(null);
+			} else {
+				toast.error('Failed to save invoice');
+			}
+		} catch (error) {
+			console.error('Error saving invoice:', error);
+			toast.error(error.response?.data?.message || 'Failed to save invoice');
+		} finally {
+			setIsSaving(false);
 		}
-		setSheetOpen(false);
-		form.reset();
-		setEditingRow(null);
 	}
 
 	return (
@@ -636,9 +596,9 @@ export default function ManageInvoiceTable(props) {
 			<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
 				<SheetContent className="sm:max-w-6xl">
 					<SheetHeader>
-						<SheetTitle>Add Invoice</SheetTitle>
+						<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Invoice'}</SheetTitle>
 					</SheetHeader>
-					{/* Unsaved changes dialog using shadcn Dialog */}
+					
 					<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
 						<DialogContent>
 							<DialogHeader>
@@ -655,9 +615,9 @@ export default function ManageInvoiceTable(props) {
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
+					
 					<Form {...form}>
 						<form className="grid grid-cols-3 gap-6 p-4" onSubmit={form.handleSubmit(handleFormSubmit)}>
-							{/* Row 1 */}
 							<div>
 								<FormField
 									control={form.control}
@@ -693,6 +653,7 @@ export default function ManageInvoiceTable(props) {
 									)}
 								/>
 							</div>
+							
 							<div>
 								<FormField
 									control={form.control}
@@ -726,7 +687,6 @@ export default function ManageInvoiceTable(props) {
 								/>
 							</div>
 
-							{/* Row 2 */}
 							<div>
 								<FormField
 									control={form.control}
@@ -748,6 +708,7 @@ export default function ManageInvoiceTable(props) {
 									)}
 								/>
 							</div>
+							
 							<div>
 								<FormField
 									control={form.control}
@@ -771,7 +732,6 @@ export default function ManageInvoiceTable(props) {
 								/>
 							</div>
 
-							{/* Row 3 */}
 							<div>
 								<FormField
 									control={form.control}
@@ -798,382 +758,3 @@ export default function ManageInvoiceTable(props) {
 								<FormField
 									control={form.control}
 									name="includeClientsNotAssigned"
-									render={({ field }) => (
-										<FormItem className="flex flex-row items-center space-x-2">
-											<Checkbox id="includeClientsNotAssigned" checked={field.value} onCheckedChange={field.onChange} />
-											<FormLabel htmlFor="includeClientsNotAssigned" className="font-medium cursor-pointer">
-												Include Clients not Assigned
-											</FormLabel>
-										</FormItem>
-									)}
-								/>
-								<FormField
-									control={form.control}
-									name="includeDeletedClients"
-									render={({ field }) => (
-										<FormItem className="flex flex-row items-center space-x-2">
-											<Checkbox id="includeDeletedClients" checked={field.value} onCheckedChange={field.onChange} />
-											<FormLabel htmlFor="includeDeletedClients" className="font-medium cursor-pointer">
-												Include Deleted Clients
-											</FormLabel>
-										</FormItem>
-									)}
-								/>
-							</div>
-
-							<div>
-								<FormField
-									control={form.control}
-									name="status"
-									rules={{ required: 'choose Syndicate or invoice' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">Product<span className="text-red-500">*</span></FormLabel>
-											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
-												<SelectTrigger className="w-full justify-between h-11">
-													<SelectValue placeholder="Select status" />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="Open">Syndicate</SelectItem>
-													<SelectItem value="Paid">Invoice</SelectItem>
-												</SelectContent>
-											</Select>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-							 {watchedStatus === 'Open' && (
-                <div className="col-span-3 grid grid-cols-2 gap-6 mt-6">
-                    <div className="col-span-2 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
-                        <FormField
-                            control={form.control}
-                            name="ticker"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel className="font-medium">Ticker</FormLabel>
-                                    <Input {...field} type="text" maxLength={32} className="h-10" placeholder="Ticker" />
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="quantity"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel className="font-medium">Quantity</FormLabel>
-                                    <Input {...field} type="number" min={0} className="h-10" placeholder="Quantity" />
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="price"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel className="font-medium">Price</FormLabel>
-                                    <Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Price" />
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                        <FormField
-                            control={form.control}
-                            name="netAmount"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel className="font-medium">Net Amount</FormLabel>
-                                    <Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Net Amount" />
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-                    </div>
-                </div>
-            )}
-
-							<div className="col-span-3 grid grid-cols-2 gap-6">
-								<FormField
-									control={form.control}
-									name="invoiceFile"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">Attach Invoice<span className="text-red-500">*</span></FormLabel>
-											<div
-												className="border-2 border-dashed dark:border-gray-800 border-gray-300 rounded-lg p-4 dark:bg-inherit flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition h-[115px] cursor-pointer relative"
-												onClick={() => document.getElementById('invoiceFileInput')?.click()}
-											>
-												<input
-													type="file"
-													id="invoiceFileInput"
-													accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-													className="hidden"
-													onChange={(e) => field.onChange(e.target.files && e.target.files[0])}
-												/>
-												{field.value ? (
-													<div className="flex flex-col items-center w-full">
-														<span className="text-sm text-gray-700 truncate max-w-xs">{field.value.name}</span>
-														<Button
-															type="button"
-															variant="outline"
-															size="sm"
-															className="mt-2"
-															onClick={(e) => {
-																e.stopPropagation();
-																field.onChange(null);
-															}}
-														>
-															Remove
-														</Button>
-													</div>
-												) : (
-													<span className="text-gray-400 text-sm">Drag & drop or click to upload (PDF, Word, PPT, XLS)</span>
-												)}
-											</div>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-
-								<FormField
-									control={form.control}
-									name="notes"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>Notes</FormLabel>
-											<textarea id="notes" rows={4} className="border rounded w-full p-2" placeholder="Enter notes here..." {...field} />
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-						</form>
-					</Form>
-
-					{/* Only visible the coverage details once the Account name selected */}
-					{selectedAccount.length >0 && (
-					<div className="p-4">
-						<h3 className="text-lg font-semibold mb-2">Coverage Details</h3>
-						{/* Search input, percentage input, and Add button above table */}
-
-						<div className="mb-4 flex gap-2 items-center" style={{ maxWidth: 500 }}>
-							<div style={{ position: 'relative', flex: 2 }}>
-								<Input
-									value={search}
-									onChange={(e) => {
-										const newValue = e.target.value;
-										setSearch(newValue);
-										setShowDropdown(true);
-										if (!newValue || (selectedCoverage && newValue !== selectedCoverage.name)) {
-                                        setSelectedCoverage(null);
-                                        setPercentage(''); 
-                                    }
-
-									}}
-									onFocus={() => setShowDropdown(true)}
-									onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-									placeholder="Search name..."
-									className="w-80"
-								/>
-								{showDropdown && (
-									<ul
-										className="dark:bg-gray-800 bg-gray-100 border"
-										style={{
-											position: 'absolute',
-											zIndex: 10,
-											borderRadius: 4,
-											margin: 0,
-											padding: 0,
-											width: '100%',
-											maxHeight: 120,
-											overflowY: 'auto',
-											listStyle: 'none',
-										}}
-									>
-										{filteredOptions.length > 0 ? (
-											filteredOptions.map((opt) => (
-												<li
-													key={opt.name}
-													style={{ padding: '6px 10px', cursor: 'pointer' }}
-													onMouseDown={() => {
-														setSelectedCoverage(opt);
-														setSearch(opt.name);
-														setShowDropdown(false);
-													}}
-												>
-													{opt.name}
-												</li>
-											))
-										) : (
-											<li style={{ padding: '6px 10px', color: '#888' }}>No matches</li>
-										)}
-									</ul>
-								)}
-							</div>
-							   {selectedCoverage && ( 
-                        <div className="flex items-center mt-2">
-							<Input
-								value={percentage}
-								onChange={(e) => {
-									const val = e.target.value.replace(/[^0-9.]/g, '');
-									setPercentage(val);
-									if (val !== '' && Number(val) > 100) {
-										setPercentageInputError('Percentage cannot be more than 100.');
-									} else {
-										setPercentageInputError('');
-									}
-								}}
-								type="number"
-								min={0}
-								max={100}
-								placeholder="%"
-								className="input input-bordered border rounded px-3 py-2 text-base w-24"
-								disabled={!selectedCoverage}
-							/>
-							<Button
-								type="button"
-								variant="default"
-								className="ml-2"
-								onClick={handleAddCoverage}
-								disabled={!selectedCoverage || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
-							>
-								Add
-							</Button>
-						</div>
-							   )}
-							   </div>
-						{coverageRows.length > 0 && (
-						
-							<div
-								className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'}  coverage-table w-full`}
-								style={{ height: 220, minHeight: 120, overflow: 'auto' }}
-							>
-								<AgGridReact
-									columnDefs={coverageColumns}
-									rowData={coverageRows}
-									rowHeight={34}
-									headerHeight={34}
-									domLayout="normal"
-									modules={[ClientSideRowModelModule]}
-									defaultColDef={defaultColDef.filter == ''}
-									suppressMovableColumns
-									context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: handleDeleteCoverage }}
-									onCellEditingStopped={cellEditingStopped}
-									noRowsOverlayComponent={() => <span>Record not found.</span>}
-									invalidEditValueMode={'block'}
-								/>
-							</div>
-						)}
-					</div>
-						)}
-					<SheetFooter className="flex flex-row justify-end">
-						<Button
-							className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
-							ref={null}
-							type="submit"
-							onClick={form.handleSubmit(handleFormSubmit)}
-							// disabled={!form.formState.isValid}
-						>
-							Save
-						</Button>
-						<Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
-							Cancel
-						</Button>
-					</SheetFooter>
-				</SheetContent>
-			</Sheet>
-			<div className="flex justify-between pb-2">
-				<DateRangePicker
-					onCancel={dateRangeCancelHandler}
-					locale="en-US"
-					// initialDateFrom={rangeStartDate}
-					// initialDateTo={rangeEndDate}
-					onUpdate={dateRangeHandler}
-					showCompare={false}
-				></DateRangePicker>
-				<div className="flex gap-2 items-center">
-					<span className=" font-medium mr-2">#{rowData.length} Records</span>
-					<Button title={'Refresh'} className={'h-[40px]'} variant="outline">
-						<RefreshCcwIcon></RefreshCcwIcon>
-					</Button>
-					<Button onClick={() => toast.success('Download Completed')} title={'Download'} className={'h-[40px] border-custom-border'} variant="outline">
-						<Download></Download>
-						Excel
-					</Button>
-				</div>
-			</div>
-			<div
-				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
-				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
-			>
-				<AgGridReact
-					ref={gridRef}
-					columnDefs={columns.map((col) => {
-						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
-						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
-						return { ...col, cellRenderer: DefaultCellRenderer };
-					})}
-					defaultColDef={defaultColDef}
-					rowData={rowData}
-					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ClientSideRowModelModule]}
-					rowHeight={40}
-					headerHeight={40}
-					domLayout="normal"
-					sideBar={sideBar}
-					suppressMovableColumns
-					noRowsOverlayComponent={() => <span>Record not found.</span>}
-				/>
-			</div>
-			{/* Delete warning dialog using shadcn Dialog */}
-			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Delete Invoice</DialogTitle>
-					</DialogHeader>
-					<div className="mb-6">Are you sure you want to delete this invoice? This action cannot be undone.</div>
-					<DialogFooter className="flex justify-end gap-2">
-						<Button variant="outline" onClick={handleDeleteCancel}>
-							Cancel
-						</Button>
-						<Button variant="destructive" onClick={handleDeleteConfirm}>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-		</div>
-	);
-}
---------------------------------------------------------------------------
-account_id
-string
-comm_date
-string
-comm_no
-string
-comm_status
-string
-commission
-string
-product
-string
-ticker
-string
-quantity
-string
-price
-string
-payOut
-boolean
-net_amount
-string
-comments
-string
-emp_splits
-string-
-------------------------------
-POST
-/commission/SaveCommission
--------------------------------------------------
