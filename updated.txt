@@ -25,6 +25,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { IS_DARK } from '@/store/signals';
 import { useSignals } from '@preact/signals-react/runtime';
 import { DateRangePicker } from '../common/DateRangePicker';
+import { useMutation } from 'react-query';
+import { saveinvoicemutations } from '@/utils/service';
+import { createFormData } from '@/utils/common';
+import z from 'zod';
 
 const defaultColDef = {
 	sortable: true,
@@ -129,11 +133,14 @@ function StatusCellRenderer(props) {
 
 export default function ManageInvoiceTable(props) {
 	useSignals();
-	
+	const saveinvoicemutation = useMutation({
+		mutationFn: saveinvoicemutations,
+	});
+
 	// Loading states
 	const [isLoadingData, setIsLoadingData] = useState(false);
 	const [isSaving, setIsSaving] = useState(false);
-	
+
 	// Typeahead for Account Name
 	const [accountOptions, setAccountOptions] = useState([]);
 	const [accountQuery, setAccountQuery] = useState('');
@@ -170,66 +177,85 @@ export default function ManageInvoiceTable(props) {
 		}
 	}, [percentageInputError]);
 
+	const [employeeQuery, setEmployeeQuery] = useState('');
+	const [employeeOptions, setEmployeeOptions] = useState([]);
+	const [isEmployeeLoading, setIsEmployeeLoading] = useState(false);
+	const [selectedEmployeeCoverage, setSelectedEmployeeCoverage] = useState(null);
+	// const [percentage, setPercentage] = useState('');
+
+	async function handleEmployeeSearch(query) {
+		// debugger;
+		setEmployeeQuery(query);
+		setIsEmployeeLoading(true);
+
+		try {
+			httpClient.get(`Search/GetSearchText?searchText=${encodeURIComponent(query)}&type=employeeQuery`).then((data) => {
+				setAccountOptions(data.data.data);
+				setIsLoading(false);
+			});
+		} catch (error) {
+			console.error('Error searching Employees:', error);
+			setIsLoading(false);
+		}
+	}
+
 	// Fetch invoice data on component mount
-	useEffect(() => {
-		fetchInvoiceData();
-	}, []);
+	// useEffect(() => {
+	// 	fetchInvoiceData();
+	// }, []);
 
 	// Function to fetch invoice data from API
-	const fetchInvoiceData = async () => {
-		setIsLoadingData(true);
-		try {
-			const response = await httpClient.get('/commission/GetCommissions');
-			
-			// Transform API data to match table structure
-			const transformedData = response.data.map((item) => ({
-				accountName: item.account_name || '',
-				accountId: item.account_id || '',
-				date: item.comm_date || '',
-				commission: item.commission ? `$${item.commission}` : '$0',
-				status: item.comm_status || 'Open',
-				invoice: item.comm_no || '',
-				notes: item.comments || '',
-				product: item.product || '',
-				ticker: item.ticker || '',
-				quantity: item.quantity || '',
-				price: item.price || '',
-				payOut: item.payOut || false,
-				netAmount: item.net_amount || '',
-				empSplits: item.emp_splits || '',
-				// Store original data for editing
-				_originalData: item,
-			}));
-			
-			setRowData(transformedData);
-			toast.success('Data loaded successfully');
-		} catch (error) {
-			console.error('Error fetching invoice data:', error);
-			toast.error('Failed to load data');
-			setRowData([]);
-		} finally {
-			setIsLoadingData(false);
-		}
-	};
+	// const fetchInvoiceData = async () => {
+	// 	setIsLoadingData(true);
+	// 	try {
+	// 		const response = await httpClient.get('/commission/GetCommissions');
+
+	// 		// Transform API data to match table structure
+	// 		const transformedData = response.data.map((item) => ({
+	// 			accountName: item.account_name || '',
+	// 			accountId: item.account_id || '',
+	// 			date: item.comm_date || '',
+	// 			commission: item.commission ? `$${item.commission}` : '$0',
+	// 			status: item.comm_status || 'Open',
+	// 			invoice: item.comm_no || '',
+	// 			notes: item.comments || '',
+	// 			product: item.product || '',
+	// 			ticker: item.ticker || '',
+	// 			quantity: item.quantity || '',
+	// 			price: item.price || '',
+	// 			payOut: item.payOut || false,
+	// 			netAmount: item.net_amount || '',
+	// 			empSplits: item.emp_splits || '',
+	// 			// Store original data for editing
+	// 			_originalData: item,
+	// 		}));
+
+	// 		setRowData(transformedData);
+	// 		toast.success('Data loaded successfully');
+	// 	} catch (error) {
+	// 		console.error('Error fetching invoice data:', error);
+	// 		toast.error('Failed to load data');
+	// 		setRowData([]);
+	// 	} finally {
+	// 		setIsLoadingData(false);
+	// 	}
+	// };
 
 	// Dummy search for Account Name (replace with actual API call if needed)
+
+	const [isLoading, setIsLoading] = useState(false);
+
 	async function handleAccountSearch(query) {
 		setAccountQuery(query);
+		setIsLoading(true);
 		try {
-			// Replace with actual API endpoint for account search
-			// const response = await httpClient.get(`/accounts/search?q=${query}`);
-			// setAccountOptions(response.data);
-			
-			// For now, using local filter (replace this with API call)
-			const dummyAccounts = [
-				{ accountName: 'John Doe', id: 'ACC123' },
-				{ accountName: 'Jane Smith', id: 'ACC456' },
-				{ accountName: 'Acme Corp', id: 'ACC789' },
-				{ accountName: 'Global Partners', id: 'ACC321' },
-			];
-			setAccountOptions(dummyAccounts.filter((opt) => opt.accountName.toLowerCase().includes(query.toLowerCase())));
+			httpClient.get(`Search/GetSearchText?searchText=${encodeURIComponent(query)}&type=accountQuery`).then((data) => {
+				setAccountOptions(data.data.data);
+				setIsLoading(false);
+			});
 		} catch (error) {
 			console.error('Error searching accounts:', error);
+			setIsLoading(false);
 		}
 	}
 
@@ -237,26 +263,32 @@ export default function ManageInvoiceTable(props) {
 		// Implement date range filtering
 		console.log('Date range:', fromDate, toDate);
 	}
-	
+
 	function dateRangeCancelHandler() {
 		// Reset date range filter
 	}
 
 	function handleAccountChange(selected) {
+		// debugger;
+		console.log(selected);
 		setSelectedAccount(selected);
 		setCoverageRows([
 			{ name: 'John Doe', role: 'Manager', coverageStart: '2025/01/01', coverageEnd: '2025/12/31', percentage: 0 },
 			{ name: 'Jane Smith', role: 'Analyst', coverageStart: '2025/03/01', coverageEnd: '2025/09/30', percentage: 0 },
 		]);
 		if (selected.length > 0) {
-			form.setValue('accountname', selected[0].accountName);
+			form.setValue('account_id', selected[0].account_id);
+		} else {
+			form.setValue('account_id', '');
 		}
 	}
 
 	function renderAccountMenu(results, menuProps) {
+		// debugger;
 		if (accountQuery.length === 0 && accountOptions.length === 0) {
 			return null;
 		}
+		// console.log(results);
 		const items = results.map((result, index) => {
 			if (result.paginationOption) {
 				return (
@@ -268,7 +300,36 @@ export default function ManageInvoiceTable(props) {
 			} else {
 				return (
 					<MenuItem className="default-menu-item" href="javascript:void();" key={index} option={result}>
-						<div>{result.accountName}</div>
+						<div>{result.account_name}</div>
+					</MenuItem>
+				);
+			}
+		});
+		return (
+			<Menu className="default-dropdown" {...menuProps}>
+				{items}
+			</Menu>
+		);
+	}
+
+	function renderEmployeeMenu(results, menuProps) {
+		// debugger;
+		if (employeeQuery.length === 0 && employeeOptions.length === 0) {
+			return null;
+		}
+		// console.log(results);
+		const items = results.map((result, index) => {
+			if (result.paginationOption) {
+				return (
+					<MenuItem className="default-menu-item rounded !p-0 justify-center gap-1 text-xm" href="javascript:void();" key={index} option={result}>
+						<div>Show More</div>
+						<ChevronDownCircle className="size-4 stroke-[#aaa]" />
+					</MenuItem>
+				);
+			} else {
+				return (
+					<MenuItem className="default-menu-item" href="javascript:void();" key={index} option={result}>
+						<div>{result.display_name}</div>
 					</MenuItem>
 				);
 			}
@@ -371,29 +432,48 @@ export default function ManageInvoiceTable(props) {
 		setPercentageInputError('');
 	}
 
+	const CommissionSchema = z.object({
+		account_id: z.string().nonempty({ message: 'Account ID is required' }),
+		comm_date: z.string().nonempty({ message: 'Commission Date is required' }),
+		comm_no: z.string().nonempty({ message: 'Commission Number is required' }),
+		// Assuming comm_status has a predefined set of options
+		comm_status: z.enum(['Open', 'Paid', 'Void', 'Pending']),
+		commission: z.string().nonempty({ message: 'Commission value is required' }),
+		product: z.string().nonempty({ message: 'Product is required' }),
+		ticker: z.string().default(''),
+		quantity: z.string().default(''), // Often quantity is a number, but matching your 'string' input
+		price: z.string().default(''), // Often price is a number, but matching your 'string' input
+		payOut: z.boolean().default(false),
+		net_amount: z.string().default(''),
+		comments: z.string().default(''),
+		// Assuming emp_splits is a string representing employee splits data (e.g., JSON string or ID)
+		emp_splits: z.string().default(''),
+	});
+
+	// Your existing default values for context (they match the schema structure)
 	const defaultValues = {
-		invoiceDate: '',
-		invoiceNumber: '',
-		accountname: '',
-		status: '',
+		account_id: '',
+		comm_date: '',
+		comm_no: '',
+		comm_status: 'Open', // Must be one of the values defined in the Zod enum
 		commission: '',
-		includeClientsNotAssigned: false,
-		includeDeletedClients: false,
 		product: '',
-		invoiceFile: null,
-		notes: '',
 		ticker: '',
 		quantity: '',
 		price: '',
-		netAmount: '',
+		payOut: false,
+		net_amount: '',
+		comments: '',
+		emp_splits: '',
 	};
 
 	const form = useForm({
 		mode: 'onChange',
 		defaultValues: defaultValues,
 	});
+	// console.log(form);
 
-	const watchedStatus = form.watch("status");
+	const watchedStatus = form.watch('product');
 
 	useEffect(() => {
 		if (editingRow) {
@@ -518,7 +598,7 @@ export default function ManageInvoiceTable(props) {
 		form.reset();
 		setEditingRow(null);
 	}
-	
+
 	function handleDialogCancel() {
 		setShowUnsavedDialog(false);
 		setSheetOpen(true);
@@ -530,7 +610,7 @@ export default function ManageInvoiceTable(props) {
 			try {
 				// Call delete API if you have one
 				// await httpClient.delete(`/commission/DeleteCommission/${rowToDelete._originalData.id}`);
-				
+
 				setRowData((prev) => prev.filter((row) => row !== rowToDelete));
 				setRowToDelete(null);
 				toast.success('Record deleted successfully');
@@ -540,55 +620,20 @@ export default function ManageInvoiceTable(props) {
 			}
 		}
 	}
-	
+
 	function handleDeleteCancel() {
 		setShowDeleteDialog(false);
 		setRowToDelete(null);
 	}
 
 	// Save handler for form - POST to API
-	async function handleFormSubmit(data) {
+	function handleFormSubmit(data) {
+		// debugger;
 		setIsSaving(true);
-		
-		try {
-			// Prepare payload according to API structure
-			const payload = {
-				account_id: data.accountname,
-				comm_date: data.invoiceDate,
-				comm_no: data.invoiceNumber,
-				comm_status: data.status,
-				commission: data.commission,
-				product: data.product,
-				ticker: data.ticker || '',
-				quantity: data.quantity || '',
-				price: data.price || '',
-				payOut: false, // Set based on your logic
-				net_amount: data.netAmount || '',
-				comments: data.notes,
-				emp_splits: coverageRows.length > 0 ? JSON.stringify(coverageRows) : '',
-			};
-
-			// Make POST request to save commission
-			const response = await httpClient.post('/commission/SaveCommission', payload);
-			
-			if (response.success || response.data) {
-				toast.success(editingRow ? 'Invoice updated successfully' : 'Invoice created successfully');
-				
-				// Refresh data after save
-				await fetchInvoiceData();
-				
-				setSheetOpen(false);
-				form.reset();
-				setEditingRow(null);
-			} else {
-				toast.error('Failed to save invoice');
-			}
-		} catch (error) {
-			console.error('Error saving invoice:', error);
-			toast.error(error.response?.data?.message || 'Failed to save invoice');
-		} finally {
-			setIsSaving(false);
-		}
+		console.log(data);
+		const formData = createFormData(data);
+		// console.log(formData);
+		saveinvoicemutation.mutate(formData);
 	}
 
 	return (
@@ -598,7 +643,7 @@ export default function ManageInvoiceTable(props) {
 					<SheetHeader>
 						<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Invoice'}</SheetTitle>
 					</SheetHeader>
-					
+
 					<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
 						<DialogContent>
 							<DialogHeader>
@@ -615,22 +660,26 @@ export default function ManageInvoiceTable(props) {
 							</DialogFooter>
 						</DialogContent>
 					</Dialog>
-					
+
 					<Form {...form}>
-						<form className="grid grid-cols-3 gap-6 p-4" onSubmit={form.handleSubmit(handleFormSubmit)}>
+						<form className="grid grid-cols-3 gap-6 p-4">
+							{/* Row 1 */}
 							<div>
 								<FormField
 									control={form.control}
-									name="accountname"
-									rules={{ required: 'Account Name is required' }}
+									name="account_id"
+									// rules={{ required: 'Account Name is required' }}
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel className="font-medium">Account Name<span className="text-red-500">*</span></FormLabel>
+											<FormLabel className="font-medium">
+												Account Name<span className="text-red-500">*</span>
+											</FormLabel>
 											<div style={{ position: 'relative' }}>
 												<AsyncTypeahead
-													id="account-typeahead"
-													labelKey="accountName"
+													id="account_id"
+													labelKey="account_name"
 													options={accountOptions}
+													isLoading={isLoading}
 													minLength={1}
 													placeholder="Search Account Name"
 													onSearch={handleAccountSearch}
@@ -653,15 +702,17 @@ export default function ManageInvoiceTable(props) {
 									)}
 								/>
 							</div>
-							
+
 							<div>
 								<FormField
 									control={form.control}
-									name="invoiceDate"
+									name="comm_date"
 									rules={{ required: 'Invoice Date is required' }}
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel className="font-medium">Invoice Date<span className="text-red-500">*</span></FormLabel>
+											<FormLabel className="font-medium">
+												Invoice Date<span className="text-red-500">*</span>
+											</FormLabel>
 											<Popover>
 												<PopoverTrigger asChild>
 													<Button
@@ -690,11 +741,13 @@ export default function ManageInvoiceTable(props) {
 							<div>
 								<FormField
 									control={form.control}
-									name="invoiceNumber"
+									name="comm_no"
 									rules={{ required: 'Invoice Number is required' }}
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel className="font-medium">Invoice Number<span className="text-red-500">*</span></FormLabel>
+											<FormLabel className="font-medium">
+												Invoice Number<span className="text-red-500">*</span>
+											</FormLabel>
 											<Input
 												{...field}
 												type="text"
@@ -708,15 +761,17 @@ export default function ManageInvoiceTable(props) {
 									)}
 								/>
 							</div>
-							
+
 							<div>
 								<FormField
 									control={form.control}
-									name="status"
+									name="comm_status"
 									rules={{ required: 'Invoice Status is required' }}
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel className="font-medium">Invoice Status<span className="text-red-500">*</span></FormLabel>
+											<FormLabel className="font-medium">
+												Invoice Status<span className="text-red-500">*</span>
+											</FormLabel>
 											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
 												<SelectTrigger className="w-full justify-between h-11">
 													<SelectValue placeholder="Select status" />
@@ -739,7 +794,9 @@ export default function ManageInvoiceTable(props) {
 									rules={{ required: 'Commission is required' }}
 									render={({ field }) => (
 										<FormItem>
-											<FormLabel className="font-medium">Commission<span className="text-red-500">*</span></FormLabel>
+											<FormLabel className="font-medium">
+												Commission<span className="text-red-500">*</span>
+											</FormLabel>
 											<Input
 												{...field}
 												type="number"
@@ -754,7 +811,2136 @@ export default function ManageInvoiceTable(props) {
 								/>
 							</div>
 
-							<div className="flex flex-col gap-2 justify-end">
+							{/* <div className="flex flex-col gap-2 justify-end">
 								<FormField
 									control={form.control}
 									name="includeClientsNotAssigned"
+									render={({ field }) => (
+										<FormItem className="flex flex-row items-center space-x-2">
+											<Checkbox id="includeClientsNotAssigned" checked={field.value} onCheckedChange={field.onChange} />
+											<FormLabel htmlFor="includeClientsNotAssigned" className="font-medium cursor-pointer">
+												Include Clients not Assigned
+											</FormLabel>
+										</FormItem>
+									)}
+								/>
+								<FormField
+									control={form.control}
+									name="includeDeletedClients"
+									render={({ field }) => (
+										<FormItem className="flex flex-row items-center space-x-2">
+											<Checkbox id="includeDeletedClients" checked={field.value} onCheckedChange={field.onChange} />
+											<FormLabel htmlFor="includeDeletedClients" className="font-medium cursor-pointer">
+												Include Deleted Clients
+											</FormLabel>
+										</FormItem>
+									)}
+								/>
+							</div> */}
+
+							<div>
+								<FormField
+									control={form.control}
+									name="product"
+									rules={{ required: 'choose Syndicate or invoice' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Product<span className="text-red-500">*</span>
+											</FormLabel>
+											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
+												<SelectTrigger className="w-full justify-between h-11">
+													<SelectValue placeholder="Select status" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="syndicate">Syndicate</SelectItem>
+													<SelectItem value="invoice">Invoice</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+							{watchedStatus === 'syndicate' && (
+								<div className="col-span-3 grid grid-cols-2 gap-6 mt-6">
+									<div className="col-span-2 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
+										<FormField
+											control={form.control}
+											name="ticker"
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">Ticker</FormLabel>
+													<Input {...field} type="text" maxLength={32} className="h-10" placeholder="Ticker" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="quantity"
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">Quantity</FormLabel>
+													<Input {...field} type="number" min={0} className="h-10" placeholder="Quantity" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="price"
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">Price</FormLabel>
+													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Price" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="netAmount"
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">Net Amount</FormLabel>
+													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Net Amount" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+									</div>
+								</div>
+							)}
+
+							<div className="col-span-3 grid grid-cols-2 gap-6">
+								<FormField
+									control={form.control}
+									name="invoiceFile"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Attach Invoice<span className="text-red-500">*</span>
+											</FormLabel>
+											<div
+												className="border-2 border-dashed dark:border-gray-800 border-gray-300 rounded-lg p-4 dark:bg-inherit flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition h-[115px] cursor-pointer relative"
+												onClick={() => document.getElementById('invoiceFileInput')?.click()}
+											>
+												<input
+													type="file"
+													id="invoiceFileInput"
+													accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+													className="hidden"
+													onChange={(e) => field.onChange(e.target.files && e.target.files[0])}
+												/>
+												{field.value ? (
+													<div className="flex flex-col items-center w-full">
+														<span className="text-sm text-gray-700 truncate max-w-xs">{field.value.name}</span>
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															className="mt-2"
+															onClick={(e) => {
+																e.stopPropagation();
+																field.onChange(null);
+															}}
+														>
+															Remove
+														</Button>
+													</div>
+												) : (
+													<span className="text-gray-400 text-sm">Drag & drop or click to upload (PDF, Word, PPT, XLS)</span>
+												)}
+											</div>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+
+								<FormField
+									control={form.control}
+									name="comments"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Notes</FormLabel>
+											<textarea id="notes" rows={4} className="border rounded w-full p-2" placeholder="Enter notes here..." {...field} />
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+						</form>
+					</Form>
+
+					{/* Only visible the coverage details once the Account name selected */}
+					{selectedAccount.length > 0 && (
+						<div className="p-4">
+							<h3 className="text-lg font-semibold mb-2">Coverage Details</h3>
+
+							<div className="mb-4 flex gap-2 items-center" style={{ maxWidth: 500 }}>
+								<div style={{ position: 'relative', flex: 2 }}>
+									<Input
+										value={employeeQuery}
+										onChange={(e) => {
+											const newValue = e.target.value;
+											setEmployeeQuery(newValue);
+											if (newValue.length >= 1) {
+												handleEmployeeSearch(newValue);
+											} else {
+												setEmployeeOptions([]);
+												setIsEmployeeLoading(false);
+											}
+										}}
+										placeholder="Search employee name..."
+										className="w-80"
+										
+									/>
+									{(isEmployeeLoading || employeeOptions.length > 0) && (
+										<ul
+											className="dark:bg-gray-800 bg-gray-100 border"
+											style={{
+												position: 'absolute',
+												zIndex: 10,
+												borderRadius: 4,
+												margin: 0,
+												padding: 0,
+												width: '100%',
+												maxHeight: 120,
+												overflowY: 'auto',
+												listStyle: 'none',
+											}}
+										>
+											{isEmployeeLoading ? (
+												<li style={{ padding: '6px 10px', color: '#888' }}>Loading...</li>
+											) : employeeOptions.length > 0 ? (
+												employeeOptions.map((opt) => (
+													<li
+														key={opt.id}
+														style={{ padding: '6px 10px', cursor: 'pointer' }}
+														onMouseDown={() => {
+															setSelectedEmployeeCoverage(opt);
+															setEmployeeQuery(opt.name);
+															setEmployeeOptions([]);
+														}}
+													>
+														{opt.name}
+													</li>
+												))
+											) : (
+												<li style={{ padding: '6px 10px', color: '#888' }}>No matches</li>
+											)}
+										</ul>
+									)}
+								</div>
+
+								{selectedCoverage && (
+									<div className="flex items-center mt-2">
+										<Input
+											value={percentage}
+											onChange={(e) => {
+												const val = e.target.value.replace(/[^0-9.]/g, '');
+												setPercentage(val);
+												if (val !== '' && Number(val) > 100) {
+													setPercentageInputError('Percentage cannot be more than 100.');
+												} else {
+													setPercentageInputError('');
+												}
+											}}
+											type="number"
+											min={0}
+											max={100}
+											placeholder="%"
+											className="input input-bordered border rounded px-3 py-2 text-base w-24"
+											disabled={!selectedCoverage}
+										/>
+										<Button
+											type="button"
+											variant="default"
+											className="ml-2"
+											onClick={handleAddCoverage}
+											disabled={!selectedCoverage || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
+										>
+											Add
+										</Button>
+									</div>
+								)}
+							</div>
+							{coverageRows.length > 0 && (
+								<div
+									className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'}  coverage-table w-full`}
+									style={{ height: 220, minHeight: 120, overflow: 'auto' }}
+								>
+									<AgGridReact
+										columnDefs={coverageColumns}
+										rowData={coverageRows}
+										rowHeight={34}
+										headerHeight={34}
+										domLayout="normal"
+										modules={[ClientSideRowModelModule]}
+										defaultColDef={defaultColDef.filter == ''}
+										suppressMovableColumns
+										context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: handleDeleteCoverage }}
+										onCellEditingStopped={cellEditingStopped}
+										noRowsOverlayComponent={() => <span>Record not found.</span>}
+										invalidEditValueMode={'block'}
+									/>
+								</div>
+							)}
+						</div>
+					)}
+					<SheetFooter className="flex flex-row justify-end">
+						<Button
+							className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
+							ref={null}
+							type="submit"
+							onClick={form.handleSubmit(handleFormSubmit)}
+							// disabled={!form.formState.isValid}
+						>
+							Save
+						</Button>
+						<Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
+							Cancel
+						</Button>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
+			<div className="flex justify-between pb-2">
+				<DateRangePicker
+					onCancel={dateRangeCancelHandler}
+					locale="en-US"
+					// initialDateFrom={rangeStartDate}
+					// initialDateTo={rangeEndDate}
+					onUpdate={dateRangeHandler}
+					showCompare={false}
+				></DateRangePicker>
+				<div className="flex gap-2 items-center">
+					<span className=" font-medium mr-2">#{rowData.length} Records</span>
+					<Button title={'Refresh'} className={'h-[40px]'} variant="outline">
+						<RefreshCcwIcon></RefreshCcwIcon>
+					</Button>
+					<Button onClick={() => toast.success('Download Completed')} title={'Download'} className={'h-[40px] border-custom-border'} variant="outline">
+						<Download></Download>
+						Excel
+					</Button>
+				</div>
+			</div>
+			<div
+				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
+				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
+			>
+				<AgGridReact
+					ref={gridRef}
+					columnDefs={columns.map((col) => {
+						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
+						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
+						return { ...col, cellRenderer: DefaultCellRenderer };
+					})}
+					defaultColDef={defaultColDef}
+					rowData={rowData}
+					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ClientSideRowModelModule]}
+					rowHeight={40}
+					headerHeight={40}
+					domLayout="normal"
+					sideBar={sideBar}
+					suppressMovableColumns
+					noRowsOverlayComponent={() => <span>Record not found.</span>}
+				/>
+			</div>
+			{/* Delete warning dialog using shadcn Dialog */}
+			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Invoice</DialogTitle>
+					</DialogHeader>
+					<div className="mb-6">Are you sure you want to delete this invoice? This action cannot be undone.</div>
+					<DialogFooter className="flex justify-end gap-2">
+						<Button variant="outline" onClick={handleDeleteCancel}>
+							Cancel
+						</Button>
+						<Button variant="destructive" onClick={handleDeleteConfirm}>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</div>
+	);
+}
+-----------------------------------------------------------------------------------------------
+import {
+	getAgGridTblSetting,
+	getCategoryDetails,
+	getCategoryIndustry,
+	getCategoryIndustryHistory,
+	getClickTrack,
+	getTableFields,
+	saveCategoryIndustry,
+	saveTableFields,
+	searchCategoryName,
+	updateCategoryIndustryStatus,
+} from '@/utils/service';
+import { useMutation, useQuery } from 'react-query';
+
+import { AgGridReact } from '@ag-grid-community/react';
+import { ColumnsToolPanelModule } from '@ag-grid-enterprise/column-tool-panel';
+import { ClientSideRowModelModule } from '@ag-grid-community/client-side-row-model';
+
+import { Badge } from '@/components/ui/badge';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SetFilterModule } from '@ag-grid-enterprise/set-filter';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { useForm } from 'react-hook-form';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+	CATEGORYTYPE_DROPDOWN_NAME,
+	CATEGORYTYPE_DROPDOWN_VALUE,
+	CATEGORYTYPE_SOURCE,
+	CATEGORY_INDUSTRY_FORM_CONFIG,
+	CONSTANTS,
+	DATE_FORMAT,
+	IS_COLLAPSE,
+	IS_DARK,
+	SCHEDULED_DATE,
+	SPL_SUBSCRIPTION_CONFIG,
+} from '@/store/signals';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PlusIcon } from '@radix-ui/react-icons';
+import SplitDropdownButton from '../common/SplitButton';
+import { History } from '../common/History';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ChevronDownCircle, Clock, EditIcon, HistoryIcon, PowerIcon, PowerOffIcon, RefreshCcwIcon } from 'lucide-react';
+import { AsyncTypeahead, Menu, MenuItem } from 'react-bootstrap-typeahead';
+import { useSignals, useSignal } from '@preact/signals-react/runtime';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useNavigate } from 'react-router-dom';
+import { setNavigator } from '@/utils/utilroute';
+import { bulidFormSchema, createFormData, formatDate, formatNumber, isEmptyObject } from '@/utils/common';
+import { InfoIcon } from '../common/InfoIcon';
+import { MenuModule } from '@ag-grid-enterprise/menu';
+import httpClient from '@/common/helpers/httpClient';
+import { convertDate, convertUtcToLocal, isValidDateString } from '@/common/helpers/DateTimeFormat';
+import { LoadingSpinner } from '../common/LoadingSpinner';
+import { OverlayLoader } from '../common/OverlayLoader';
+// import DateTimePicker from '@/components/ui/datetimePicker';
+import DateTimePickerForm from '@/components/ui/datetimePicker';
+import { get } from 'lodash';
+import { ClipboardModule } from '@ag-grid-enterprise/clipboard';
+import { RangeSelectionModule } from '@ag-grid-enterprise/range-selection';
+
+//? Define the Zod schema for form validation
+const defaultFormSchema = z.object({
+	cat_id: z.string().nonempty({ message: 'Please enter Category ID' }),
+	cat_name: z.string().nonempty({ message: 'Please enter Category name' }),
+	bm_id: z.string().default(''),
+	parent_id: z.string().default(''),
+	show_api: z.boolean().default(false),
+	show_ui: z.boolean().default(false),
+	status: z.enum(['Active', 'Inactive']),
+});
+// FORM FIELDS DEFAULT VALUES
+const defaultValues = {
+	cat_id: '',
+	cat_name: '',
+	bm_id: '',
+	parent_id: '',
+	status: 'Active',
+};
+
+const NoWrapText = ({ children, width, title, classN }) => {
+	const style = {
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+		display: 'inline-block',
+		whiteSpace: 'nowrap',
+		width: width ? `${width}px` : '100%',
+	};
+	return (
+		<span title={title} style={style} className={classN}>
+			{children}
+		</span>
+	);
+};
+
+// CUSTOM TREE RENDERER OF AGGRID
+const CustomTreeRenderer = (props) => {
+	try {
+		const columnWidth = props.column?.getActualWidth();
+		const indentPadding = 34;
+
+		let widthToSet = columnWidth - 50;
+		if (props.node.level) {
+			const level = props.node.level;
+			widthToSet = widthToSet - indentPadding * level;
+		}
+		const isDiffCatType = CATEGORYTYPE_DROPDOWN_VALUE.value != props.data?.category_type_id;
+		let catName;
+		if (isDiffCatType) {
+			catName = CATEGORYTYPE_SOURCE.value.filter((cat) => cat.id == props.data?.category_type_id)[0]?.category_name;
+		}
+
+		return (
+			<>
+				<div className="flex items-center justify-between gap-2">
+					{props.data.schedule_start_date != '' && (
+						<Tooltip className="">
+							<TooltipTrigger asChild>
+								<span className="relative flex size-2 cursor-pointer">
+									{/* <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span> */}
+									<span className="relative inline-flex size-2 rounded-full bg-green-500"></span>
+								</span>
+							</TooltipTrigger>
+							<TooltipContent className={'bg-white shadow-lg [&_svg]:fill-white [&_svg]:bg-white border'}>
+								<div className=" text-muted-foreground">{`Make ${props.data.status == 'Active' ? 'Inactive On' : 'Active On'}`}</div>
+								<div className="flex text-muted-foreground items-center mt-2 gap-2">
+									<Clock className="w-4 text-green-500 h-4"></Clock>
+									<span className="text-green-600">{convertUtcToLocal(props.data.schedule_start_date, false)?.formatted}</span>
+								</div>
+							</TooltipContent>
+						</Tooltip>
+					)}
+					<NoWrapText
+						title={`${props.value} ${catName ? `(${catName})` : ''}`}
+						className="overflow-hidden"
+						width={widthToSet}
+					>{`${props.value} ${catName ? `(${catName})` : ''}`}</NoWrapText>
+				</div>
+			</>
+		);
+	} catch (e) {
+		console.error(e);
+	}
+};
+
+// DEFAULT CELL RENDERER OF AGGRID
+const defaultCellRenderer = (props) => {
+	const col = props.colDef;
+	return (
+		<>
+			<div className={col.className} style={col.cellStyle}>
+				{props.value}
+			</div>
+		</>
+	);
+};
+
+const editStatusObj = {
+	id: '',
+	cat_id: '',
+	status: '',
+	cat_type_id: '',
+	old_cat_id: '',
+	category_type_id: '',
+};
+
+const old_form_value = {
+	category_type: '',
+	parent_value: '',
+};
+
+const defaultColDef = {
+	sortable: true,
+	editable: false,
+	flex: 1,
+	filter: true,
+	floatingFilter: true,
+	cellStyle: {
+		whiteSpace: 'nowrap',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+	},
+};
+
+const shape = bulidFormSchema(CATEGORY_INDUSTRY_FORM_CONFIG.value);
+const formSchema = Object.keys(shape).length > 0 ? z.object(shape) : defaultFormSchema;
+let gridInitiated = false;
+let verticalScrollPosition = 0;
+
+// ModuleRegistry.registerModules([SetFilterModule]);
+export function CategoryList(props) {
+	useSignals();
+
+	//?Query Function goes here
+	const categoryTableFieldsQuery = useMutation({
+		mutationFn: getTableFields,
+	});
+	const getCategoryAgGridTblSetting = useQuery({
+		queryKey: ['getCategoryAgGridTblSetting'],
+		queryFn: () => getAgGridTblSetting('getCategoryIndustry'),
+	});
+	// const saveTableFieldsMutation = useMutation({
+	// 	mutationFn: saveTableFields,
+	// });
+	const getCategoryDetailsMutation = useMutation({
+		mutationFn: getCategoryDetails,
+	});
+	const searchCategoryNameMutation = useMutation({
+		mutationFn: searchCategoryName,
+	});
+	const saveCategoryIndustryMutation = useMutation({
+		mutationFn: saveCategoryIndustry,
+	});
+	const updateCategoryIndustryStatusMutation = useMutation({
+		mutationFn: updateCategoryIndustryStatus,
+	});
+	const categoryIndustryMutation = useMutation({
+		mutationFn: getCategoryIndustry,
+	});
+	const historyCategoryIndustryMutation = useMutation({
+		mutationFn: getCategoryIndustryHistory,
+	});
+	const clickTrackMutation = useMutation({
+		mutationFn: getClickTrack,
+	});
+
+	const rowCount = useSignal(0);
+	const buttonText = useSignal('Update');
+
+	//?State Goes here
+	const [sheetOpen, setSheetOpen] = useState(false);
+	const [columnDefs, setColumnDefs] = useState([]);
+	const [isChecked, setIsChecked] = useState(false);
+	const [dialogOpen, setDialogOpen] = useState(false);
+	const [rowData, setRowData] = useState([]);
+	const [spinning, setSpinning] = useState(false);
+	const [isLoading, setIsLoading] = useState(false);
+	const [options, setOptions] = useState([]);
+	const [parentValue, setParentValue] = useState('');
+	const [parentCategoryTypeID, setParentCategoryTypeID] = useState('');
+	const [previousParent, setPreviousParent] = useState('');
+	const [defaultValue, setDefaultValue] = useState('');
+	const [disableGrpFld, setDisableGrpFld] = useState(false);
+	const [sheetTitle, setSheetTitle] = useState('Add');
+	const [historyOpen, setHistoryOpen] = useState(false);
+	const [isUpdateChildShow, setIsUpdateChildShow] = useState(false);
+	const [updateChildValue, setUpdateChildValue] = useState(false);
+	const [historyData, setHistoryData] = useState([]);
+	const [historyTitle, setHistoryTitle] = useState('');
+	const [height, setGridHeight] = useState('75vh');
+	const [query, setQuery] = useState('');
+	const [categoryType, setCategoryType] = useState('');
+	const [formConfig, setFormConfig] = useState({});
+	const [categoryDetails, setCategoryDetails] = useState({});
+	const [showNote, setShowNote] = useState(false);
+	const [scheduleTitle, setScheduleTitle] = useState('Make Active On');
+	const [confirmSub, setConfirmSub] = useState(false);
+	const [disableSaveBtn, setDisableSaveBtn] = useState(false);
+	const [isScheduled, setIsScheduled] = useState(false);
+	const [showFormConfirmation, setShowFormConfirmation] = useState(false);
+	const [scheduleDefaultValue, setScheduleDefaultValue] = useState('');
+	const [lastUpdated, setLastUpdated] = useState('');
+	const [isDeleteModal, setIsDeleteModal] = useState(false);
+
+	//?Ref Goes here
+	const gridRef = useRef();
+	const hasGridMounted = useRef(false);
+
+	const form = useForm({
+		resolver: zodResolver(formSchema),
+		defaultValues: defaultValues,
+	});
+	const sideBar = useMemo(() => {
+		return {
+			toolPanels: [
+				{
+					id: 'columns',
+					labelDefault: 'Columns',
+					labelKey: 'columns',
+					iconKey: 'columns',
+					toolPanel: 'agColumnsToolPanel',
+					toolPanelParams: {
+						suppressRowGroups: true,
+						suppressValues: true,
+						suppressPivots: true,
+						suppressPivotMode: true,
+						suppressColumnFilter: true,
+						suppressColumnSelectAll: true,
+						suppressColumnExpandAll: true,
+					},
+				},
+			],
+			defaultToolPanel: '',
+		};
+	}, []);
+	const navigate = useNavigate();
+
+	// Set the navigator once when the app loads
+	useEffect(() => {
+		setNavigator(navigate);
+	}, [navigate]);
+
+	useEffect(() => {
+		if (CATEGORY_INDUSTRY_FORM_CONFIG.value) {
+			setFormConfig(CATEGORY_INDUSTRY_FORM_CONFIG.value || {});
+			setConfirmSub(CATEGORY_INDUSTRY_FORM_CONFIG.value?.status?.subscription_deactivation.value);
+		}
+	}, [CATEGORY_INDUSTRY_FORM_CONFIG.value]);
+
+	useEffect(() => {
+		if (getCategoryDetailsMutation.data) {
+			setCategoryDetails(getCategoryDetailsMutation.data);
+			const rowDatas = getCategoryDetailsMutation.data;
+			setParentCategoryTypeID(rowDatas.parent_category_type_id);
+			searchCategoryNameMutation.mutate({ id: rowDatas.parent_id, type: rowDatas.parent_category_type_id });
+			editStatusObj.cat_id = rowDatas.category_id;
+			if (rowDatas.schedule_start_date) {
+				setScheduleDefaultValue(rowDatas.schedule_start_date);
+				setIsScheduled(true);
+			}
+			if (rowDatas.status == 'Inactive') {
+				setIsScheduled(true);
+			}
+			form.reset({
+				cat_id: rowDatas.category_id,
+				cat_name: rowDatas.category_name,
+				bm_id: rowDatas.bm_id,
+				parent_id: rowDatas.parent_id,
+				show_api: rowDatas.show_in_api === 1 ? true : false,
+				show_ui: rowDatas.show_in_ui === 1 ? true : false,
+				status: rowDatas.status,
+			});
+			editStatusObj.cat_type_id = rowDatas.category_type_id;
+			editStatusObj.old_cat_id = rowDatas.category_id;
+			editStatusObj.id = rowDatas.id;
+
+			setCategoryType(+rowDatas.category_type_id);
+			buttonText.value = 'Update';
+			setSheetTitle('Edit');
+		}
+	}, [getCategoryDetailsMutation.isSuccess]);
+
+	useEffect(() => {
+		const activeDropdown = CATEGORYTYPE_SOURCE.value?.filter((cat) => cat.status === 'Active');
+		if (activeDropdown?.length) {
+			const catType = localStorage.getItem('cat_type');
+			if (catType) {
+				CATEGORYTYPE_DROPDOWN_VALUE.value = Number(catType);
+				CATEGORYTYPE_DROPDOWN_NAME.value = CATEGORYTYPE_SOURCE.value?.find((active) => active.id == Number(catType))?.category_name;
+				setCategoryType(Number(catType));
+			} else {
+				CATEGORYTYPE_DROPDOWN_NAME.value = CATEGORYTYPE_DROPDOWN_NAME.value ? CATEGORYTYPE_DROPDOWN_NAME.value : activeDropdown[0]?.category_name;
+				CATEGORYTYPE_DROPDOWN_VALUE.value = CATEGORYTYPE_DROPDOWN_VALUE.value ? CATEGORYTYPE_DROPDOWN_VALUE.value : activeDropdown[0]?.id;
+				setCategoryType(CATEGORYTYPE_DROPDOWN_VALUE.value ? CATEGORYTYPE_DROPDOWN_VALUE.value : activeDropdown[0]?.id);
+			}
+		}
+	}, [CATEGORYTYPE_SOURCE.value]);
+
+	useEffect(() => {
+		if (saveCategoryIndustryMutation.data && saveCategoryIndustryMutation.data.status === 1) {
+			setParentValue('');
+			setParentCategoryTypeID('');
+			editStatusObj.cat_type_id = '';
+			editStatusObj.old_cat_id = '';
+			setSheetOpen(false);
+			setIsUpdateChildShow(false);
+			setUpdateChildValue(false);
+			form.reset(defaultValues);
+		} else if (saveCategoryIndustryMutation.data && saveCategoryIndustryMutation.data.status === 0) {
+			setDisableSaveBtn(false);
+		}
+	}, [CATEGORYTYPE_DROPDOWN_VALUE.value, saveCategoryIndustryMutation.isSuccess]);
+
+	useEffect(() => {
+		if (!categoryIndustryMutation.isLoading && !saveCategoryIndustryMutation.isLoading) {
+			categoryIndustryMutation.mutate({ activeOnly: isChecked, category_id: CATEGORYTYPE_DROPDOWN_VALUE.value });
+		}
+	}, [CATEGORYTYPE_DROPDOWN_VALUE.value, saveCategoryIndustryMutation.isSuccess, updateCategoryIndustryStatusMutation.isSuccess, isChecked]);
+
+	useEffect(() => {
+		if (!sheetOpen) {
+			setDefaultValue('');
+			setParentValue('');
+			setParentCategoryTypeID('');
+			setIsScheduled(false);
+			editStatusObj.cat_id = '';
+			// setOptions([]);
+			setPreviousParent('');
+			setCategoryType(CATEGORYTYPE_DROPDOWN_VALUE.value);
+			setShowNote(false);
+			setCategoryDetails({});
+			setDisableSaveBtn(false);
+			setScheduleDefaultValue(null);
+			setShowFormConfirmation(false);
+			SCHEDULED_DATE.value = '';
+		} else {
+			setConfirmSub(formConfig?.status?.subscription_deactivation.value);
+			// categoryTableFieldsQuery.mutate({ tblid: 'categoryList' });
+		}
+	}, [sheetOpen]);
+
+	useEffect(() => {
+		editStatusObj.id = '';
+		editStatusObj.cat_id = '';
+		editStatusObj.status = '';
+		editStatusObj.category_type_id = '';
+		if (formConfig.status) {
+			setConfirmSub(formConfig.status.subscription_deactivation.value);
+		}
+	}, [updateCategoryIndustryStatusMutation.isSuccess]);
+
+	useEffect(() => {
+		if (!dialogOpen) {
+			setIsDeleteModal(false);
+			setDefaultValue('');
+			setParentValue('');
+			setParentCategoryTypeID('');
+			setIsScheduled(false);
+			editStatusObj.cat_id = '';
+			// setOptions([]);
+			setPreviousParent('');
+			setCategoryType(CATEGORYTYPE_DROPDOWN_VALUE.value);
+			setShowNote(false);
+			setCategoryDetails({});
+			setDisableSaveBtn(false);
+			setScheduleDefaultValue(null);
+			setShowFormConfirmation(false);
+			SCHEDULED_DATE.value = '';
+		}
+	}, [dialogOpen]);
+
+	useEffect(() => {
+		if (categoryIndustryMutation.data) {
+			setLastUpdated(new Date());
+			setRowData(buildPathData(categoryIndustryMutation.data));
+			// setRowData(buildPathDataRecursive(categoryIndustryMutation.data));
+			if (document.getElementById('collapse-btn').textContent == 'Expand All') {
+				setTimeout(() => {
+					gridRef.current.api.collapseAll();
+				}, 100);
+			}
+		}
+	}, [categoryIndustryMutation.isSuccess]);
+
+	useEffect(() => {
+		if (categoryTableFieldsQuery.data && categoryTableFieldsQuery.data['categoryList']) {
+			const columnDef = JSON.parse(categoryTableFieldsQuery.data['categoryList'].column_def);
+			if (columnDef && columnDef.length) {
+				const columnState = columnDef[0].columnState || null;
+				const filterModal = columnDef[0].filterModel || null;
+				const showActive = columnDef[0].showActive || false;
+				setIsChecked(showActive);
+				if (filterModal) {
+					setTimeout(() => {
+						gridRef.current.api.setFilterModel(null);
+					}, 1000);
+				}
+				if (gridRef.current != null) {
+					setTimeout(() => {
+						gridRef.current?.api?.applyColumnState({
+							state: columnState,
+							// applyOrder: true,
+							// defaultState: { sort: null },
+						});
+					}, 1000);
+				}
+			}
+		}
+	}, [categoryTableFieldsQuery.isSuccess]);
+
+	useEffect(() => {
+		if (getCategoryAgGridTblSetting.isSuccess && getCategoryAgGridTblSetting.data) {
+			//GET TABLE FIELDS SETTINGS
+			categoryTableFieldsQuery.mutate({ tblid: JSON.stringify(['categoryList']) });
+
+			if (getCategoryAgGridTblSetting?.data.length > 0) {
+				getCategoryAgGridTblSetting.data.map((agGridCol) => {
+					if (agGridCol.cellRenderer === 'agGroupCellRenderer') {
+						agGridCol.cellRendererParams = { innerRenderer: CustomTreeRenderer, suppressCount: true, suppressDoubleClickExpand: true };
+					} else if (agGridCol.cellRenderer === 'statusFormatter') {
+						agGridCol.cellRenderer = statusFormatter;
+					} else if (agGridCol.cellRenderer === 'dateFormatter') {
+						agGridCol.cellRenderer = (params) => {
+							if (isValidDateString(params.value)) {
+								return params.value && params.value != 'null'
+									? DATE_FORMAT.value == 'server'
+										? convertUtcToLocal(params.value).formatted
+										: convertDate(params.value)
+									: '';
+							} else {
+								return params.value;
+							}
+						};
+					} else if (agGridCol.cellRenderer === 'ActionCellRenderer') {
+						agGridCol.cellRenderer = ActionCellRenderer;
+						agGridCol.cellRendererParams = { onEditClick: handleEditClick, onDeactivateClick: deleteHandler, onHistoryClick: handleHistory };
+					} else if (agGridCol.cellRenderer == 'addBtnCellRenderer') {
+						agGridCol.cellRenderer = addBtnRenderer;
+					} else if (!agGridCol.cellRenderer) {
+						agGridCol.cellRenderer = defaultCellRenderer;
+					}
+				});
+				setColumnDefs(getCategoryAgGridTblSetting.data);
+				setIsLoading(false);
+			}
+		}
+	}, [getCategoryAgGridTblSetting.isSuccess]);
+
+	useEffect(() => {
+		if (props && props.height) {
+			const gridElement = document.querySelector('.grid-container.category-list');
+			if (gridElement) {
+				const { offsetTop } = gridElement;
+				setGridHeight(`${props.height - offsetTop - 20}px`);
+			}
+		}
+	}, [props]);
+
+	useEffect(() => {
+		if (historyCategoryIndustryMutation.data && historyCategoryIndustryMutation.data.status === 1) {
+			setHistoryOpen(true);
+			const historyPeriod = Object.groupBy(historyCategoryIndustryMutation.data?.data, (item) => item?.last_mod_dt);
+			setHistoryData(historyPeriod);
+		}
+	}, [historyCategoryIndustryMutation.isSuccess]);
+
+	useEffect(() => {
+		if (searchCategoryNameMutation.isSuccess && searchCategoryNameMutation.data) {
+			if (searchCategoryNameMutation.data.length) {
+				const parentName = searchCategoryNameMutation.data?.find((search) => search.category_type_id == CATEGORYTYPE_DROPDOWN_VALUE.value);
+				setDefaultValue(parentName ? parentName?.text : searchCategoryNameMutation.data[0]?.text);
+				setOptions([searchCategoryNameMutation.data[0]]);
+				if (!isDeleteModal) {
+					setSheetOpen(true);
+				}
+			} else {
+				setDefaultValue('');
+				if (!isDeleteModal) {
+					setSheetOpen(true);
+				}
+			}
+		}
+	}, [searchCategoryNameMutation.isSuccess]);
+
+	// HANDLES PARENT TREE IN AGGRID
+	function parentTreeHandler(data) {
+		form.reset(defaultValues);
+		searchCategoryNameMutation.mutate({ id: data.category_id });
+		//setDefaultValue(data.category_name);
+		setParentValue(data.category_id);
+		setDisableGrpFld(true);
+		setSheetTitle('Add');
+		buttonText.value = 'Save';
+	}
+
+	function addBtnRenderer(props) {
+		if (props.data.category_id == '-1') {
+			return;
+		} else {
+			return (
+				<Badge
+					variant="outline"
+					className="float-right dark:text-white text-black bg-[#fff] dark:bg-[#3a444e] show-on-hover cursor-pointer p-2 absolute right-0"
+					onClick={() => parentTreeHandler(props.data)}
+				>
+					Add
+				</Badge>
+			);
+		}
+	}
+
+	//HANDLES ACTION COLUMN CELL RENDERER IN AGGRID
+	function ActionCellRenderer(RowData) {
+		const status = RowData.data.status;
+		const isDiffCatType = CATEGORYTYPE_DROPDOWN_VALUE.value != RowData.data.category_type_id;
+		return (
+			<div className="text-center">
+				<span className="col-action-items jcc flex items-center gap-2">
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<EditIcon
+									className={`${isDiffCatType ? 'opacity-[40%] pointer-events-none cursor-not-allowed' : ''}`}
+									onClick={() => RowData.onEditClick(RowData.data)}
+									color="#9ca3af"
+									data-clickid={'Action: Subscription Manager - Edit Category'}
+								></EditIcon>
+							</TooltipTrigger>
+							<TooltipContent className="shadow-xl rounded-md">
+								<p>Edit</p>
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+					<span className="seperator">|</span>
+					{status == 'Active' ? (
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<PowerOffIcon
+										data-clickid={'Action: Subscription Manager - Deactivate Category'}
+										className={`${isDiffCatType ? 'opacity-[40%] pointer-events-none cursor-not-allowed' : ''}`}
+										color="#9ca3af"
+										onClick={() => RowData.onDeactivateClick(RowData.data, 'Inactive')}
+									></PowerOffIcon>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Deactivate</p>
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					) : (
+						<TooltipProvider>
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<PowerIcon
+										data-clickid={'Action: Subscription Manager - Activate Category'}
+										className={`${isDiffCatType ? 'opacity-[40%] pointer-events-none cursor-not-allowed' : ''}`}
+										color="#9ca3af"
+										onClick={() => RowData.onDeactivateClick(RowData.data, 'Active')}
+									></PowerIcon>
+								</TooltipTrigger>
+								<TooltipContent>
+									<p>Activate</p>
+								</TooltipContent>
+							</Tooltip>
+						</TooltipProvider>
+					)}
+					<span className="seperator">|</span>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<HistoryIcon
+									className={`${isDiffCatType ? 'opacity-[40%] pointer-events-none cursor-not-allowed' : ''}`}
+									onClick={() => RowData.onHistoryClick(RowData.data)}
+									color="#9ca3af"
+								></HistoryIcon>
+							</TooltipTrigger>
+							<TooltipContent>
+								<p>History</p>
+							</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+				</span>
+			</div>
+		);
+	}
+
+	//HANDLES STATUS COLUMN FORMATTER IN AGGRID
+	function statusFormatter(data) {
+		const rowDatas = data.data;
+		return (
+			<Badge
+				variant="outline"
+				// onClick={() => deleteHandler(rowDatas, rowDatas.status == 'Active' ? 'Inactive' : 'Active')}
+				className={`${data.value == 'Active' ? 'active-lbl' : 'inactive-lbl'} border-none`}
+			>
+				{data.value}
+			</Badge>
+		);
+	}
+
+	// FUNCTION TO SAVE AGGRID SETTINGS
+	const saveGridSettings = (isCheckedBox) => {
+		if (!hasGridMounted.current) return;
+		const columnState = gridRef.current.api.getColumnState();
+		const filterModel = gridRef.current.api.getFilterModel();
+		if (gridRef.current.api.getDisplayedRowCount() < 1) {
+			gridRef.current.api.showNoRowsOverlay();
+		} else {
+			gridRef.current.api.hideOverlay();
+		}
+		// const sortModel = gridRef.current.api.getSortModel();
+
+		const settings = {
+			columnState,
+			filterModel,
+			showActive: isCheckedBox,
+			// sortModel,
+		};
+
+		// Send to API
+		const formData = new FormData();
+		formData.append('tblid', 'categoryList');
+		formData.append('sorting', '');
+		formData.append('settings', JSON.stringify([settings]));
+		saveTableFields(formData);
+	};
+
+	// TRIGGERS WHEN AGGRIG COLUMN IS RESIZED
+	function onColumnResized(e) {
+		// if (e.finished && e.source == 'uiColumnResized') {
+		// 	saveGridSettings(isChecked);
+		// } else if (e.finished && e.source == 'gridOptionsChanged') {
+		// 	categoryTableFieldsQuery.mutate({ tblid: 'categoryList' });
+		// }
+		e.api?.refreshCells({ force: true });
+	}
+
+	// HANDLES FORM SUBMIT
+	function onSubmit(data) {
+		// debugger;
+		if (parentValue == '') {
+			delete data.parent_id;
+		}
+		if (sheetTitle == 'Edit') {
+			data.id = editStatusObj.id;
+			data.is_update_child = updateChildValue;
+			data.parent_changed = parentValue != previousParent;
+			if (data.status != 'Active' && categoryDetails.subscription_count > 0) {
+				data.deactivate_subscriptions = formConfig?.status?.subscription_deactivation.allow_subscription_deactivation
+					? confirmSub
+					: formConfig?.status?.subscription_deactivation.allow_subscription_deactivation;
+			}
+		}
+		if (parentCategoryTypeID != '') {
+			data.parent_category_type_id = parentCategoryTypeID;
+		}
+
+		data.scheduled_time = data.status === 'Inactive' ? SCHEDULED_DATE.value : '';
+		data.time_zone = SCHEDULED_DATE.value ? Intl.DateTimeFormat().resolvedOptions().timeZone : '';
+		data.scheduled_action = data.status === 'Inactive' && SCHEDULED_DATE.value ? 'Active' : '';
+		data.parent_id = parentValue || '';
+		data.cat_type_id = categoryType + '';
+
+		// console.log(data);
+		const formData = createFormData(data);
+		saveCategoryIndustryMutation.mutate(formData);
+		setDisableSaveBtn(true); // Disable form save button on API call
+
+		const gridElement = document.querySelector('.ag-body-viewport');
+		if (gridElement && verticalScrollPosition != 0) {
+			setTimeout(() => {
+				gridElement.scrollTop = verticalScrollPosition;
+				verticalScrollPosition = 0;
+			}, 1000);
+		}
+	}
+
+	// HANDLES SHEET CLOSE
+	function handleSheetClose() {
+		let formModified = false;
+		let localDate = '';
+		if (categoryDetails.schedule_start_date && categoryDetails.schedule_start_date != '') {
+			localDate = convertUtcToLocal(categoryDetails.schedule_start_date).localDate;
+			localDate = formatDate(localDate);
+		}
+
+		// console.log(categoryDetails, SCHEDULED_DATE.value, formatDate(localDate));
+
+		if (categoryDetails && (categoryDetails.parent_id != parentValue || categoryDetails.category_type_id != categoryType || SCHEDULED_DATE.value != localDate)) {
+			formModified = true;
+		}
+		const formValues = form.getValues();
+		if (sheetTitle === 'Add' && JSON.stringify(formValues) !== JSON.stringify(defaultValues)) {
+			setSheetOpen(true);
+			setShowFormConfirmation(true);
+		} else if (sheetTitle == 'Edit' && (form.formState.isDirty || formModified)) {
+			setSheetOpen(true);
+			setShowFormConfirmation(true);
+			formModified = false;
+		} else {
+			setSheetOpen(false);
+		}
+	}
+
+	// HANDLES ON CATEGORY ACTIVATE/DEACTIVATE
+	function deleteHandler(data, status) {
+		setIsDeleteModal(true);
+		getCategoryDetailsMutation.mutate({ id: data.id });
+		editStatusObj.status = status;
+		editStatusObj.cat_id = data.category_id;
+		editStatusObj.id = data.id;
+		editStatusObj.category_type_id = data.category_type_id;
+		editStatusObj.cat_name = data.category_name;
+		setDialogOpen(true);
+	}
+
+	// HANDLES ADD BUTTON TO OPEN FORM SHEET
+	function handleAddClick() {
+		setSheetTitle('Add');
+		buttonText.value = 'Save';
+		setDisableGrpFld(false);
+		setSheetOpen(true);
+		form.reset(defaultValues);
+	}
+
+	// HANDLES CATEGORY EDIT
+	function handleEditClick(rowDatas) {
+		const gridElement = document.querySelector('.ag-body-viewport');
+		// const parentName = rowData.find((d) => d.category_id == rowDatas.parent_id)?.category_name;
+		// setDefaultValue(parentName ? parentName : '');
+		setDisableGrpFld(false);
+		setIsUpdateChildShow(false);
+
+		if (rowDatas.parent_id != '0') {
+			setParentValue(rowDatas.parent_id);
+			setPreviousParent(rowDatas.parent_id);
+		}
+		getCategoryDetailsMutation.mutate({ id: rowDatas.id });
+		verticalScrollPosition = gridElement?.scrollTop ?? 0;
+	}
+
+	// HANDLES CATEGORY HISTORY
+	function handleHistory(rowDatas) {
+		if (rowDatas.id !== '') {
+			historyCategoryIndustryMutation.mutate(rowDatas.id);
+			setHistoryTitle(rowDatas.category_name);
+		}
+	}
+
+	// TRIGGERS WHEN AGGRID IS READY
+	function onGridReady(e) {
+		setTimeout(() => {
+			document.getElementById('rowCount').innerText = `#${formatNumber(gridRef.current.api.getDisplayedRowCount())} Records`;
+		}, 500);
+		setTimeout(() => {
+			gridInitiated = true;
+			hasGridMounted.current = true;
+		}, 1000);
+	}
+
+	// TRIGGERS WHEN AGGRID FILTER IS CHANGED
+	const onFilterChanged = useCallback((e) => {
+		// console.log(e);
+		// rowCountUpdate();
+		saveGridSettings(isChecked);
+	}, []);
+
+	// FUNCTION TO UPDATE ROW COUNT
+	function rowCountUpdate() {
+		document.getElementById('rowCount').innerText = `#${formatNumber(gridRef.current.api.getDisplayedRowCount())} Records`;
+	}
+
+	// HANDLES CATEGORY TYPE DROPDOWN SELECT
+	function selectHandler(e) {
+		localStorage.setItem('cat_type', e);
+		CATEGORYTYPE_DROPDOWN_NAME.value = CATEGORYTYPE_SOURCE.value.filter((cat) => cat.id == e)[0]?.category_name;
+		CATEGORYTYPE_DROPDOWN_VALUE.value = e;
+		const formData = new FormData();
+		let dt = new Date();
+		dt = dt.getFullYear() + '-' + parseInt(dt.getMonth() + 1) + '-' + dt.getDate() + ' ' + dt.getHours() + ':' + dt.getMinutes() + ':' + dt.getSeconds();
+		const clickIdArr = [`Action: EBB Manager - ${e}`, dt, ''];
+		formData.append('clickdata', JSON.stringify([clickIdArr]));
+		clickTrackMutation.mutate(formData);
+		setCategoryType(e);
+		gridRef.current.api.setFilterModel(null);
+	}
+
+	// function buildPathDataRecursive(data) {
+	// 	if (!data || data.length === 0) {
+	// 		return [];
+	// 	}
+
+	// 	//Create row_id and parent lookup map
+	// 	const parentMap = new Map();
+	// 	const processedData = data.map((item) => {
+	// 		const processedItem = { ...item, row_id: `${item.category_id}-${item.category_type_id}` };
+	// 		if (item.category_id) {
+	// 			if (!parentMap.has(item.category_id)) {
+	// 				parentMap.set(item.category_id, []);
+	// 			}
+	// 			parentMap.get(item.category_id).push(processedItem);
+	// 		}
+	// 		return processedItem;
+	// 	});
+
+	// 	//Recursively build the final data with row_parent_id
+	// 	const finalData = [];
+	// 	console.log(parentMap);
+
+	// 	function processItem(item) {
+	// 		if (item.parent_id && parentMap.has(item.parent_id)) {
+	// 			for (const parent of parentMap.get(item.parent_id)) {
+	// 				const child = { ...item, row_parent_id: parent.row_id };
+	// 				finalData.push(child);
+	// 			}
+	// 		} else {
+	// 			finalData.push(item);
+	// 		}
+	// 	}
+
+	// 	processedData.forEach(processItem);
+
+	// 	// Build ID map for path traversal
+	// 	const idMap = new Map(finalData.map((item) => [item.row_id, item]));
+
+	// 	//Recursively build paths
+	// 	function buildPath(item) {
+	// 		if (!item) return [];
+	// 		if (!item.row_parent_id) return [item.row_id];
+	// 		const parent = idMap.get(item.row_parent_id);
+	// 		return [...buildPath(parent), item.row_id];
+	// 	}
+
+	// 	return finalData.map((item) => ({
+	// 		...item,
+	// 		path: buildPath(item),
+	// 	}));
+	// }
+
+	// BUILD DATA PATH FOR AGGRID TREE VIEW
+	function buildPathData(data) {
+		if (!data || data.length === 0) {
+			return [];
+		}
+
+		// Create a lookup map for parent categories and add row_id property in one pass
+		const parentMap = new Map();
+		const processedData = data.map((item) => {
+			const processedItem = { ...item, row_id: `${item.category_id}-${item.category_type_id}` };
+
+			// Build parent lookup map
+			if (item.category_id) {
+				if (!parentMap.has(item.category_id)) {
+					parentMap.set(item.category_id, []);
+				}
+				parentMap.get(item.category_id).push(processedItem);
+			}
+
+			return processedItem;
+		});
+
+		// Generate final data structure
+		const finalData = [];
+		for (const item of processedData) {
+			if (item.parent_id && parentMap.has(item.parent_id)) {
+				// Create entries for each parent match
+				for (const parent of parentMap.get(item.parent_id)) {
+					finalData.push({
+						...item,
+						row_parent_id: parent.row_id,
+					});
+				}
+			} else {
+				finalData.push(item);
+			}
+		}
+
+		// Build ID lookup map and generate paths
+		const idMap = new Map(finalData.map((item) => [item.row_id, item]));
+
+		return finalData.map((item) => {
+			const path = [];
+			let current = item;
+
+			// Build path by traversing up the hierarchy
+			while (current) {
+				path.unshift(current.row_id);
+				current = current.row_parent_id ? idMap.get(current.row_parent_id) : null;
+			}
+
+			return { ...item, path };
+		});
+	}
+
+	// HANDLES CATEGORY ACTIVATE/DEACTIVATE DAILOG BOX
+	function modalHandler() {
+		if (editStatusObj.id != '') {
+			const formData = new FormData();
+			// formData.append('cat_id', editStatusObj.cat_id);
+			// formData.append('cat_type_id', editStatusObj.category_type_id);
+			if (editStatusObj.status != 'Active' && categoryDetails.subscription_count > 0) {
+				formData.append(
+					'deactivate_subscriptions',
+					formConfig.status.subscription_deactivation.allow_subscription_deactivation
+						? confirmSub
+						: formConfig.status.subscription_deactivation.allow_subscription_deactivation
+				);
+			}
+			formData.append('id', editStatusObj.id);
+			formData.append('status', editStatusObj.status);
+			updateCategoryIndustryStatusMutation.mutate(formData);
+			setDialogOpen(false);
+		}
+	}
+
+	// HANDLES CATEGORY SEARCH IN FORM FIELD
+	const handleSearch = (query) => {
+		setQuery(query);
+
+		httpClient.get(`CategoryIndustry/SearchCategory?searchText=${encodeURIComponent(query)}&cat_id=${editStatusObj.cat_id}`).then((data) => {
+			setOptions(data.data.data);
+		});
+	};
+
+	// RENDER CATEGORY PARENT DROPDOWN MENU IN FORM FIELD
+	function renderMenu(results, menuProps) {
+		// debugger;
+		if (query.length == 0 && options.length === 0) {
+			return null;
+		}
+		console.log(results);
+		const items = results.map((result, index) => {
+			if (result.paginationOption) {
+				return (
+					<MenuItem className="default-menu-item rounded !p-0 justify-center gap-1 text-xm" href="javascript:void();" key={index} option={result}>
+						<div>Show More</div>
+						<ChevronDownCircle className="size-4 stroke-[#aaa]"></ChevronDownCircle>
+					</MenuItem>
+				);
+			} else {
+				return (
+					<MenuItem className="default-menu-item" href="javascript:void();" key={index} option={result}>
+						<div>{result.text}</div>
+					</MenuItem>
+				);
+			}
+		});
+		return (
+			<Menu className="default-dropdown" {...menuProps}>
+				{items}
+			</Menu>
+		);
+	}
+
+	// HANDLES AGGRID EXPAND & COLLAPSE
+	function collapseHandler(e) {
+		if (e.target.innerText == 'Collapse All') {
+			gridRef.current.api.collapseAll();
+			IS_COLLAPSE.value = true;
+			e.target.innerText = 'Expand All';
+		} else {
+			IS_COLLAPSE.value = false;
+			gridRef.current.api.expandAll();
+			e.target.innerText = 'Collapse All';
+		}
+	}
+
+	// HANDLES FORM TYPEHEAD
+	function typeaheadHandler(data) {
+		if (data.length) {
+			setParentValue(data[0].value);
+			setParentCategoryTypeID(data[0].category_type_id);
+		}
+	}
+
+	// HANDLES TYPEHEAD WHEN INPUT CHANGES
+	function inputChangeHandler(data) {
+		if (data == '') {
+			setParentValue('');
+			setParentCategoryTypeID('');
+		}
+	}
+
+	// HANDLES AGGRID REFRESH
+	function refreshHandler() {
+		setSpinning(true);
+		categoryIndustryMutation.mutate({ activeOnly: isChecked, category_id: CATEGORYTYPE_DROPDOWN_VALUE.value });
+		setTimeout(() => {
+			setSpinning(false);
+		}, 1500);
+	}
+
+	// HANDLES CATEGORY TYPE FIELD IN FORM
+	function categoryTypeHandler(e) {
+		if (typeof e === 'number') {
+			setCategoryType(e);
+		}
+	}
+
+	// HANDLES UPDATE CHILD TOGGLE BUTTON IN FORM WHEN THE CATEGORY ID IS CHANGED
+	function categoryIdHandler(e) {
+		if (formConfig && formConfig.cat_id.is_update_child?.enable && e.target.value != editStatusObj.old_cat_id && categoryDetails.child_count > 0) {
+			setIsUpdateChildShow(true);
+			setUpdateChildValue(true);
+		} else {
+			setIsUpdateChildShow(false);
+			setUpdateChildValue(false);
+		}
+	}
+
+	// HIDE/SHOW STATUS NOTE WHEN STATUS FIELD IS SWITCHED TO INACTIVE
+	function statusHandler(e) {
+		if (sheetTitle == 'Edit') {
+			if (e == 'Inactive') {
+				setShowNote(true);
+				setIsScheduled(true);
+			} else {
+				// setScheduleDefaultValue(null);
+				setShowNote(false);
+				setIsScheduled(false);
+			}
+		} else {
+			if (e == 'Inactive') {
+				setScheduleTitle('Make Active On');
+				setIsScheduled(true);
+			} else {
+				setIsScheduled(false);
+			}
+		}
+	}
+
+	// HANLDES SHOW ONLY CHECK BOX
+	function checkBoxHandler(e) {
+		setIsChecked(e);
+		// gridRef.current.api.setFilterModel(e ? { status: { type: 'equals', filter: 'Active' } } : null);
+		saveGridSettings(e);
+	}
+
+	return (
+		<>
+			{(saveCategoryIndustryMutation.isLoading || updateCategoryIndustryStatusMutation.isLoading) && <OverlayLoader></OverlayLoader>}
+			<div className="tool-panel flex items-center justify-between">
+				<div className="flex items-center gap-4 float-left">
+					<Select value={CATEGORYTYPE_DROPDOWN_VALUE.value} onValueChange={selectHandler}>
+						<SelectTrigger className="w-[180px] dark:bg-[#727cf5] bg-primary text-white  hover:bg-primary/90 focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] [&>span]:overflow-hidden [&>span]:text-ellipsis justify-between">
+							<SelectValue placeholder="" />
+						</SelectTrigger>
+						<SelectContent>
+							{CATEGORYTYPE_SOURCE.value?.map((category, i) => {
+								if (SPL_SUBSCRIPTION_CONFIG.value != category.id) {
+									return (
+										<SelectItem data-clickid={'Action: Subscription Manager - Category Type Select'} className="" key={i} value={category.id}>
+											{`${category.category_name} ${category.status == 'Inactive' ? `( ${category.status} )` : ''}`}
+										</SelectItem>
+									);
+								}
+							})}
+						</SelectContent>
+					</Select>
+					<Button
+						data-clickid={'Action: Subscription Manager - Tree Data Expand Collapse'}
+						className="border-custom-border"
+						onClick={collapseHandler}
+						id="collapse-btn"
+						variant="outline"
+					>
+						{IS_COLLAPSE.value ? 'Expand All' : 'Collapse All'}
+					</Button>
+					<div className="checkbox-container">
+						<Checkbox
+							data-clickid={'Action: Subscription Manager - Show Active Category'}
+							checked={isChecked}
+							onCheckedChange={checkBoxHandler}
+							id="showActive"
+						></Checkbox>
+						<Label data-clickid={'Action: Subscription Manager - Show Active Category'} htmlFor="showActive" className="font-normal">
+							Show Active Only
+						</Label>
+					</div>
+				</div>
+
+				<div className="flex gap-4 items-center">
+					<div id="rowCount">#{formatNumber(rowCount.value)} Records</div>
+					<TooltipProvider>
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									className="border-custom-border"
+									data-clickid={'Action: Subscription Manager - Table Refresh Category'}
+									variant="outline"
+									onClick={refreshHandler}
+								>
+									<RefreshCcwIcon className={`${spinning ? 'spin-icon' : ''} stroke-[#9ca3af]`}></RefreshCcwIcon>
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>{`Last Refresh at ${convertDate(lastUpdated)}`}</TooltipContent>
+						</Tooltip>
+					</TooltipProvider>
+					<SplitDropdownButton
+						columnDef={columnDefs}
+						categoryId={CATEGORYTYPE_DROPDOWN_VALUE.value}
+						fileName={'CategoryIndustry'}
+						gridRef={gridRef}
+						activeOnly={isChecked}
+					></SplitDropdownButton>
+					<Button data-clickid={'Action: Subscription Manager - Add Category'} ref={null} className="w-[80px] float-right" onClick={handleAddClick}>
+						<PlusIcon className="stroke-[#ddd]"></PlusIcon>
+						Add
+					</Button>
+				</div>
+			</div>
+			{isLoading ? (
+				<p className="flex justify-center items-center gap-1">
+					<LoadingSpinner></LoadingSpinner>
+					Loading...
+				</p>
+			) : (
+				<div
+					style={{ height: `${height}`, minHeight: '500px', paddingBottom: '20px' }}
+					className={`grid-container category-list ${IS_DARK.value ? ' ag-theme-balham-dark' : 'ag-theme-balham'} px-0`}
+				>
+					<AgGridReact
+						ref={gridRef}
+						// domLayout="autoHeight"
+						columnDefs={columnDefs}
+						loading={categoryIndustryMutation.isLoading}
+						defaultColDef={defaultColDef}
+						onGridReady={onGridReady}
+						// sideBar={'filters'}
+						rowData={rowData}
+						// frameworkComponents={{ actionCellRenderer: ActionCellRenderer }}
+						rowHeight={40}
+						modules={[ClientSideRowModelModule, ColumnsToolPanelModule, SetFilterModule, MenuModule, ClipboardModule, RangeSelectionModule]}
+						headerHeight={40}
+						cellSelection={true}
+						pivotMode={false}
+						onSortChanged={() => saveGridSettings(isChecked)}
+						onColumnVisible={() => saveGridSettings(isChecked)}
+						onColumnResized={onColumnResized}
+						// pagination={true}
+						getDataPath={(data) => data.path}
+						treeData={true}
+						// cellSelection={true}
+						groupDisplayType="custom"
+						sideBar={sideBar}
+						onRowDataUpdated={rowCountUpdate}
+						onFilterChanged={() => {
+							document.getElementById('rowCount').innerText = `#${formatNumber(gridRef.current.api.getDisplayedRowCount())} Records`;
+							if (gridRef.current.api.getDisplayedRowCount() < 1) {
+								gridRef.current.api.showNoRowsOverlay();
+							} else {
+								gridRef.current.api.hideOverlay();
+							}
+							// saveGridSettings(isChecked);
+						}}
+						noRowsOverlayComponent={() => <span>Record not found.</span>}
+						suppressMovableColumns
+						groupDefaultExpanded={-1}
+						// paginationPageSize={10}
+					/>
+					{CATEGORY_INDUSTRY_FORM_CONFIG.value && !getCategoryDetailsMutation.isLoading && (
+						<Sheet refs={null} open={sheetOpen} onOpenChange={handleSheetClose}>
+							<SheetContent>
+								<SheetHeader>
+									<SheetTitle>{sheetTitle + ' ' + 'Category'}</SheetTitle>
+								</SheetHeader>
+								<SheetDescription asChild className="h-full overflow-auto">
+									<Form autoComplete="off" {...form}>
+										<form autoComplete="off" className="flex flex-col h-[750px] gap-6 p-4 overflow-y-auto">
+											{isEmptyObject(formConfig) ? (
+												<>
+													<FormField
+														control={form.control}
+														name="cat_id"
+														ref={null}
+														render={({ field }) => (
+															<FormItem>
+																<FormLabel className={'gap-1 justify-between'} htmlFor="cat_id">
+																	<div>
+																		Category ID<span className="text-red-500">*</span>
+																	</div>
+																	{sheetTitle === 'Edit' && isUpdateChildShow && (
+																		<div className="flex gap-1 item-center">
+																			<Label>
+																				<InfoIcon content="Any child entries mapped to this category will have their parent updated" />
+																				Update Child Categories
+																			</Label>
+																			<Switch checked={updateChildValue} onCheckedChange={setUpdateChildValue}></Switch>
+																		</div>
+																	)}
+																</FormLabel>
+																<Input
+																	onChangeCapture={categoryIdHandler}
+																	value={field.value}
+																	id="cat_id"
+																	placeholder="Enter Category ID"
+																	{...field}
+																/>
+																<FormMessage />
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="cat_name"
+														ref={null}
+														render={({ field }) => (
+															<FormItem>
+																<FormLabel className={'gap-1'} htmlFor="cat_name">
+																	Category Name<span className="text-red-500">*</span>
+																	<InfoIcon content="Category Name" />
+																</FormLabel>
+																<Input id="cat_name" placeholder="Enter Category Name" {...field} />
+																<FormMessage />
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="bm_id"
+														render={({ field }) => (
+															<FormItem>
+																<FormLabel className={'gap-1'} htmlFor="bm_id">
+																	External Id
+																</FormLabel>
+																<Input id="bm_id" placeholder="Enter External Id" {...field} />
+																<FormMessage />
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="cat_type_id"
+														render={({ field }) => (
+															<FormItem>
+																<FormLabel className={'gap-1'}>Category Type</FormLabel>
+																<Select value={categoryType} onValueChange={categoryTypeHandler}>
+																	<SelectTrigger className="w-[100%] justify-between">
+																		<SelectValue placeholder="Select a Category Type" />
+																	</SelectTrigger>
+																	<SelectContent>
+																		{CATEGORYTYPE_SOURCE.value.map((category, i) => {
+																			if (SPL_SUBSCRIPTION_CONFIG.value != category.id) {
+																				return (
+																					<SelectItem key={i} value={category.id}>
+																						{`${category.category_name} ${category.status == 'Inactive' ? `( ${category.status} )` : ''}`}
+																					</SelectItem>
+																				);
+																			}
+																		})}
+																	</SelectContent>
+																</Select>
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="parent_id"
+														render={({ field }) => (
+															<FormItem>
+																<FormLabel className={'gap-1'} htmlFor="parent_id">
+																	Parent
+																	<InfoIcon content="Parent" />
+																</FormLabel>
+																<AsyncTypeahead
+																	inputProps={{
+																		className: 'default-input dark:placeholder:text-grey-100',
+																		style: { pointerEvents: 'auto' },
+																	}}
+																	labelKey={'text'}
+																	filterBy={() => true}
+																	options={options}
+																	minLength={1}
+																	id="parent_id"
+																	onSearch={handleSearch}
+																	onInputChange={inputChangeHandler}
+																	renderMenu={renderMenu}
+																	// open={query.length > 0}
+																	placeholder="Search Parent"
+																	onChange={typeaheadHandler}
+																	defaultInputValue={defaultValue}
+																	// emptyLabel={''}
+																	disabled={disableGrpFld}
+																></AsyncTypeahead>
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="show_api"
+														render={({ field }) => (
+															<FormItem className="flex flex-row items-center justify-between">
+																<FormLabel>Show in API</FormLabel>
+																<FormControl>
+																	<Switch checked={field.value} onCheckedChange={field.onChange} />
+																</FormControl>
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="show_ui"
+														render={({ field }) => (
+															<FormItem className="flex flex-row items-center justify-between">
+																<FormLabel>Show in UI</FormLabel>
+																<FormControl>
+																	<Switch checked={field.value} onCheckedChange={field.onChange} />
+																</FormControl>
+															</FormItem>
+														)}
+													></FormField>
+													<FormField
+														control={form.control}
+														name="status"
+														render={({ field }) => (
+															<FormItem className="flex justify-between">
+																<FormLabel>Status</FormLabel>
+																<Tabs
+																	onValueChange={(e) => {
+																		field.onChange(e);
+																		statusHandler(e);
+																	}}
+																	defaultValue={field.value}
+																	className="py-0 px-0"
+																>
+																	<TabsList className="py-0 px-1 rounded-2xl bg-gray-100 h-6  inline-flex w-fit items-center gap-1 justify-center   border-1 border-gray-300 dark:border-gray-800  dark:bg-gray-800 py-1 px-0 h-8">
+																		<TabsTrigger
+																			className="py-0 px-2 ml-1 h-6 dark:data-[state=active]:text-green-500 data-[state=active]:text-green-500   rounded-xl data-[state=active]:bg-green-200 font-normal"
+																			value="Active"
+																		>
+																			Active
+																		</TabsTrigger>
+																		<TabsTrigger
+																			className="py-0 px-2 mr-1 h-6  dark:data-[state=active]:text-red-500 data-[state=active]:text-red-500   rounded-xl data-[state=active]:bg-red-200 font-normal"
+																			value="Inactive"
+																		>
+																			Inactive
+																		</TabsTrigger>
+																	</TabsList>
+																</Tabs>
+															</FormItem>
+														)}
+													></FormField>
+												</>
+											) : (
+												<>
+													{formConfig.cat_id?.enable && (
+														<FormField
+															control={form.control}
+															name="cat_id"
+															ref={null}
+															render={({ field }) => (
+																<FormItem>
+																	<FormLabel className={'gap-1 justify-between'} htmlFor="cat_id">
+																		<span className="flex gap-1">
+																			{formConfig.cat_id ? formConfig.cat_id.name : 'Category ID'}
+																			{formConfig.cat_id?.mandatory && <span className="text-red-500">*</span>}
+																			{formConfig.cat_id?.info !== '' && <InfoIcon content={formConfig.cat_id?.info} />}
+																		</span>
+																		{sheetTitle === 'Edit' && isUpdateChildShow && (
+																			<div className="flex gap-1 item-center">
+																				<Label>
+																					<InfoIcon
+																						content={'Any child entries mapped to this category will have their parent updated'}
+																					/>
+																					Update Child Categories
+																				</Label>
+																				<Switch checked={updateChildValue} onCheckedChange={setUpdateChildValue}></Switch>
+																			</div>
+																		)}
+																	</FormLabel>
+																	<Input
+																		onChangeCapture={categoryIdHandler}
+																		value={field.value}
+																		id="cat_id"
+																		// className={`${form.formState.errors.cat_id ? 'ring-2 ring-red-500 focus-visible:ring-red-500' : ''}`}
+																		placeholder={`Enter ${formConfig.cat_id ? formConfig.cat_id.name : 'Category ID'}`}
+																		{...field}
+																	/>
+																	<FormMessage />
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.cat_name?.enable && (
+														<FormField
+															control={form.control}
+															name="cat_name"
+															ref={null}
+															render={({ field }) => (
+																<FormItem>
+																	<FormLabel className={'gap-1'} htmlFor="cat_name">
+																		{formConfig.cat_name ? formConfig.cat_name.name : 'Subscription Category Name'}
+																		{formConfig.cat_name?.mandatory && <span className="text-red-500">*</span>}
+																		{formConfig.cat_name?.info != '' && <InfoIcon content={formConfig.cat_name.info} />}
+																	</FormLabel>
+																	<Input
+																		id="cat_name"
+																		placeholder={`Enter ${formConfig.cat_name ? formConfig.cat_name.name : 'Category Name'}`}
+																		{...field}
+																	/>
+																	<FormMessage />
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.bm_id?.enable && (
+														<FormField
+															control={form.control}
+															name="bm_id"
+															render={({ field }) => (
+																<FormItem>
+																	<FormLabel className={'gap-1'} htmlFor="bm_id">
+																		{formConfig.bm_id ? formConfig.bm_id.name : 'External Id'}
+																		{formConfig.bm_id?.mandatory && <span className="text-red-500">*</span>}
+																		{formConfig.bm_id?.info != '' && <InfoIcon content={formConfig.bm_id.info} />}
+																	</FormLabel>
+																	<Input
+																		id="bm_id"
+																		placeholder={`Enter ${formConfig.bm_id ? formConfig.bm_id.name : 'External Id'}`}
+																		{...field}
+																	/>
+																	<FormMessage />
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.cat_type_id?.enable && (
+														<FormField
+															control={form.control}
+															name="cat_type_id"
+															render={({ field }) => (
+																<FormItem>
+																	<FormLabel className={'gap-1'}>
+																		{formConfig.cat_type_id ? formConfig.cat_type_id.name : 'Category Type'}
+																		{formConfig.cat_type_id?.mandatory && <span className="text-red-500">*</span>}
+																		{formConfig.cat_type_id?.info != '' && <InfoIcon content={formConfig.cat_type_id.info} />}
+																	</FormLabel>
+																	<Select value={categoryType} onValueChange={categoryTypeHandler}>
+																		<SelectTrigger className="w-[100%]	justify-between">
+																			<SelectValue
+																				placeholder={`Select a ${formConfig.cat_type_id ? formConfig.cat_type_id.name : 'Category Type'}`}
+																			/>
+																		</SelectTrigger>
+																		<SelectContent>
+																			{CATEGORYTYPE_SOURCE.value.map((category, i) => {
+																				if (SPL_SUBSCRIPTION_CONFIG.value != category.id) {
+																					return (
+																						<SelectItem key={i} value={category.id}>
+																							{`${category.category_name} ${category.status == 'Inactive' ? `( ${category.status} )` : ''}`}
+																						</SelectItem>
+																					);
+																				}
+																			})}
+																		</SelectContent>
+																	</Select>
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.parent_id?.enable && (
+														<FormField
+															control={form.control}
+															name="parent_id"
+															render={({ field }) => (
+																<FormItem>
+																	<FormLabel className={'gap-1'} htmlFor="parent_id">
+																		{formConfig.parent_id ? formConfig.parent_id.name : 'Parent'}
+																		{formConfig.parent_id?.mandatory && <span className="text-red-500">*</span>}
+																		{formConfig.parent_id?.info != '' && <InfoIcon content={formConfig.parent_id.info} />}
+																	</FormLabel>
+																	<AsyncTypeahead
+																		inputProps={{
+																			className: 'default-input dark:placeholder-grey-100',
+																			style: { pointerEvents: 'auto' },
+																		}}
+																		labelKey={'text'}
+																		filterBy={() => true}
+																		options={options}
+																		minLength={1}
+																		id="parent_id"
+																		onSearch={handleSearch}
+																		onInputChange={inputChangeHandler}
+																		renderMenu={renderMenu}
+																		// open={query.length > 0}
+																		placeholder={`Search ${formConfig.parent_id ? formConfig.parent_id.name : 'Parent'}`}
+																		onChange={typeaheadHandler}
+																		defaultInputValue={defaultValue}
+																		// emptyLabel={''}
+																		disabled={disableGrpFld}
+																	></AsyncTypeahead>
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.show_api?.enable && CONSTANTS.RESEARCH_MASTERS_UPDATE_PROCEDURE !== '' && (
+														<FormField
+															control={form.control}
+															name="show_api"
+															render={({ field }) => (
+																<FormItem>
+																	<div className="flex flex-row items-center justify-between">
+																		<FormLabel>
+																			{formConfig.show_api ? formConfig.show_api.name : 'Show in API'}
+																			{formConfig.show_api?.mandatory && <span className="text-red-500">*</span>}
+																			{formConfig.show_api?.info != '' && <InfoIcon content={formConfig.show_api.info} />}
+																		</FormLabel>
+																		<FormControl>
+																			<Switch checked={field.value} onCheckedChange={field.onChange} />
+																		</FormControl>
+																	</div>
+																	<FormMessage />
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.show_ui?.enable && CONSTANTS.RESEARCH_MASTERS_UPDATE_PROCEDURE !== '' && (
+														<FormField
+															control={form.control}
+															name="show_ui"
+															render={({ field }) => (
+																<FormItem>
+																	<div className="flex flex-row items-center justify-between">
+																		<FormLabel>
+																			{formConfig.show_ui ? formConfig.show_ui.name : 'Show in UI'}
+																			{formConfig.show_ui?.mandatory && <span className="text-red-500">*</span>}
+																			{formConfig.show_ui?.info != '' && <InfoIcon content={formConfig.show_ui.info} />}
+																		</FormLabel>
+																		<FormControl>
+																			<Switch checked={field.value} onCheckedChange={field.onChange} />
+																		</FormControl>
+																	</div>
+																	<FormMessage />
+																</FormItem>
+															)}
+														></FormField>
+													)}
+													{formConfig.status?.enable && (
+														<FormField
+															control={form.control}
+															name="status"
+															render={({ field }) => (
+																<FormItem className="flex justify-between">
+																	<FormLabel>
+																		{formConfig.status ? formConfig.status.name : 'Status'}
+																		{formConfig.status?.mandatory && <span className="text-red-500">*</span>}
+																		{formConfig.status?.info != '' && <InfoIcon content={formConfig.status.info} />}
+																	</FormLabel>
+																	<Tabs
+																		onValueChange={(e) => {
+																			field.onChange(e);
+																			statusHandler(e);
+																		}}
+																		defaultValue={field.value}
+																		className="py-0 px-0"
+																	>
+																		<TabsList className="py-0 px-1 rounded-2xl bg-gray-100 h-6  inline-flex w-fit items-center gap-1 justify-center   border-1 border-gray-300 dark:border-gray-800  dark:bg-gray-800 py-1 px-0 h-8">
+																			<TabsTrigger
+																				className="py-0 px-2 ml-1 h-6 dark:data-[state=active]:text-green-500 data-[state=active]:text-green-500   rounded-xl data-[state=active]:bg-green-200 font-normal"
+																				value="Active"
+																			>
+																				Active
+																			</TabsTrigger>
+																			<TabsTrigger
+																				className="py-0 px-2 mr-1 h-6  dark:data-[state=active]:text-red-500 data-[state=active]:text-red-500   rounded-xl data-[state=active]:bg-red-200 font-normal"
+																				value="Inactive"
+																			>
+																				Inactive
+																			</TabsTrigger>
+																		</TabsList>
+																	</Tabs>
+																</FormItem>
+															)}
+														/>
+													)}
+													{showNote &&
+														categoryDetails.status != 'Inactive' &&
+														categoryDetails.subscription_count > 0 &&
+														formConfig.status?.subscription_deactivation.allow_subscription_deactivation && (
+															<div className="checkbox-container">
+																<Checkbox
+																	className="border-custom-border"
+																	onCheckedChange={setConfirmSub}
+																	checked={confirmSub}
+																	id="confirm-check"
+																></Checkbox>
+																<Label className="block pl-2" htmlFor="confirm-check">
+																	Also deactivate any linked Subscriptions{' '}
+																	<p className="text-blue-600">
+																		({formatNumber(categoryDetails.subscription_count)} active{' '}
+																		{categoryDetails.subscription_count === 1 ? 'Subscription' : 'Subscriptions'} available.)
+																	</p>
+																</Label>
+															</div>
+														)}
+												</>
+											)}
+											<div>
+												{isScheduled && (
+													<div>
+														<div>
+															<div className="grid gap-2">
+																<Label>{scheduleTitle}</Label>
+																<DateTimePickerForm defaultValue={scheduleDefaultValue}></DateTimePickerForm>
+															</div>
+														</div>
+														{/* <DateWithTimePicker></DateWithTimePicker> */}
+													</div>
+												)}
+											</div>
+										</form>
+									</Form>
+								</SheetDescription>
+								<SheetFooter className="flex flex-row justify-end">
+									<Button
+										className={`${!form.formState.isValid ? 'opacity-50 cursor-none' : ''}`}
+										ref={null}
+										type="submit"
+										onClick={form.handleSubmit(onSubmit)}
+										disabled={disableSaveBtn}
+									>
+										{buttonText.value}
+									</Button>
+									<Button variant="outline" onClick={handleSheetClose}>
+										Cancel
+									</Button>
+								</SheetFooter>
+							</SheetContent>
+						</Sheet>
+					)}
+					{getCategoryDetailsMutation.isLoading ? (
+						<OverlayLoader></OverlayLoader>
+					) : (
+						<Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+							<DialogContent onInteractOutside={(event) => event.preventDefault()} className="sm:max-w-md">
+								<DialogHeader>
+									<DialogTitle>Confirmation</DialogTitle>
+									<DialogDescription>
+										Are you sure you want to {editStatusObj.status == 'Active' ? 'activate' : 'deactivate'}{' '}
+										<span className="font-bold">
+											{editStatusObj.cat_name}({CATEGORYTYPE_DROPDOWN_NAME})
+										</span>
+										?
+									</DialogDescription>
+									{categoryDetails.subscription_count > 0 &&
+										editStatusObj.status != 'Active' &&
+										formConfig.status?.subscription_deactivation.allow_subscription_deactivation && (
+											<DialogDescription className="">
+												<div className="checkbox-container pt-2">
+													<Checkbox onCheckedChange={setConfirmSub} checked={confirmSub} id="confirm-check"></Checkbox>
+													<Label className="block pl-2" htmlFor="confirm-check">
+														Also deactivate any linked Subscriptions{' '}
+														<p className="text-blue-600">
+															({formatNumber(categoryDetails.subscription_count)} active{' '}
+															{categoryDetails.subscription_count === 1 ? 'Subscription' : 'Subscriptions'} available.)
+														</p>
+													</Label>
+												</div>
+											</DialogDescription>
+										)}
+								</DialogHeader>
+								<DialogFooter className="sm:justify-end">
+									<DialogClose asChild>
+										<Button ref={null} type="button" variant="outline">
+											No
+										</Button>
+									</DialogClose>
+									<Button variant={editStatusObj.status == 'Active' ? 'success' : 'destructive'} ref={null} onClick={modalHandler}>
+										{editStatusObj.status == 'Active' ? 'Yes, Activate' : 'Yes, Deactivate'}
+									</Button>
+								</DialogFooter>
+							</DialogContent>
+						</Dialog>
+					)}
+					{showFormConfirmation && (
+						<Dialog open={showFormConfirmation} onOpenChange={setShowFormConfirmation}>
+							<DialogContent onInteractOutside={(event) => event.preventDefault()} className="sm:max-w-md">
+								<DialogHeader>
+									<DialogTitle>Confirmation</DialogTitle>
+									<DialogDescription>Are you sure you want to close the form?</DialogDescription>
+								</DialogHeader>
+								<DialogFooter className="sm:justify-end">
+									<DialogClose asChild>
+										<Button ref={null} type="button" variant="outline">
+											No
+										</Button>
+									</DialogClose>
+									<Button
+										variant="default"
+										ref={null}
+										onClick={() => {
+											form.reset(defaultValues);
+											setShowFormConfirmation(false);
+											setSheetOpen(false);
+										}}
+									>
+										Yes
+									</Button>
+								</DialogFooter>
+							</DialogContent>
+						</Dialog>
+					)}
+				</div>
+			)}
+			{historyOpen && <History open={historyOpen} close={() => setHistoryOpen(false)} data={historyData} title={historyTitle} />}
+		</>
+	);
+}
