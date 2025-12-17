@@ -1,1743 +1,309 @@
-import React, { useState, useEffect } from 'react'
-import DatePicker from 'react-datepicker'
-import { AiOutlineClose } from 'react-icons/ai'
-import { useToast } from '@/hooks/use-toast'
-import { createAuthHeaders } from '@/lib/legacyUtils'
-import { API_CONFIG } from '@/lib/constants'
-import { prismStorage } from '@/lib/prismStorage'
-
-interface TaskForm {
-  taskId?: string
-  assignedTo: string
-  taskType: string
-  status: string
-  subject: string
-  contacts: string[]
-  description: string
-  dueDate: Date | null
-  time: string
-}
-
-interface User {
-  USER_ID: string
-  reassign_name: string
-  role_name: string
-}
-
-
-
-const AddTaskModal: React.FC = () => {
-  const { toast } = useToast()
-
-  const [open, setOpen] = useState(false)
-  const [editMode, setEditMode] = useState(false)
-  const [taskId, setTaskId] = useState('')
-
-  const [users, setUsers] = useState<User[]>([])
-  const [loadingUsers, setLoadingUsers] = useState(false)
-
-  const [tasks, setTasks] = useState<TaskForm[]>([])
-
- const [form, setForm] = useState<TaskForm>({
-    assignedTo: '',
-    taskType: '',
-    status: '',
-    subject: '',
-    contacts: [],   
-    description: '',
-    dueDate: new Date(),
-    time: '10:00',
-});
-
-
-
-
-   
-  const getTasks = async () => {
-    
-    const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({"filter":[]});
-    const backendPayload = { summaryFilter: summaryFilter };
-    const encodedPayload = new URLSearchParams(backendPayload).toString();
-    // console.log('Fetching tasks with payload:', encodedPayload); 
-
-    try {
-       const response = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Accept': 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encodedPayload, 
-        credentials: 'include' 
-      });
-      
-      const data = await response.json();
-
-      // console.log('Response received:', response.status);
-      // console.log('Parsed data (status):', data.status);
-
-
-      if (data.status === 1) { 
-        setTasks(data.data || data); 
-      } else if (data.status === 0 || data.status === -1) {
-          toast({ title: 'API Error', description: data.message || 'An error occurred server-side' });
-      }
-
-    } catch (err) {
-      console.error(err);
-      
-      if (err.name === "SyntaxError") {
-         toast({ title: 'Error', description: 'Did not receive valid JSON from server' });
-      } else {
-         toast({ title: 'Error', description: 'Failed to fetch tasks' });
-         
-      }
-    }
-  }
-
-
-
-  useEffect(() => {
-    getTasks()
-  }, [])
-
-  // const fetchUsers = async (query: string) => {
-  //   if (query.length < 2) return
-  //   setLoadingUsers(true)
-  //   try {
-  //     const res = await fetch(`${API_CONFIG.baseUrl}/task/searchReAssign`, {
-  //       method: 'POST',
-  //       headers: createAuthHeaders({
-  //         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-  //         'Accept': 'application/json, text/javascript, */*; q=0.01',
-  //       }),
-  //       body: JSON.stringify({ Name: query }),
-  //     })
-  //     const data = await res.json()
-  //     if (data?.data) setUsers(data.data)
-  //   } catch (err) {
-  //     setUsers([])
-  //   } finally {
-  //     setLoadingUsers(false)
-  //   }
-  // }
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-  ) => {
-    setForm({ ...form, [e.target.name]: e.target.value })
-  }
-
-const handleAdd = async () => {
-    console.log("addTask called");
-    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    
-
-    const formattedDateTime = `${form.dueDate.toISOString().slice(0, 10)} ${form.time}:00`;
-
-  
-    const payloadObject = { 
-        subject: form.subject,
-        dueDate: formattedDateTime, 
-        dueTime: form.time,
-        contacts: form.contacts,         
-        contactName: form.contacts || [], 
-        assignedTo: form.assignedTo,
-        clienttimezone: userTimeZone,      
-        status: form.status,
-        taskType: form.taskType,
-        taskComments: form.description,   
-        
-       
-        module_name: "Task",
-        reminder: [],
-        action: "Save",
-    }; 
-    
-
-    const jsonPayloadString = JSON.stringify(payloadObject);
-    const backendPayload = { data: jsonPayloadString };
-    const encodedPayload = new URLSearchParams(backendPayload).toString();
-
-    try {
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Accept': 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encodedPayload, 
-        credentials: 'include' 
-      })
-      
-      const data = await res.json();
-      
-      if (data.status === 1) {
-        toast({ title: 'Success', description: 'Task Added Successfully' })
-        setOpen(false)
-        getTasks() 
-      } else {
-        toast({ title: 'Error', description: data.reasons || data.message || 'Failed to add tasks' })
-      }
-    } catch (err) {
-      console.error(err);
-      toast({ title: 'Error', description: 'Failed to add task' })
-    }
-  }
-
-const handleUpdate = async () => {
-    console.log("updateTask called");
-    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    
-
-    const formattedDateTime = `${form.dueDate.toISOString().slice(0, 10)} ${form.time}:00`;
-
-  
-    const payloadObject = { 
-        subject: form.subject,
-        dueDate: formattedDateTime, 
-        dueTime: form.time,
-        contacts: form.contacts,         
-        contactName: form.contacts || [], 
-        assignedTo: form.assignedTo,
-        clienttimezone: userTimeZone,      
-        status: form.status,
-        taskType: form.taskType,
-        taskComments: form.description,   
-        
-       
-        module_name: "Task",
-        reminder: [],
-        action: "Update",
-        taskId: form.taskId
-    }; 
-
-    
-
-    const jsonPayloadString = JSON.stringify(payloadObject);
-    const backendPayload = { data: jsonPayloadString };
-    const encodedPayload = new URLSearchParams(backendPayload).toString();
-
-    try {
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Accept': 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encodedPayload, 
-        credentials: 'include' 
-      })
-      
-      const data = await res.json(); 
-      console.log('Update response data:', data);
-      if (data.status === 1) {
-        toast({ title: 'Success', description: 'Task Updated Successfully' })
-        setOpen(false)
-        getTasks() 
-      } else {
-        console.log('Update failed with reasons:', data.reasons)
-        toast({ title: 'Error', description: data.reasons || data.message || 'Failed to add tasks' })
-      }
-    } catch (err) {
-      console.error(err);
-      toast({ title: 'Error', description: 'Failed to add task' })
-    }
-  }
-
-
-
-
-  const deleteTask = async (id: string) => {
-    try {
-      const payload = {
-        deleteJson: JSON.stringify({ rowId: id, type: 'Task' }),
-      }
-      const res = await fetch(`${API_CONFIG.fullUrl}/activities/commonDelete`, {
-        method: 'POST',
-      headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'Accept': 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: JSON.stringify(payload),
-      })
-      const data = await res.json()
-      if (data.status === 1) {
-        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
-        getTasks()
-      }
-    } catch (err) {
-      toast({ title: 'Error', description: 'Delete failed' })
-    }
-  }
-
- const openEdit = (task: TaskForm) => {
-    
-    const isoCompatibleDateString = task.taskDate ? 
-        task.taskDate.replace(' ', 'T').split('.')[0] : 
-        '';
-
-    const dateObject = new Date(isoCompatibleDateString);
-    const timeString = task.taskDate ? task.taskDate.split(' ')[1].slice(0, 5) : '10:00';
-
-    setForm({
-      assignedTo: task.taskAssignedId,
-      taskType: task.taskType,
-      status: task.taskStatus, 
-      subject: task.taskName, 
-      contacts: task.contacts || [], 
-      description: task.description, 
-      
-      dueDate: dateObject,
-      time: timeString, 
-      taskId: task.taskId, 
-    })
-    
-    setEditMode(true)
-    setOpen(true)
-}
-
-
- return (
-    <div className="p-5">
-      <button
-        onClick={() => {
-          setEditMode(false)
-          setOpen(true)
-        }}
-        className="rounded bg-blue-600 px-4 py-2 text-white"
-      >
-        Add Task
-      </button>
-
-      <h2 className="mb-3 mt-5 text-xl font-semibold">Task List</h2>
-
-      
-      {tasks.length === 0 ? (
-        <p>No tasks found</p>
-      ) : (
-        <ul className="space-y-3">
-          {tasks.map((t) => (
-            <li key={t.taskId} className="rounded border bg-gray-50 p-3 shadow-sm">
-              <h3 className="font-bold">{t.taskName}</h3>
-              <p>{t.taskComment}</p>
-              <p className="text-sm text-gray-600">
-                Due: {t.taskDate} | Status: {t.taskStatus} | Assignee: {t.taskAssignedName}
-              </p>
-
-              <div className="mt-2 flex gap-3">
-                <button
-                  className="rounded bg-yellow-600 px-3 py-1 text-white"
-                  onClick={() => openEdit(t)}
-                >
-                  Edit
-                </button>
-
-                <button
-                  className="rounded bg-red-600 px-3 py-1 text-white"
-                  onClick={() => deleteTask(t.taskId)}
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      
-      {open && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40">
-          <div className="relative w-[500px] rounded-lg bg-white p-5">
-            <button className="absolute right-2 top-2" onClick={() => setOpen(false)}>
-              <AiOutlineClose size={20} />
-            </button>
-
-            <h2 className="mb-4 text-xl font-semibold">{editMode ? 'Update Task' : 'Add Task'}</h2>
-
-            <label>Assign To (Enter User ID)</label>
-            <input
-              type="text"
-              name="assignedTo"
-              value={form.assignedTo}
-              onChange={handleChange} 
-              className="mb-3 w-full rounded border p-2"
-              placeholder="e.g., y00103"
-            />
-           
-
-
-            <label>Due Date</label>
-            <DatePicker
-              selected={form.dueDate}
-              onChange={(date) => setForm({ ...form, dueDate: date })}
-              className="mb-3 w-full rounded border p-2"
-            />
-
-            <label>Time</label>
-            <input
-              type="time"
-              value={form.time}
-              onChange={(e) => setForm({ ...form, time: e.target.value })}
-              className="mb-3 w-full rounded border p-2"
-            />
-
-            <label>Task Type</label>
-            <select
-              name="taskType"
-              value={form.taskType}
-              onChange={handleChange}
-              className="mb-3 w-full rounded border p-2"
-            >
-              <option value="">-- Select --</option>
-              <option value="Call Back1">Call Back1</option>
-              <option value="Action items">Action Items</option>
-              <option value="Others">Others</option>
-              <option value="Schedule Meeting">Schedule Meeting</option>
-            </select>
-
-            <label>Status</label>
-            <select
-              name="status"
-              value={form.status}
-              onChange={handleChange}
-              className="mb-3 w-full rounded border p-2"
-            >
-              <option value="">-- Select --</option>
-              <option value="Not Started">Not Started</option>
-              <option value="Completed">Completed</option>
-              <option value="In Progress">In Progress</option>
-               
-            </select>
-
-            <label>Subject</label>
-            <input
-              type="text"
-              name="subject"
-              value={form.subject}
-              onChange={handleChange}
-              className="mb-3 w-full rounded border p-2"
-            />
-
-            <label>Contacts</label>
-           <input
-    type="text"
-    name="contacts"
-    value={form.contacts ? form.contacts.join(', ') : ''} 
-    onChange={(e) => {
-        const inputString = e.target.value;
-        const contactIds = inputString.split(',').map(id => id.trim()).filter(id => id.length > 0);
-        
-        setForm(prevForm => ({
-            ...prevForm,
-            contacts: contactIds 
-        }));
-    }}
-    className="mb-3 w-full rounded border p-2"
-/>
-
-            <label>Description</label>
-            <textarea
-              name="description"
-              value={form.description}
-              onChange={handleChange}
-              className="mb-3 w-full rounded border p-2"
-              rows={3}
-            />
-
-            <button
-              onClick={editMode ? handleUpdate : handleAdd}
-              className="w-full rounded bg-green-600 py-2 text-white"
-            >
-              {editMode ? 'Update Task' : 'Save Task'}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default AddTaskModal
-
---------------------------------------------------------------------------------------------------
-/** CALLBACK OF TASKES LOADED **/
-function getTasks(id,clientID,searchCode) {
-    try {
-		var repScreenACStatus = 'collapsed';
-        var reminder_temp = 1;
-        var taskContent = '';
-		var thisFileName= 'Reports - task_v2.js'
-		var statusDropDown={};
-		var taskTypeDropDown={};
-        var dateToday = new Date();
-        //Added by Narendra.M
-        templateFn(id, 'tasks_v2.html', '', cbtasks);
-
-        //CALLBACK FUNCTION
-        //INITIAL ALL CB OF THE TASKS
-        function cbtasks() {
-			try { 
-				
-				//TASK DELETE BUTTON EVENT
-				$(document).off("click", "#Task .delete-btn").on("click", "#Task .delete-btn", function(e) {
-					$(this).parents('li').remove();
-					if ($('#addReminderPanel ul li').length < 2) {
-						$('#addReminder').show();
-					}
-				});
-
-				//TASK FOLLOW UP BUTTON EVENT
-				$(document).off("click", "#Task #activity-followup-btn").on("click", "#Task #activity-followup-btn", function(e) {
-					setFollowUP();
-				});
-
-				
-				
-				//TASK FOLLOW UP DATE PICKER
-				$("#taskFollowUpDate").parents(".date").datepicker({
-					todayBtn: "linked",
-					todayHighlight: true,
-					startDate: new Date(),
-					keyboardNavigation: false,
-					forceParse: false,
-					calendarWeeks: true,
-					showOn: "button",
-					buttonImageOnly: true,
-					autoclose: true,
-					format: utils.validateInputs(_prismSTDateFormatSlash).toLowerCase()
-				});
-
-				//TASK FOLLOW UP TIME PICKER
-				$('#taskFollowUpTime').parents('.clockpicker').clockpicker({
-					placement: 'top',
-					align: 'left',
-					twelvehour: false,
-					autoclose: true
-				});
-				
-				//HIDING  FOLLOW UP CONTAINER
-				$('#Task #followUpContainer').hide();
-				
-				//REMINDER ADDING EVENT 
-				$("body").undelegate('.task-add-reminder-btn', 'click');
-				$("body").delegate(".task-add-reminder-btn", "click", function() {
-					var dateTime = moment(new Date());
-					var reminder = [{
-						date: dateTime.format('MM/DD/YYYY'),
-						time: dateTime.format('HH:mm')
-					}];
-					getTaskSelf.addreminer(reminder);
-				});
-				
-				//TASK WIDGET FULL SCREEN EVENT 
-				$("body").undelegate('#'+id+'_ibox .fullscreen-link i','click');
-				$("body").delegate('#'+id+'_ibox .fullscreen-link i','click',function(){
-					if($(this).hasClass('fa-expand')){
-						repScreenACStatus = 'expanded';
-						$('.TaskHeaderContainer '+' #'+id+'_ibox').addClass('fad-full');
-						$('#'+id).html(PrismSpinner);
-						$('#loading_screen').show();
-					}else{
-						repScreenACStatus = 'collapsed';
-						$('.TaskHeaderContainer '+' #'+id+'_ibox').removeClass('fad-full');
-						$('#'+id).html(PrismSpinner);
-					}
-					
-					if($('.grid-stack').length >0){
-						utils.toggleFullscreen($(this));
-						var iboxCls = $('.TaskHeaderContainer '+' #'+id+'_ibox').attr('class');
-						if(iboxCls.indexOf('gridHt')==-1){ $('.TaskHeaderContainer '+' #'+id+'_ibox').addClass('gridHt'); }
-					}
-					thisRepCB();
-				});
-
-				//TASK WIDGET MORE BUTTON EVENT 
-				$("body").undelegate('#'+id+'_ibox #taskMore','click');
-				$("body").delegate('#'+id+'_ibox #taskMore','click',function(){
-					$('#'+id+'_ibox .fullscreen-link i').trigger('click');
-				});
-				
-				//TASK WIDGET ADDING NO-PADDING CSS CLASS
-				$('#' + id).addClass('no-padding');
-
-				//TASK WIDGET ADDING TASKHEADERCONTAINER CSS CLASS
-				$('#' + id).parent().parent().addClass('TaskHeaderContainer');
-
-				//TASK WIDGET ADDING TASK ADD BUTTON
-				if($('#'+id ).parents('.ibox').find('.ibox-title .ibox-tools #task_add').length<=0)
-					$('#'+id ).parents('.ibox').find('.ibox-title .ibox-tools').append('<button title="Add Task" class="btn-xs btn-green btn-custom add-task pull-right animate-hover" id = "task_add">Add</button>');
-
-				
-				//TASK MODEL DUE DATE /TIME BLUR EVENT
-				$("body").undelegate('[task_id] [data-toggle="dropdown"]', 'click');
-				$("body").delegate('[task_id] [data-toggle="dropdown"]', "click", function(e) {
-					event.preventDefault();
-					if(!$(this).hasClass("summary_edit_task")){
-						$(this).parents('.list-group-item').toggleClass('open')
-					}
-					e.stopPropagation();
-				});
-				
-				//OPEN  TASK MODEL
-				$("body").undelegate('#'+id+'_ibox #task_add','click');
-				$("body").delegate('#'+id+'_ibox #task_add','click',function(){
-					getTaskSelf.openModelSetValues('Task','Save');
-					if( $('#'+id+'_ibox .fullscreen-link i').hasClass('fa-expand'))
-						getTasks(id);
-				});
-
-				//TASK WIDGET UP & DOWN 
-				$("body").undelegate('.task_updown', 'click');
-				$("body").delegate(".task_updown", "click", function(e) {
-					if ($(this).parent().next().css('display') == 'none') {
-						$(".task_updown").children().children('.pull-right').children().attr('src', 'img/asset/tsk_downarrow.png');
-						$(this).children().children('.pull-right').children().attr('src', 'img/asset/tsk_uparrow.png');
-					} else {
-						$(this).children().children('.pull-right').children().attr('src', 'img/asset/tsk_downarrow.png');
-					}
-					$(".task_updown").not(this).parent('.task-active').toggleClass("task-active task-inactive");
-					$(this).parent().toggleClass("task-active task-inactive");
-					current_task_id = $('[task_id] .task-active').parent('[task_id]').attr('task_id');
-					$(this).parents('.panel.panel-default').toggleClass("task-fullview");
-				});
-
-				//TASK WIDGET DUE DATE BUTTON
-				$("body").undelegate('.save-due-date-btn', 'click');
-				$("body").delegate('.save-due-date-btn', "click", function(e) {
-					var task_id = $(this).parents('.reminder-row').attr('task_id');
-					var date = $(this).parents('.reminder-row').children('.date').children('input').val();
-					var time = $(this).parents('.reminder-row').children('.due_clockpicker').children('input').val();
-					setDueDate(task_id, date, time);
-				});
-
-				//TASK WIDGET EDIT/DELETE BUTTON
-				$("body").undelegate('.task-dropdown-menu li', 'click');
-				$("body").delegate(".task-dropdown-menu li", "click", function(e) {
-					e.stopPropagation();
-					var task_id = $(this).parent("ul").attr("step");
-					if($(this).hasClass("summary_edit_task")){
-						editActivityLoad(task_id, 'Task','Edit','displayTaskData');
-					} else {
-						if(utils.validateInputs($(this).text()) == "Delete" ){
-							var innerHtml = '<input type="hidden" name="" id="delTodoId" data-id="'+task_id+'" value="'+task_id+'"/>';
-							title = "Delete Task";
-							message = innerHtml+"Are you sure you want to delete ?";
-							utils.drawConfirmationPopup(title,message,"confirmTodoDelete","noTodoDelete");
-						}
-					}
-				});
-				
-				//TASK TABLE EDIT BUTTON
-				$("body").undelegate('.task-detail-table #summary_edit_task', 'click');
-				$("body").delegate(".task-detail-table #summary_edit_task", "click", function(e) {
-					e.stopPropagation();
-					var task_id = $(this).data("id");
-					editActivityLoad(task_id, 'Task','Edit','displayTaskData');
-				});
-				
-				//TASK TABLE DISMISS BUTTON
-				$("body").undelegate('.task-detail-table #summary_dismiss_task', 'click');
-				$("body").delegate(".task-detail-table #summary_dismiss_task", "click", function(e) {
-					e.stopPropagation();
-					var task_id = $(this).data("id");
-					var innerHtml = '<input type="hidden" name="" id="delTodoId" data-id="'+task_id+'" value="'+task_id+'"/>';
-					title = "Delete Task";
-					message = innerHtml+"Are you sure you want to delete ?";
-					utils.drawConfirmationPopup(title,message,"confirmTodoDelete","noTodoDelete");
-				});
-
-				//TO DELETE A TASK
-				$('body').undelegate('#confirmTodoDelete','click');
-				$('body').delegate('#confirmTodoDelete','click',function(e){
-					e.stopPropagation();
-					$('#dashboard_popup').modal('hide');
-					var rowid = $('#delTodoId').val();
-					if(utils.validateInputs(rowid) != ''){
-						var todoStatus = 'Dismiss';
-						editActivityLoad(rowid,'Task',todoStatus,'taskreact');
-					}
-				});
-				
-				//TASK FOLLOW UP TAB
-				$("body").undelegate('.followup-tab-li', 'click');
-				$("body").delegate(".followup-tab-li", "click", function() {
-					var taskID = $(this).parents('.panel[task_id]').attr('task_id');
-					$("#followupdate" + taskID).parents(".date").datepicker({
-						todayBtn: "linked",
-						keyboardNavigation: false,
-						forceParse: false,
-						calendarWeeks: true,
-						autoclose: true,
-						startDate: dateToday,
-						format: utils.validateInputs(_prismSTDateFormatSlash).toLowerCase()
-					});
-					$("#followuptime" + taskID).parents(".clockpicker").clockpicker();
-				});
-
-				//TASK FOLLOW UP EVENT
-				$("body").undelegate('#followup-btn', 'click');
-				$("body").delegate("#followup-btn", "click", function() {
-					var task_id = $(this).parents('.panel[task_id]').attr('task_id');
-					// var date = $(this).parents('.followup-panel').children('.date').children('input').val();
-					// var time = $(this).parents('.followup-panel').children('.clockpicker').children('input').val();
-					var date = $(this).parent().siblings('.form-group').find('.date input').val();
-					var time = $(this).parent().siblings('.form-group').find('.clockpicker input').val();
-					setFollowUp(task_id, date + " " + time);
-				});
-
-				//ADD REMINDER EVENT
-				$("body").undelegate('.add-reminder-btn', 'click');
-				$("body").delegate(".add-reminder-btn", "click", function() {
-					reminder_temp++;
-					var taskID = $(this).parents('.panel[task_id]').attr('task_id');
-					var taskName = $(this).parents('.panel[task_id]').attr('task_desc');
-					var cDate = new Date();
-					var currentDate = cDate.getMonth() + 1 + "/" + cDate.getDate() + "/" + cDate.getFullYear();
-					var time = cDate.getHours() + ":" + cDate.getMinutes();
-					var input_ID = taskID + "__" + reminder_temp;
-					var dateToday = new Date();
-
-					$("[task_id='" + taskID + "'] .reminder-panel .add-btn").before(
-						'<div class="form-group reminder-row" task-id="' + taskID + '" task-desc="' + taskName + '">' +
-						'    <div class="input-group date">' +
-						'       <span class="input-group-addon"><i class="fa fa-calendar"></i></span>' +
-						'		<input type="text" class="form-control" id="inputtododate' + input_ID + '" name="inputtododate' + input_ID + '" value="' + currentDate + '" placeholder="'+_prismSTDateFormatSlash+'" readonly>' +
-						'    </div>' +
-						'    <div class="input-group clockpicker" data-placement="top" data-autoclose="true">' +
-						'        <span class="input-group-addon">' +
-						'             <span class="fa fa-clock-o"></span>' +
-						'        </span>' +
-						'    	 <input type="text" class="form-control" id="inputtodotime' + input_ID + '" name="inputtodotime' + input_ID + '" value="' + time + '" readonly>' +
-						'    </div>' +
-						'    <div class="btn-area">' +
-						// '        <!--span class="btn btn-danger delete-btn">delete</span-->'+
-						'        <span class="fa fa-times-circle delete-btn hide"></span>' +
-						'        <span class="fa fa-check-square save-btn"><!--span class="fa fa-check-square"></span--></span>' +
-						'    </div>' +
-						'</div>');
-
-					$("#inputtododate" + input_ID).parents(".date").datepicker({
-						todayBtn: "linked",
-						keyboardNavigation: false,
-						forceParse: false,
-						calendarWeeks: true,
-						autoclose: true,
-						startDate: dateToday,
-						format: utils.validateInputs(_prismSTDateFormatSlash).toLowerCase()
-					});
-					$("#inputtodotime" + input_ID).parents(".clockpicker").clockpicker();
-				   
-				});
-
-				/******* KEY FUNCTION FOR CREATING THE TASK ******/
-				$("body").undelegate('#inputtaskcre', 'keyup'); //TO UNBIND THE TASK SAVE KEYUP
-				$("body").delegate("#inputtaskcre", "keyup", function(e) {
-					if (e.which == 13) {						
-						var taskName = $(this).val();
-						if (utils.validateInputs(taskName.trim()) == "") {
-							utils.info_toaster(_prismerrMsgs["00289"], "e"); // TASK NAME IS EMPTY
-							return;
-						} else {
-							taskAdd(taskName);
-						}
-					}
-				});
-
-			   
-				//EDIT TASK  CONTACT EVENT
-				$("body").undelegate('.contact-task .edit-btn', 'click'); //TO UNBIND
-				$("body").delegate(".contact-task .edit-btn", "click", function() {
-					var taskID = $(this).parents('.panel[task_id]').attr('task_id');
-					var taskName = $(this).parents('.panel[task_id]').attr('task_desc');
-					var inputID = $(this).parents('.contact-task').siblings('.typeahead-row').children().find('input').attr('id');
-					$(this).parents('.contact-task').hide().siblings('.typeahead-row').show();
-
-					if ($("#" + inputID).hasClass("ContactList")) {
-						contactSearch(inputID);
-					} else if ($("#" + inputID).hasClass("AccountList")) {
-						reAssignSearch(inputID);
-					}
-
-					$("#" + inputID).focus().attr("data-siblings", "true");
-
-				});
-
-				//DELETE REMINDER EVENT
-				$("body").undelegate('.reminder-panel .btn-area .delete-btn', 'click'); //TO UNBIND
-				$("body").delegate(".reminder-panel .btn-area .delete-btn", "click", function() {
-					var __this = this;
-					var reminder_id = $(this).parents('.reminder-row').attr('reminder_id');
-					deleteRemainder(__this, reminder_id);
-					//$('[data-toggle="tooltip"]').tooltip({ container: 'body' });
-				});
-
-				//SAVE REMINDER EVENT
-				$("body").undelegate(".reminder-panel .btn-area .save-btn", "click");
-				$("body").delegate(".reminder-panel .btn-area .save-btn", "click", function() {
-					var task_id = $(this).parents('.reminder-row').attr('task-id');
-					var task_desc = $(this).parents('.reminder-row').attr('task-desc');
-					var date = $(this).parents('.reminder-row').children('.date').children('input').val();
-					var time = $(this).parents('.reminder-row').children('.clockpicker').children('input').val();
-					var __this = this;
-					addRemainder(task_id,date + " " + time, task_desc, __this);
-				});
-
-				//GETFULLTASK USER BASED
-				if( $('#'+id+'_ibox .fullscreen-link i').hasClass('fa-expand')){
-					repScreenACStatus = 'collapsed';
-					getFullTask();
-				}
-				else {
-					repScreenACStatus = 'expanded';
-					thisRepCB();
-				}
-				
-				//$('[data-toggle="tooltip"]').tooltip({ container: 'body' });
-			} catch (e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			}
-        }
-		
-		//TASK WIDGET LOADING
-		function displayTaskData(response) {
-			try{
-				var res = response;
-				if (utils.validateInputs(res.status) == 1) {
-					getTaskSelf.openModelSetValues('Task', 'Update', response);
-					if( $('#'+id+'_ibox .fullscreen-link i').hasClass('fa-expand'))
-						getTasks(id);
-				} else {
-					$("#loading_screen").hide();
-					utils.info_toaster(_prismcommMsgs['00001'], "e");
-				}
-			} catch(e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			}
-		}
-
-		//  LOADING TASK WIDGET   
-		function taskObjCB(response, getObj) {
-			try {
-				$('#loading_screen').hide();
-				var res = response,
-				toastMsg = utils.validateInputs(res.message);
-				$("#Task").modal("hide");
-				if (utils.validateInputs(res.status) == 1 ) {
-					utils.info_toaster(toastMsg, "s");
-					if( $('#'+id+'_ibox .fullscreen-link i').hasClass('fa-expand'))
-						getTasks(id);
-					else 
-						thisRepCB();
-				} else {
-					utils.info_toaster(_prismerrMsgs['00290'].replace('{{message}}',toastMsg), "e");
-				}
-			} catch (e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-			}
-		}
-		
-		//  SETTING FOLLOWUP 
-		function setFollowUP() {
-			try{
-				var followUPObj = {};
-				var date = moment(new Date($('#taskFollowUpDate').val())).format('YYYY-MM-DD');
-				var time = $('#taskFollowUpTime').val();
-				var followUpDate = date + ' ' + time,
-					taskId = $('#taskSave').attr("data-task-id"),
-					type = $('.modal-Task').data('data-view');
-				var contactListFollow = [];
-				$(".contactsTask-contact .Token").each(function() {
-					contactListFollow.push({ 'contactid': $(this).data('value').toString(), 'contactname': $(this).find("span").text() });
-				});
-				var taskFollowObj = {
-					taskId: taskId,
-					followUpDate: followUpDate,
-					type: type,
-					contactsFollow: contactListFollow
-				};
-				followUPObj['url'] = serviceURLJava + "task/setTaskFollowUpActivity";
-				followUPObj['type'] = 'POST';
-				followUPObj['dataType'] = 'JSON';
-				// followUPObj['ajaxData'] = { taskId: $('#taskSave').attr("data-task-id"), followUpDate: date + ' ' + time, type: $('.modal-Task').data('data-view') };
-				followUPObj['ajaxData'] = { taskId:taskId,followUpDate:followUpDate };
-				followUPObj['callback'] = followUPObjCB;
-				getTaskSelf.ajaxCallPostFunction(followUPObj);
-			} catch (e){
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-			}
-				
-		}
-
-		//SETTING FOLLOWUP 
-		function followUPObjCB(response) {
-			try {
-				var res = JSON.parse(response);
-				if (utils.validateInputs(res.status) == 1) {
-					$("#Task").modal("hide");
-					if(utils.validateInputs(getModuleName()) != "Summary"){
-						cbActivities($('.modal-Task').data('data-view'));
-					}
-					utils.info_toaster(_prismsuccMsgs["00060"], 's') // SET FOLLOW-UP DATE
-				} else {
-					utils.info_toaster(_prismerrMsgs["00286"], 'e') // FOLLOW-UP DATE WAS NOT SUCCESSFULLY ADDED
-				}
-			} catch (e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-			}
-		}
-
-		//DELETING REMINDER
-        function deleteRemainder(__this, reminder_id) {
-            try {
-                _server.post({
-                    url: serviceURLJava + "task/deleteMultiReminder",
-                    data: {
-                        reminderId: reminder_id
-                    },
-                    success: function(response) {
-                        response = JSON.parse(response);
-                        if (response.status == 1) {
-                            $(__this).parents('.reminder-row').remove();
-                        } else if (response.status == 0) {
-                            utils.info_toaster(_prismerrMsgs["00287"], "e"); // REMINDER WAS NOT REMOVED
-                        } else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-                    },
-                    error: function(jqXHR) {
-                        utils.scriptErrorHandling(thisFileName,'task/deleteMultiReminder',jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//ADDING REMINDER
-        function addRemainder(task_id, reminder_DateTime, task_desc, __this) {
-            try {
-				_server.post({
-                    url: serviceURLJava + "task/addMultiReminder",
-                    data: {
-                        taskId: task_id,
-                        reminder: reminder_DateTime,
-                        taskName: task_desc
-                    },
-                    success: function(response) {
-                        response = JSON.parse(response);
-                        if (utils.validateInputs(response.status )== 1) {
-                            $(__this).parents('.reminder-row').attr("reminder_id", response.reminder.id);
-                            $(__this).parents('.reminder-row').children('.input-group').css('pointer-events', 'none');
-                            $(__this).addClass('hide').siblings('.delete-btn').removeClass('hide');
-                        } else if (utils.validateInputs(response.status) == 0) {
-                            utils.info_toaster(_prismerrMsgs["00287"], "e"); // ADD REMINDER WAS NOT REMOVED
-                        } else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-						
-                    },
-                    error: function(jqXHR) {
-                         utils.scriptErrorHandling(thisFileName,'task/addMultiReminder',jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//TASK ADD
-        function taskAdd(taskName) {
-            try {
-                _server.post({
-                    url: serviceURLJava + "task/setTask",
-                    type: 'post',
-                    data: {
-                        taskName: encodeStr(taskName)
-                    },
-                    success: function(response) {						
-                        var res = JSON.parse(response);
-                        if (utils.validateInputs(res.status) == 1) {
-                            getTasks(id);
-                            //afterloadfun();
-                        } 
-						else if (utils.validateInputs(res.status) == 0) 
-							utils.info_toaster(_prismerrMsgs["00002"], "e");
-                        else if (res.status == -1)
-							utils.info_toaster(_prismerrMsgs["00002"], "e");
-                    },
-                    error: function(jqXHR) {
-						utils.scriptErrorHandling(thisFileName,'task/setTask',jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//SETTING  DUE DATE
-        function setDueDate(task_id, date, time) {
-            try {
-                _server.post({
-                    url: serviceURLJava + "task/setDueDate",
-                    data: {
-                        dueDate: dateFormat(date, 'YYYY-MM-DD') + ' ' + time,
-                        taskId: task_id
-                    },
-                    success: function(response) {
-						var res = JSON.parse(response);
-						if(utils.validateInputs(res.status) == 1){
-							utils.info_toaster(_prismsuccMsgs['00063'], "s");
-							cal_time(date + ' ' + time, task_id);
-						}
-						else if (utils.validateInputs(res.status) == 0) 
-							utils.info_toaster(_prismerrMsgs["00002"], "e");
-                        else if (res.status == -1)
-							utils.info_toaster(_prismerrMsgs["00002"], "e");
-                    },
-                    error: function(jqXHR) {			
-						utils.scriptErrorHandling(thisFileName,'task/setDueDate',jqXHR.responseText);
-                    }
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//SETTING  FOLLOW UP
-        function setFollowUp(task_id, followup_date) {
-            try {
-                _server.post({
-                    url: serviceURLJava + "task/setTaskFollowUp",
-                    data: {
-                        taskId: task_id,
-                        followUpDate: followup_date
-                    },
-                    success: function(response) {
-                        response = JSON.parse(response);
-                        if (utils.validateInputs(response.status) == 1) {
-                            getFullTask();
-                        } else if (utils.validateInputs(response.status) == 0) {
-                            utils.info_toaster(_prismerrMsgs["00286"], "e"); //UNABLE TO SET FOLLOW UP
-                        } else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-                    },
-                    error: function(jqXHR) {
-						utils.scriptErrorHandling(thisFileName,'task/setTaskFollowUp',jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-		
-		//DISMISSING TASK
-        function taskreact(response) {
-            try {				
-				var data = response.data[0];
-				var contactList=[];
-				$(data.contactList).each(function(contactIndex, contactData) {
-					contactList[contactIndex] = contactData.contact_id
-				});
-				var taskObject = {
-						subject: data.taskSubject,
-						dueDate: moment(data.taskDate,'yyyy-mm-dd hh:mm:ss').format(
-						'YYYY-MM-DD hh:mm:ss'),
-						dueTime: moment(data.taskDate, ["h:mm A"]).format("HH:mm"),
-						contacts: contactList,
-						assignedTo: data.taskAssignedId,
-						clienttimezone: encodeURIComponent(moment.tz.guess()),
-						status: "Dismiss",
-						taskType: data.taskType,
-						taskComments: data.taskComment,
-						module_name: "Task",
-						action:"Dismiss",
-						taskId:data.taskId
-				};
-                _server.post({
-                    url: serviceURLJava + "task/addTask",
-                    data: { data:JSON.stringify(taskObject) },
-                    success: function(response) {
-                        var res =response;
-                        if (utils.validateInputs(res.status) == 1) {
-							utils.info_toaster(res.message, "s");
-                            if( $('#'+id+'_ibox .fullscreen-link i').hasClass('fa-expand'))
-								getTasks(id);
-							else 
-								thisRepCB();
-                        } else if (utils.validateInputs(res.status) == 0) {
-							utils.info_toaster(res.message, "e");
-							if( $('#'+id+'_ibox .fullscreen-link i').hasClass('fa-expand'))
-								getTasks(id);
-							else 
-								thisRepCB();
-                        } else if (res.status == -1)
-							utils.info_toaster(res.message, "e");
-                    },
-                    error: function(jqXHR) {					
-						utils.scriptErrorHandling(thisFileName,'task/addTask',jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//GET TASK
-        function getFullTask() {
-            try {
-                var sumFilter = prismStorage.get('summaryFilter');
-                if(utils.validateInputs(sumFilter) == ''){
-                    sumFilter = JSON.stringify({"filter":[]})
-                }
-                _server.post({
-                    url: serviceURLJava + "task/getTask",
-                    data: { summaryFilter: sumFilter },
-                    success: function(data) {
-						$('#loading_screen').hide();
-						if(data.status==1)
-							generateTask(data);
-						else if(data.status == 0)
-							generateTask(data);
-						else if (data.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-                    },
-                    error: function(jqXHR) {
-						$('#loading_screen').hide();
-						utils.scriptErrorHandling(thisFileName,'task/getTask',jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//CALCULATING DUE TIME REMINE
-        function cal_time(due_date, taskID) {
-            try {
-				var taskassgntimebgclr = "label-danger";
-				var	title ="Delay Time";
-				var label ="Over Due";
-                if (utils.validateInputs(due_date) != '') {
-                    var curDate = new Date();
-                    if (curDate < new Date(due_date)) {
-                        var taskassgntimebgclr = "label-primary";
-						title ="Time To Complete";
-						label ="Time To Complete";
-                    } 
-                    var diffMs = Math.abs(new Date(due_date) - curDate); // MILLISECONDS BETWEEN NOW & CHRISTMAS
-                    var diffDays = Math.floor(diffMs / 86400000); // DAYS
-                    var diffHrs = Math.floor((diffMs % 86400000) / 3600000); // HOURS
-                    var diffMins = Math.floor(((diffMs % 86400000) % 3600000) / 60000); // MINUTES
-
-                    if (diffDays > 0) {
-                        var tasktimediffcal = diffDays + " Day(s)";
-                    } else if (diffHrs > 0) {
-                        var tasktimediffcal = diffHrs + " Hour(s)";
-                    } else if (diffMins > 0) {
-                        var tasktimediffcal = diffMins + " Min(s)";
-                    }
-                    $('#due_time_rem_' + taskID).removeClass('label-primary').removeClass('label-danger').addClass(taskassgntimebgclr).html('<i class="fa fa-clock-o"></i> <font step="' + due_date + '" class="taskassgntimediff">' + tasktimediffcal + ' '+label+'</font>');
-                }
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//DRAWING TASK WIDGET
-        function generateTask(data) {
-            try {
-                var date = moment(new Date());
-                taskContent = '<div class="taskContainer">' +
-                    '	<div class="panel-body todobord no-padding taskdivheight" style="border-style:none;">' +
-                    '		<div class="panel-group task-panel-group no-margin" id="accordion">';
-                    // '			<div class="panel panel-default bordnone no-margin">' +
-                    // '				<h5 class="list-group-item fist-item no-margin txtclrblack" style="padding-bottom: 0;">' +
-                    // '					<form class="frm_input" role="form" method="post" onsubmit="return false;">' +
-                    // '						<div class="pad8 creatTask">' +
-                    // '							<span class="task_srch"></span>' +
-                    // '							<input type="text" placeholder="Create Task..." id="inputtaskcre" name="inputtaskcre" class="place-color form-control task-form-control" autocomplete="off" maxlength="200">' +
-                    // '							<span class="textbox-right taskcurrdate">' + date.format('dddd') + ',' + date.format('MMMM') + ' ' + date.format('DD') + ',' + date.format('YYYY') +'</span>' +
-                    // '						</div>' +
-                    // '					</form>' +
-                    // '				</h5>' +
-                    // '			</div>';
-
-                if (utils.validateInputs(data.status) == 1) {
-					
-                    var lcnt = 0,
-                        setbrd = 'bordclr';
-                    $.each(data.data, function(i, Task) {
-						if(lcnt<3){
-							try {
-								var due_date_temp = moment(dz.numberFormat(Task.taskDate, 'datetime'), _prismSTDateFormatSlash+" hh:mm A");
-								var decided_date = due_date_temp.format('MM/DD/YYYY');
-								var due_date = utils.prismConvertUTCtoClientZone(Task.taskDate);
-								var due_time = dz.numberFormat(due_date_temp, 'datetime').split(' ')[1]+' '+dz.numberFormat(due_date_temp, 'datetime').split(' ')[2];
-								var taskName =  (utils.validateInputs(Task.taskName)!='')?  Task.taskName: "";
-								var taskId =  (utils.validateInputs(Task.taskId)!='')?  Task.taskId: "";
-								var taskAssignedName =  (utils.validateInputs(Task.taskAssignedName)!='')?  Task.taskAssignedName: "";
-								var taskType =(utils.validateInputs(Task.taskType)!='')?  Task.taskType: "";
-								var taskStatus = "";
-								var pointerEvents = "";
-								//var assignedBy = '';
-								if (utils.validateInputs(Task.taskStatus).toUpperCase().trim() == "MARK AS COMPLETED") {
-									taskStatus = "todo-completed";
-									pointerEvents = "pointerEvents-none";
-								} else if (utils.validateInputs(Task.taskStatus).toUpperCase().trim() == 'CLOSED') {
-									taskStatus = 'todo-completed';
-									pointerEvents = "pointerEvents-none";
-								} else {
-									taskStatus = (utils.validateInputs(Task.taskStatus)!='')?  Task.taskStatus: "";
-								}
-
-								/*if (utils.validateInputs(userDetails.empId) == utils.validateInputs(Task.taskAssignedId)) {
-									assignedBy = 'clrblue';
-								} else {
-									assignedBy = 'clrgreen';
-								}*/
-								taskContent += '		<div class="panel panel-default ' + setbrd + ' ' + pointerEvents + ' no-margin" task_desc="' + utils.replaceHTMLStrings(taskName) + '" task_id=' + taskId + '>' +
-									'				<div class="panel-heading no-padding task-inactive">' +
-							//      '					<a data-toggle="collapse" data-parent="#accordion" href="#collapse_' + Task.id + '" aria-expanded="false" class="collapsed task_updown">' +
-									'						<h6 class="list-group-item fist-item no-margin">' +
-									'										<span class="label no-pg no-margin taskrejdiss svg-pos" class="dropdown-toggle" data-toggle="dropdown" href="#" aria-expanded="false">  <span class="icon c-pointer icon-menu-1 icon-xs"></span></span>' +
-									'										<ul step="' + taskId + '" class="c-pointer dropdown-menu task-dropdown-menu dropdown-user">' +
-									'										<li class="summary_edit_task">Edit</li><li>Delete</li>'  +
-									'							</ul>' +
-									//'										<span class="badge badge-success no-margin ' + assignedBy + '"> </span> ' +
-									'										<p title = \"' + utils.replaceHTMLStrings(taskName) +'\" class="taskname label no-pg no-margin ' + taskStatus + '">' + utils.replaceHTMLStrings(taskName) + '</p>'+
-									
-									'							<table class="table task-table no-margin" style="display:table"><thead>'+
-									'							<tr class="row no-margin" >'+
-									'							<th colspan="1" ><b>Assignee</b></th>'+
-									'							<th colspan="2" ><b> Due Date/Time </b> </th>'+
-									'							<th colspan="1" ><b> Status </b> </th>'+
-									'							<th colspan="1" ><b> Type  </b> </th></tr></thead>'+
-									'							<tbody><tr class="row no-margin" >'+
-									'							<td colspan="1"  ><span style="display: inline;">'+
-									'							   ' + utils.replaceHTMLStrings(taskAssignedName)+ '</span></td>'+
-									'							<td colspan="2" ><span style="display: inline;"> ' + due_date  +'</span></td>'+
-									'							<td colspan="1" ><span style="display: inline;">  ' + taskStatus  +'</span></td>'+
-									'							<td colspan="1" ><span style="display: inline;">  ' + taskType  +'</span></td>';
-									
-								
-								taskContent += '		</tr></tbody></table>' ;
-								//    '<span class="no-pg no-margin pull-right"><img src="img/asset/tsk_downarrow.png" /></span>';
-								if (utils.validateInputs(Task.taskDate) != '') {
-									 var taskassgntimebgclr = "label-danger";
-									 var label ='Over Due';
-									if (new Date() < new Date(due_date_temp)) {
-										var taskassgntimebgclr = "label-primary";
-										label ='Time To Complete';
-									} 
-									
-									var diffMs = Math.abs(new Date(due_date_temp.format()) - new Date()); //MILLISECONDS BETWEEN NOW & CHRISTMAS
-									var diffDays = Math.floor(diffMs / 86400000); //DAYS
-									var diffHrs = Math.floor((diffMs % 86400000) / 3600000); //HOURS
-									var diffMins = Math.floor(((diffMs % 86400000) % 3600000) / 60000); //MINUTES
-
-									if (diffDays > 0) {
-										var tasktimediffcal = diffDays + " Day(s) "+ label;
-									} else if (diffHrs > 0) {
-										var tasktimediffcal = diffHrs + " Hour(s) "+ label;
-									} else if (diffMins > 0) {
-										var tasktimediffcal = diffMins + " Min(s) "+ label;
-									} else {
-										var tasktimediffcal = "0 Min(s)";
-									}
-									if(utils.validateInputs(taskStatus) != "Completed"){
-										taskContent += '<small style="z-index: 1;position: absolute;width:150px;  top:0px;  right: 25px;" title=\"'+tasktimediffcal+'\" class="label ' + taskassgntimebgclr + ' pull-right" id="due_time_rem_' + Task.taskId + '" data-view=\"'+due_date+'\"><i class="fa fa-clock-o"></i> <font step="' + due_date + '" class="taskassgntimediff" data-id='+Task.taskId+'>'+tasktimediffcal+'</font></small>';
-									}
-								}
-
-								
-								taskContent += '</h5></div></div>' ;
-							} catch (e) {
-								utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-							}
-							lcnt++;
-						}
-                    });
-					if(lcnt>2){
-						taskContent+='<button type="button" class="btn theme-more" id="taskMore"><span>More..</span></button>';
-					}
-                } else {
-                    if (data.message.indexOf('Unable ') != -1) {
-                        taskContent += '<div class="notaskdiv no-data">' + data.message + '</div>';
-                    } else {
-                        taskContent += '<div class="notaskdiv no-data">No Task Found</div>';
-                    }
-                }
-
-                taskContent += '		</div>' +
-                    '	</div>' +
-                    '</div>';
-                $('#' + id).html(taskContent);
-
-                // $(".taskdivheight").slimscroll({ height: "355px" })
-                $(".due_clockpicker").clockpicker();
-                $(".due_datePicker").datepicker({
-                    todayBtn: "linked",
-                    keyboardNavigation: false,
-                    forceParse: false,
-                    calendarWeeks: true,
-                    autoclose: true,
-                    startDate: dateToday,
-					format: utils.validateInputs(_prismSTDateFormatSlash).toLowerCase()
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-		
-		//SETTING TASK CONTACTS
-        function setTaskToContact(obj) {
-            try {
-                _server.post({
-                    url: serviceURLJava + "task/taskSetContact",
-                    data: {
-                        taskId: current_task_id,
-                        contactId: obj.contact_cust_id
-                    },
-                    success: function(response) {
-                        var response = JSON.parse(response);
-                        if (utils.validateInputs(response.status) == 1) {
-                            $('[task_id="' + current_task_id + '"] .contactTab .task-table tr').hide();
-                            $('[task_id="' + current_task_id + '"] .contactTab .task-table tbody').append('<tr class="contact-task" contact_id="' + obj.contact_cust_id + '"><td><span class="pull-left"><h3>' + obj.contact_name + '</h3><span>' + obj.account_name + '</span></span><span class="pull-right"><span class="label" title="Email"><span class="icon icon-note svg-pos-sm"></span></span><span class="label"><span class="icon icon-phone-call svg-pos-sm"></span></span><span class="label edit-btn"> <span class="icon icon-edit svg-pos-sm"></span></span></span></tr>');
-
-                        } 
-						else if(response.status == 0)
-							utils.info_toaster(_prismerrMsgs['00002'],'e');
-						else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-					},
-                    error: function(jqXHR) {
-                        utils.scriptErrorHandling(thisFileName, 'task/taskSetContact', jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-                utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//REASSIGNING TASK
-        function setReAssignTask(obj) {
-            try {
-                _server.post({
-                    url: serviceURLJava + "task/reAssign",
-                    data: {
-                        taskId: current_task_id,
-                        assignedTo: obj.EMP_ID
-                    },
-                    success: function(response) {
-                        response = JSON.parse(response);
-                        if (response.status == 1) {
-                            $('[task_id="' + current_task_id + '"] .reassignTab .task-table tr').hide();
-                            $('[task_id="' + current_task_id + '"] .reassignTab .task-table tbody').append('<tr class="contact-task" EMP_ID="' + obj.EMP_ID + '"><td><span class="pull-left"><h3>' + obj.reassign_name + '</h3><span>' + obj.role_name + '</span></span><span class="pull-right"><span class="label" title="Email"><span class="icon icon-note svg-pos-sm"></span></span><span class="label"><span class="icon icon-phone-call svg-pos-sm"></span></span><span class="label edit-btn" title="Edit"> <span class="icon icon-edit svg-pos-sm"></span></span></span></tr>');
-                        }
-						else if(response.status == 0)
-							utils.info_toaster(_prismerrMsgs['00002'],'e');
-						else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-                    },
-                    error: function(jqXHR) {
-                        utils.scriptErrorHandling(thisFileName, 'task/reAssign', jqXHR.responseText);
-                    },
-                });
-            } catch (e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-
-		//CONTACT SEARCH TYPEAHEAD
-        function contactSearch(inputID) {
-            try {
-                $.typeahead({
-                    input: '#' + inputID,
-                    maxItem: 31,
-                    minLength: 3,
-                    mustSelectItem: true,
-                    delay: 300,
-                    emptyTemplate: "<div class='no-result'>No results found for '{{query}}'</div>",
-                    dynamic: true,
-                    template: '<div class="contact-list" contact_cust_id="{{contact_cust_id}}"><span class="pull-left"><h3 class="fw-100">{{contact_name}}</h3><span class="fw-100">{{account_name}}</span></span></div>',
-                    source: {
-                        search: {
-                            display: ['contact_name', 'account_name', 'contact_cust_id'],
-                            url: [{
-                                type: "POST",
-                                url: serviceURLJava + "Summary/searchContact",
-                                beforeSend: function(jqXHR, options) {
-                                    var query = $('#' + inputID).val();
-                                    if (utils.validateInputs(query[0]) != "#" && utils.validateInputs(query.length) == 2) {
-                                        jqXHR.abort();
-                                    }
-                                },
-								headers:{
-									auth_token: utils._prismGetAuthToken('1')
-								},
-                                data: {
-                                    Name: "{{query}}"
-                                },
-                                callback: {
-                                    done: function(data) {
-                                        return data.data;
-                                    }
-                                }
-                            }]
-                        }
-                    },
-                    callback: {
-                        onReady: function(node) {
-                            $("#" + inputID).parents("form:first").show();
-                        },
-                        onSearch: function(node, query) {
-                            $(".searchLoading").html('<div class="typeahead__result"><ul class="typeahead__list" style="display:block !important;"><li class="text-left"><a href="">Mininimum 3 characters</a></li></ul></div>');
-                        },
-                        onClick: function(node, a, obj, e) {
-                            setTaskToContact(obj);
-                        },
-                        onSubmit: function(node, form, obj, e) {
-                            e.preventDefault();
-                        },
-                        onSendRequest: function(node, query) {
-                            if (utils.validateInputs(query[0]) === "#" && utils.validateInputs(query.length) >= 2) {
-                                $(".searchLoading").html('<div class="typeahead__result"><ul class="typeahead__list" style="display:block !important;"><li class="text-center"><a href="">Loading..</a></li></ul></div>');
-                            } else {
-                                $(".searchLoading").html('<div class="typeahead__result"><ul class="typeahead__list" style="display:block !important;"><li class="text-center"><a href="">Search Min 2 Characters</a></li></ul></div>');
-                            }
-                        },
-                        onReceiveRequest: function(node, query) {
-                            $(".searchLoading").html("");
-                        }
-                    }
-                });
-            } catch (e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }		
-		
-		//REASSIGN SEARCH TYPEAHEAD
-        function reAssignSearch(inputID) {
-            try {
-                $.typeahead({
-                    input: '#' + inputID,
-                    maxItem: 31,
-                    minLength: 3,
-                    mustSelectItem: true,
-                    delay: 300,
-                    emptyTemplate: "<div class='no-result'>No results found for '{{query}}'</div>",
-                    dynamic: true,
-                    template: '<div class="contact-list" USER_ID="{{USER_ID}}"><span class="pull-left"><h3 class="fw-100">{{reassign_name}}</h3><span class="pull-left fw-100">{{role_name}}</span></span></div>',
-                    source: {
-                        search: {
-                            display: ['USER_ID', 'reassign_name', 'role_name'],
-                            url: [{
-                                type: "POST",
-                                url: serviceURLJava + "task/searchReAssign",
-                                beforeSend: function(jqXHR, options) {
-                                    var query = $('#' + inputID).val();
-                                    if (utils.validateInputs(query[0]) != "#" && utils.validateInputs(query.length) == 2) {
-                                        jqXHR.abort();
-                                    }
-                                },
-								headers:{
-									auth_token: utils._prismGetAuthToken('1')
-								},
-                                data: {
-                                    Name: "{{query}}"
-                                },
-                                callback: {
-                                    done: function(data) {
-                                        return data.data;
-                                    }
-                                }
-                            }]
-                        }
-                    },
-                    callback: {
-                        onReady: function(node) {
-                            $("#" + inputID).parents("form:first").show();
-                        },
-                        onSearch: function(node, query) {
-                            $(".searchLoading").html('<div class="typeahead__result"><ul class="typeahead__list" style="display:block !important;"><li class="text-left"><a href="">Minimum 3 characters</a></li></ul></div>');
-                        },
-                        onClick: function(node, a, obj, e) {
-                            setReAssignTask(obj);
-
-                        },
-                        onSubmit: function(node, form, obj, e) {
-                            e.preventDefault();
-                        },
-                        onSendRequest: function(node, query) {
-                            if (query[0] === "#" && query.length >= 2 ) {
-                                $(".searchLoading").html('<div class="typeahead__result"><ul class="typeahead__list" style="display:block !important;"><li class="text-center"><a href="">Loading..</a></li></ul></div>');
-                            } else {
-                                $(".searchLoading").html('<div class="typeahead__result"><ul class="typeahead__list" style="display:block !important;"><li class="text-center"><a href="">Search Min 2 characters </a></li></ul></div>');
-                            }
-                        },
-                        onReceiveRequest: function(node, query) {
-                            $(".searchLoading").html("");
-                        }
-                    }
-                });
-            } catch (e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-            }
-        }
-		
-		//GETTING TASK BY TASK_ID FOR EDIT TASK
-		function editActivityLoad(activityId, activityType,todoStatus,callbackfn) {
-			try{
-				$("#loading_screen").show();
-				var cbFunctionList = {
-						"Task": callbackfn
-					},
-				selActivityDataReq = {
-					"url": serviceURLJava + "task/getTaskByUsingTaskId",
-					"type": "POST",
-					"dataType": JSON,
-					"ajaxData": {
-							"task_id": activityId,
-							"type": activityType
-					},
-					callback: eval(cbFunctionList[activityType])
-				};
-				getTaskSelf.ajaxCallPostFunction(selActivityDataReq);
-			} catch(e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-			}
-		}
-
-		//DELETING TASK
-		function deleteActivity(rowID, type,startDate,endDate) {
-			try {
-				var deleteActivity = {};
-				var Data = JSON.stringify({ "type": type, "rowId": rowID ,"startDate":startDate,"endDate":endDate});
-				deleteActivity['url'] = serviceURLJava + servicePageModule["activities"] + "commonDelete";
-				deleteActivity['type'] = 'POST';
-				deleteActivity['dataType'] = 'JSON';
-				deleteActivity['ajaxData'] = { deleteJson: Data };
-				deleteActivity['callback'] = deleteActivityCB;
-				deleteActivity['rowID'] = rowID;
-				getTaskSelf.ajaxCallPostFunction(deleteActivity);
-			} catch(e) {
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e); 
-			}
-		}
-		
-		
-		
-		//GET SETTING FOR DATATABLE
-		function getTaskTable(){
-			try{
-				//var tableHTML = '<table id="' + id + '_dataTable_task" class="compact table theme-table table-bordered table-striped data-ellipsis" style="width: 100%;"></table>';
-				_server.post({
-					url: serviceURLJava + 'tableconfig/gettablesetting',
-					data:{
-						rpttype: 'gettaskmodule',
-						moduletype: 'taskdetails'
-					},
-					success: function (response){
-						if(utils.validateInputs(response.status) == 1){
-							DrawTaskTable(response);
-						}
-						else if(response.status == 0){
-							$('#loading_screen').hide();
-							$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-							utils.info_toaster(_prismerrMsgs['00002'],'e');
-						}
-						else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-					},
-					error: function (jqXHR){
-						$('#loading_screen').hide();
-						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-						utils.scriptErrorHandling(thisFileName, "tableconfig/gettablesetting", jqXHR);
-					}
-				});
-			}catch(e){
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			}
-		}
-
-		//GET TABLE DATA
-		/*function drawTaskTableData(tableSettings){
-			try{
-				_server.post({
-					url: serviceURLJava + "task/getTaskTable",
-					data: {
-						"top": 'collapsed',
-						"action":repScreenACStatus
-					},
-					success: function(response){
-						if(response.status == 1){
-							DrawTaskTable(tableSettings,response);
-						}else{
-							$('#loading_screen').hide();
-							utils.info_toaster(_prismerrMsgs['00002'],'e');
-						}
-					},
-					error: function(jqXHR){
-						$('#loading_screen').hide();
-						utils.scriptErrorHandling(thisFileName, 'task/getTaskTable', jqXHR.responseText);
-					}
-				});
-			}catch(e){
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-				callback(false);
-			}
-		}*/
-		
-		//FUNCTION TO DRAW FADING CONTACTS TABLES
-		function DrawTaskTable(tableSetting){
-			try{
-				$('#loading_screen').show();
-				var tableObj ={};
-				var start = 0;
-				var tablength = 50;
-				//var scrollFlag = utils.validateInputs(_prismConstantValues['TODO_LAZY_LOAD']);
-				var columns = [];
-				var table_settings = tableSetting.table_settings;
-				var cols = tableSetting.cols;
-				var title = tableSetting.title;
-				var colsAlign = tableSetting.colsAlign;
-				var numberFormatType = tableSetting.formatter;
-				var tableHTML = '<table id="dataTable_task_'+repScreenACStatus+'" class="compact task-detail-table table-striped table-bordered theme-table table data-ellipsis" style="width: 100%;"></table>';
-				$(title).each(function (index, heading) {
-					columns.push({
-						"title": heading,
-						"sName": heading,
-						"name": heading,
-						"data": cols[index],
-						"className": "border-all " + colsAlign[index],
-						"target": [index],
-						"isDefault": table_settings[index].blockchk	           
-					});
-				});
-				var id1 = '#dataTable_task_'+repScreenACStatus;
-				$("#"+id).html(tableHTML);
-				tableObj = $.extend({
-					processing: true,
-					language: {
-						"loadingRecords": "loading..."
-					},
-					serverSide: true,
-					//data:response.data,
-					ajax: {
-						url: serviceURLJava + "task/getTaskTable",
-						dataType: "json",
-						method: "POST",
-						headers:{
-							auth_token: utils._prismGetAuthToken('1')
-						},
-						data: function(result){
-							var objSend = utils.formDataTableReqObj(result);
-							objSend = $.extend({
-								top: 'collapsed',
-								action:repScreenACStatus,
-								clienttimezone: encodeURIComponent(moment.tz.guess()),
-								enablelink: true
-							}, objSend);
-							return objSend;
-						}
-					},
-					id:id1,
-					settings:true,
-					table_settings: table_settings,
-					columns: columns,
-					// sScrollY: "300px",
-					scrollX: true,
-					colReorder: false,
-					numberFormatType:numberFormatType,
-					excelExport:true,
-					order: [[tableSetting.defColSort, tableSetting.defColSortType]],
-					numeberFormatCels: tableSetting.colsCnt,
-					beforePaginateAdd: true,
-					destroy: true,
-					bInfo: true,
-					deferRender: true,
-					bPaginate: true,
-					fixcol:1,
-					pageLength: tablength,
-					//enableScroll: true,
-					//scrollCollapse: false,
-					ExcelUrl:serviceURLJava+"task/getTaskTable?top="+repScreenACStatus+"&action="+repScreenACStatus+"&start="+start+"&length="+tablength+"&clienttimezone="+encodeURIComponent(moment.tz.guess()),
-					drawCallback: function(settings){
-						$('#loading_screen').hide();
-						$(id1 + " tr:last td").css('padding-bottom','4px');
-						if(utils.validateInputs(repScreenACStatus) == 'collapsed'){
-							$("#col_visb_div").css('display','none');
-						}
-						$('#dataTable_task_'+repScreenACStatus+' thead tr').css('height','0px');
-						/*var api = this.api();
-						var rows = api.rows({page:'current'}).nodes();
-						if(utils.validateInputs(scrollFlag) == '2' || (utils.validateInputs(scrollFlag) == '1' && !utils.checkifIE())){
-							$("#" + settings.sTableId + "_wrapper .dataTables_paginate .pagination").hide();						
-						}
-						popoverTrigger();*/
-					},
-				}, tableObj);
-				/*if(utils.validateInputs(scrollFlag) == '2' || (utils.validateInputs(scrollFlag) == '1' && !utils.checkifIE())){
-					tableObj = $.extend({ "enableScroll": true, "scrollCollapse": false, "lengthChange": false}, tableObj);
-				}else{
-					tableObj = $.extend({ "enableScroll": false, "scrollCollapse": true }, tableObj);
-				}*/
-				utils.DrawDatatable(tableObj);
-			}catch(e){
-				utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-			}
-		}
-		
-		//CALLBACK FUNCTION
-		function thisRepCB(){
-			try{
-				$('#loading_screen').show();
-				$(window).resizeEnd();
-				if(utils.validateInputs(repScreenACStatus) == 'collapsed'){
-					getFullTask(repScreenACStatus);
-				}else{
-					getTaskTable();
-				}
-			}catch(e){
-				$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-				utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-			}
-		}
-		
-		//SERVICE CALL FOR GET TABLE VALUES
-		/*function gettblfieldsval(val){
-			try{
-				var tblId = 'task_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
-				_server.post({
-					url: serviceURLJava + "tableconfig/gettblfields",
-					data: {"tblid": tblId},
-					success: function(response){
-						if(response.status == 1 || response.status == 0 || utils.validateInputs(response.status) == ''){
-							if(utils.validateInputs(val) == 0){
-								if(utils.validateInputs(repScreenACStatus) == 'collapsed'){
-									getFullTask(repScreenACStatus);
-								}else{
-									getTaskTable();
-								}
-							}
-						}
-						else if(response.status == 0){
-							$('#loading_screen').hide();
-							utils.info_toaster(_prismerrMsgs['00002'],'e');
-						}
-						else if (response.status == -1)
-							utils.info_toaster(_prismerrMsgs['00002'], "e");
-					},
-					error: function(jqXHR){
-						$('#loading_screen').hide();
-						utils.scriptErrorHandling(thisFileName, 'tableconfig/gettblfields', jqXHR.responseText);
-					}
-				});
-			}catch(e){
-				utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-				callback(false);
-			}
-		}*/
-		
-    } catch (e) {
-        utils.scriptErrorHandling(thisFileName,thisFileName, e);
-    }
-}
+<Form {...form}>
+						<form className="grid grid-cols-3 gap-6 p-4 min-h-[20px]">
+							{/* Row 1 */}
+							<div>
+								<FormField
+									control={form.control}
+									name="account_id"
+									rules={{ required: 'Account Name is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Account Name<span className="text-red-500">*</span>
+											</FormLabel>
+											<div style={{ position: 'relative' }}>
+												<AsyncTypeahead
+													id="account_id"
+													labelKey="account_name"
+													options={accountOptions}
+													isLoading={isLoading}
+													minLength={1}
+													placeholder="Search Account Name"
+													onSearch={handleAccountSearch}
+													onChange={handleAccountChange}
+													selected={selectedAccount}
+													inputProps={{
+														className: 'h-11 w-full border rounded-md px-3 py-2 text-base ',
+														required: true,
+													}}
+													menuStyle={{
+														zIndex: 1050,
+														width: '100%',
+														position: 'absolute',
+													}}
+													renderMenu={renderAccountMenu}
+												/>
+											</div>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="comm_date"
+									rules={{ required: 'Invoice Date is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Invoice Date<span className="text-red-500">*</span>
+											</FormLabel>
+											<Popover open={open} onOpenChange={setOpen}>
+												<PopoverTrigger asChild>
+													<Button
+														variant="outline"
+														className={'w-full justify-start text-left font-normal h-11' + (field.value ? '' : ' text-muted-foreground')}
+													>
+														<CalendarIcon className="mr-2 h-4 w-4" />
+														{field.value ? field.value : <span>Pick a date</span>}
+													</Button>
+												</PopoverTrigger>
+												<PopoverContent className="w-auto p-0">
+													<Calendar
+														mode="single"
+														selected={field.value ? parseISO(field.value) : undefined}
+														onSelect={(date) => {
+															if (!date) {
+																field.onChange('');
+																if (typeof setDate === 'function') setDate(undefined);
+																return;
+															}
+															const formattedDate = format(date, 'yyyy-MM-dd');
+
+															field.onChange(formattedDate);
+
+															if (typeof setDate === 'function') {
+																setDate(date);
+															}
+															 setOpen(false);
+														}}
+														initialFocus
+													/>
+												</PopoverContent>
+											</Popover>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="comm_no"
+									rules={{ required: 'Invoice Number is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Invoice Number<span className="text-red-500">*</span>
+											</FormLabel>
+											<Input
+												{...field}
+												type="text"
+												maxLength={256}
+												className="focus:outline-none focus:ring-2 focus:ring-primary h-11"
+												placeholder="Enter invoice number"
+												required
+											/>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="comm_status"
+									rules={{ required: 'Invoice Status is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Invoice Status<span className="text-red-500">*</span>
+											</FormLabel>
+											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
+												<SelectTrigger className="w-full justify-between h-11">
+													<SelectValue placeholder="Select status" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="Open">Open</SelectItem>
+													<SelectItem value="Paid">Paid</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="commission"
+									rules={{ required: 'Commission is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Commission<span className="text-red-500">*</span>
+											</FormLabel>
+											<Input
+												{...field}
+												type="number"
+												step="any"
+												className="w-full focus:outline-none focus:ring-2 focus:ring-primary h-11"
+												placeholder="Enter commission amount"
+												required
+											/>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="product"
+									rules={{ required: 'Product is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Product<span className="text-red-500">*</span>
+											</FormLabel>
+											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
+												<SelectTrigger className="w-full justify-between h-11">
+													<SelectValue placeholder="Select status" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="syndicate">Syndicate</SelectItem>
+													<SelectItem value="invoice">Invoice</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+							{watchedStatus === 'syndicate' && (
+								<div className="col-span-3 grid grid-cols-2 gap-6 mt-6">
+									<div className="col-span-2 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
+										<FormField
+											control={form.control}
+											name="ticker"
+											rules={{ required: 'ticker is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Ticker<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="text" maxLength={32} className="h-10" placeholder="Ticker" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="quantity"
+											rules={{ required: 'quantity is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Quantity<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="number" min={0} className="h-10" placeholder="Quantity" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="price"
+											rules={{ required: 'price is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Price<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Price" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="net_amount"
+											rules={{ required: 'netAmount is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Net Amount<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Net Amount" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+									</div>
+								</div>
+							)}
+
+							<div className="col-span-3 grid grid-cols-2 gap-6">
+								<FormField
+									control={form.control}
+									name="invoiceFile"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Attach Invoice<span className="text-red-500">*</span>
+											</FormLabel>
+											<div
+												className="border-2 border-dashed dark:border-gray-800 border-gray-300 rounded-lg p-4 dark:bg-inherit flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition h-[115px] cursor-pointer relative"
+												onClick={() => document.getElementById('invoiceFileInput')?.click()}
+											>
+												<input
+													type="file"
+													id="invoiceFileInput"
+													accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+													className="hidden"
+													onChange={(e) => field.onChange(e.target.files && e.target.files[0])}
+												/>
+												{field.value ? (
+													<div className="flex flex-col items-center w-full">
+														<span className="text-sm text-gray-700 truncate max-w-xs">{field.value.name}</span>
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															className="mt-2"
+															onClick={(e) => {
+																e.stopPropagation();
+																field.onChange(null);
+															}}
+														>
+															Remove
+														</Button>
+													</div>
+												) : (
+													<span className="text-gray-400 text-sm">Drag & drop or click to upload (PDF, Word, PPT, XLS)</span>
+												)}
+											</div>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+
+								<FormField
+									control={form.control}
+									name="comments"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Notes</FormLabel>
+											<textarea id="notes" rows={4} className="border rounded w-full p-2" placeholder="Enter notes here..." {...field} />
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+						</form>
