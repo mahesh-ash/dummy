@@ -1,60 +1,72 @@
-const dynamicExtraFields = [
+const dynamicRowFields = [
   {
-    name: "extra_field_1",
-    label: "Reference Name",
-    placeholder: "Enter reference name",
+    name: "dyn_code",
+    label: "Code",
+    placeholder: "Enter code",
     type: "string",
     mandatory: true,
-    pattern: /^[A-Za-z ]+$/,
-    patternMessage: "Only alphabets allowed",
+    pattern: /^[A-Z0-9]+$/,
+    patternMessage: "Only uppercase letters & numbers allowed",
     readOnly: false,
-    defaultValue: "ABC Corp",
+    disabled: false,
+    defaultValue: "",
+    className: "",
   },
   {
-    name: "extra_field_2",
+    name: "dyn_description",
     label: "Description",
     placeholder: "Enter description",
     type: "string",
     mandatory: false,
-    readOnly: true,
-    defaultValue: "Auto-generated description",
+    readOnly: false,
+    disabled: false,
+    defaultValue: "",
+    className: "",
   },
   {
-    name: "extra_field_3",
-    label: "Discount %",
-    placeholder: "Enter discount",
+    name: "dyn_quantity",
+    label: "Quantity",
+    placeholder: "Qty",
     type: "number",
     mandatory: true,
-    pattern: /^\d+(\.\d{1,2})?$/,
-    patternMessage: "Max 2 decimal places allowed",
+    pattern: /^\d+$/,
+    patternMessage: "Only numbers allowed",
     readOnly: false,
-    defaultValue: 10,
+    disabled: false,
+    defaultValue: 0,
+    className: "",
   },
   {
-    name: "extra_field_4",
-    label: "Tax Amount",
-    placeholder: "Enter tax amount",
+    name: "dyn_amount",
+    label: "Amount",
+    placeholder: "Amount",
     type: "number",
     mandatory: false,
     readOnly: true,
-    defaultValue: 5,
+    disabled: true,
+    defaultValue: 100,
+    className: "bg-gray-100",
   },
-];const dynamicDefaultValues = dynamicExtraFields.reduce((acc, field) => {
-  acc[field.name] = field.defaultValue ?? (field.type === "number" ? undefined : "");
+];const dynamicRowDefaults = dynamicRowFields.reduce((acc, field) => {
+  acc[field.name] =
+    field.defaultValue ??
+    (field.type === "number" ? undefined : "");
   return acc;
-}, {} as Record<string, any>);const form = useForm({
+}, {} as Record<string, any>);
+
+const form = useForm({
   defaultValues: {
-    ...existingDefaultValues, // your current form values
-    ...dynamicDefaultValues,
+    ...existingFormDefaults, // your current form defaults
+    ...dynamicRowDefaults,
   },
-});const getValidationRules = (field: any) => {
+});const getDynamicRules = (field: any) => {
   const rules: any = {};
 
-  if (field.mandatory && !field.readOnly) {
+  if (field.mandatory && !field.readOnly && !field.disabled) {
     rules.required = `${field.label} is required`;
   }
 
-  if (field.pattern) {
+  if (field.pattern && !field.disabled) {
     rules.pattern = {
       value: field.pattern,
       message: field.patternMessage || "Invalid format",
@@ -62,18 +74,19 @@ const dynamicExtraFields = [
   }
 
   return rules;
-};<div className="col-span-3 grid grid-cols-2 gap-6">
-  {dynamicExtraFields.map((item) => (
+};{/* 🔹 Dynamic 4-Field Row (Ticker Style) */}
+<div className="col-span-3 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
+  {dynamicRowFields.map((item) => (
     <FormField
       key={item.name}
       control={form.control}
       name={item.name}
-      rules={getValidationRules(item)}
+      rules={getDynamicRules(item)}
       render={({ field }) => (
         <FormItem>
           <FormLabel className="font-medium">
             {item.label}
-            {item.mandatory && !item.readOnly && (
+            {item.mandatory && !item.disabled && (
               <span className="text-red-500">*</span>
             )}
           </FormLabel>
@@ -82,21 +95,28 @@ const dynamicExtraFields = [
             {...field}
             type={item.type === "number" ? "number" : "text"}
             placeholder={item.placeholder}
-            className={`h-11 ${item.readOnly ? "bg-gray-100 cursor-not-allowed" : ""}`}
             readOnly={item.readOnly}
+            disabled={item.disabled}
+            className={`h-10 ${
+              item.readOnly || item.disabled
+                ? "bg-gray-100 cursor-not-allowed"
+                : ""
+            } ${item.className}`}
             onChange={(e) =>
-              item.readOnly
+              item.readOnly || item.disabled
                 ? undefined
                 : item.type === "number"
                 ? field.onChange(
-                    e.target.value === "" ? undefined : Number(e.target.value)
+                    e.target.value === ""
+                      ? undefined
+                      : Number(e.target.value)
                   )
                 : field.onChange(e.target.value)
             }
           />
 
           {/* prevent UI jerk */}
-          <div className="min-h-[20px]">
+          <div className="min-h-[18px]">
             <FormMessage />
           </div>
         </FormItem>
