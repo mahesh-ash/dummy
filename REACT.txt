@@ -1,126 +1,579 @@
-const dynamicRowFields = [
-  {
-    name: "dyn_code",
-    label: "Code",
-    placeholder: "Enter code",
-    type: "string",
-    mandatory: true,
-    pattern: /^[A-Z0-9]+$/,
-    patternMessage: "Only uppercase letters & numbers allowed",
-    readOnly: false,
-    disabled: false,
-    defaultValue: "",
-    className: "",
-  },
-  {
-    name: "dyn_description",
-    label: "Description",
-    placeholder: "Enter description",
-    type: "string",
-    mandatory: false,
-    readOnly: false,
-    disabled: false,
-    defaultValue: "",
-    className: "",
-  },
-  {
-    name: "dyn_quantity",
-    label: "Quantity",
-    placeholder: "Qty",
-    type: "number",
-    mandatory: true,
-    pattern: /^\d+$/,
-    patternMessage: "Only numbers allowed",
-    readOnly: false,
-    disabled: false,
-    defaultValue: 0,
-    className: "",
-  },
-  {
-    name: "dyn_amount",
-    label: "Amount",
-    placeholder: "Amount",
-    type: "number",
-    mandatory: false,
-    readOnly: true,
-    disabled: true,
-    defaultValue: 100,
-    className: "bg-gray-100",
-  },
-];const dynamicRowDefaults = dynamicRowFields.reduce((acc, field) => {
-  acc[field.name] =
-    field.defaultValue ??
-    (field.type === "number" ? undefined : "");
-  return acc;
-}, {} as Record<string, any>);
+return (
+		<div className="w-full">
+			<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+				<SheetContent className="sm:max-w-6xl">
+					<SheetHeader>
+						<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
+					</SheetHeader>
 
-const form = useForm({
-  defaultValues: {
-    ...existingFormDefaults, // your current form defaults
-    ...dynamicRowDefaults,
-  },
-});const getDynamicRules = (field: any) => {
-  const rules: any = {};
+					<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Unsaved Changes</DialogTitle>
+							</DialogHeader>
+							<div className="mb-6">You have unsaved changes. Are you sure you want to close?</div>
+							<DialogFooter className="flex justify-end gap-2">
+								<Button variant="outline" onClick={handleDialogCancel}>
+									Cancel
+								</Button>
+								<Button variant="destructive" onClick={handleDialogConfirm}>
+									Discard & Close
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 
-  if (field.mandatory && !field.readOnly && !field.disabled) {
-    rules.required = `${field.label} is required`;
-  }
+					<Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>{dialogConfig.title}</DialogTitle>
+							</DialogHeader>
+							<div className="mb-6">{dialogConfig.message}</div>
+							<DialogFooter className="flex justify-end gap-2">
+								<Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
+									Cancel
+								</Button>
+								<Button
+									variant="destructive"
+									onClick={() => {
+										dialogConfig.onConfirm();
+										setDialogConfig((prev) => ({ ...prev, isOpen: false }));
+									}}
+								>
+									Discard & Proceed
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 
-  if (field.pattern && !field.disabled) {
-    rules.pattern = {
-      value: field.pattern,
-      message: field.patternMessage || "Invalid format",
-    };
-  }
+					<Form {...form}>
+						<form className="grid grid-cols-3 gap-6 p-4 ">
+							{/* Row 1 */}
+							<div>
+								<FormField
+									control={form.control}
+									name="account_id"
+									rules={{ required: 'Account Name is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Account Name<span className="text-red-500">*</span>
+											</FormLabel>
+											<div style={{ position: 'relative' }}>
+												<AsyncTypeahead
+													id="account_id"
+													labelKey="account_name"
+													options={accountOptions}
+													isLoading={isLoading}
+													minLength={1}
+													placeholder="Search Account Name"
+													onSearch={handleAccountSearch}
+													onChange={handleAccountChange}
+													selected={selectedAccount}
+													inputProps={{
+														className: 'h-11 w-full border rounded-md px-3 py-2 text-base ',
+														required: true,
+													}}
+													menuStyle={{
+														zIndex: 1050,
+														width: '100%',
+														position: 'absolute',
+													}}
+													renderMenu={renderAccountMenu}
+												/>
+											</div>
+											<div className="min-h-[20px]">
+												<FormMessage />
+											</div>
+										</FormItem>
+									)}
+								/>
+							</div>
 
-  return rules;
-};{/* 🔹 Dynamic 4-Field Row (Ticker Style) */}
-<div className="col-span-3 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
-  {dynamicRowFields.map((item) => (
-    <FormField
-      key={item.name}
-      control={form.control}
-      name={item.name}
-      rules={getDynamicRules(item)}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel className="font-medium">
-            {item.label}
-            {item.mandatory && !item.disabled && (
-              <span className="text-red-500">*</span>
-            )}
-          </FormLabel>
+							<div>
+								<FormField
+									control={form.control}
+									name="comm_date"
+									rules={{ required: 'Invoice Date is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Invoice Date<span className="text-red-500">*</span>
+											</FormLabel>
+											<Popover open={open} onOpenChange={setOpen}>
+												<PopoverTrigger asChild>
+													<Button
+														variant="outline"
+														className={'w-full justify-start text-left font-normal h-11' + (field.value ? '' : ' text-muted-foreground')}
+													>
+														<CalendarIcon className="mr-2 h-4 w-4" />
+														{field.value ? field.value : <span>Pick a date</span>}
+													</Button>
+												</PopoverTrigger>
+												<PopoverContent className="w-auto p-0">
+													<Calendar
+														mode="single"
+														selected={field.value ? parseISO(field.value) : undefined}
+														onSelect={(date) => {
+															if (!date) {
+																field.onChange('');
+																if (typeof setDate === 'function') setDate(undefined);
+																return;
+															}
+															const formattedDate = format(date, 'yyyy-MM-dd');
 
-          <Input
-            {...field}
-            type={item.type === "number" ? "number" : "text"}
-            placeholder={item.placeholder}
-            readOnly={item.readOnly}
-            disabled={item.disabled}
-            className={`h-10 ${
-              item.readOnly || item.disabled
-                ? "bg-gray-100 cursor-not-allowed"
-                : ""
-            } ${item.className}`}
-            onChange={(e) =>
-              item.readOnly || item.disabled
-                ? undefined
-                : item.type === "number"
-                ? field.onChange(
-                    e.target.value === ""
-                      ? undefined
-                      : Number(e.target.value)
-                  )
-                : field.onChange(e.target.value)
-            }
-          />
+															field.onChange(formattedDate);
 
-          {/* prevent UI jerk */}
-          <div className="min-h-[18px]">
-            <FormMessage />
-          </div>
-        </FormItem>
-      )}
-    />
-  ))}
-</div>
+															if (typeof setDate === 'function') {
+																setDate(date);
+															}
+															setOpen(false);
+														}}
+														initialFocus
+													/>
+												</PopoverContent>
+											</Popover>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="comm_no"
+									rules={{ required: 'Invoice Number is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Invoice Number<span className="text-red-500">*</span>
+											</FormLabel>
+											<Input
+												{...field}
+												type="text"
+												maxLength={256}
+												className="focus:outline-none focus:ring-2 focus:ring-primary h-11"
+												placeholder="Enter invoice number"
+												required
+											/>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="comm_status"
+									rules={{ required: 'Invoice Status is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Invoice Status<span className="text-red-500">*</span>
+											</FormLabel>
+											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
+												<SelectTrigger className="w-full justify-between h-11">
+													<SelectValue placeholder="Select status" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="Open">Open</SelectItem>
+													<SelectItem value="Paid">Paid</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="commission"
+									rules={{ required: 'Commission is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Commission<span className="text-red-500">*</span>
+											</FormLabel>
+											<Input
+												{...field}
+												type="number"
+												step="any"
+												className="w-full focus:outline-none focus:ring-2 focus:ring-primary h-11"
+												placeholder="Enter commission amount"
+												required
+											/>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+
+							<div>
+								<FormField
+									control={form.control}
+									name="product"
+									rules={{ required: 'Product is required' }}
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Product<span className="text-red-500">*</span>
+											</FormLabel>
+											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
+												<SelectTrigger className="w-full justify-between h-11">
+													<SelectValue placeholder="Select status" />
+												</SelectTrigger>
+												<SelectContent>
+													<SelectItem value="syndicate">Syndicate</SelectItem>
+													<SelectItem value="invoice">Invoice</SelectItem>
+												</SelectContent>
+											</Select>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+							{watchedStatus === 'syndicate' && (
+								<div className="col-span-3 grid grid-cols-1 gap-0 mt-6">
+									<div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
+										<FormField
+											control={form.control}
+											name="ticker"
+											rules={{ required: 'ticker is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Ticker<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="text" maxLength={32} className="h-10" placeholder="Ticker" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="quantity"
+											rules={{ required: 'quantity is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Quantity<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="number" min={0} className="h-10" placeholder="Quantity" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="price"
+											rules={{ required: 'price is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Price<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Price" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+										<FormField
+											control={form.control}
+											name="net_amount"
+											rules={{ required: 'netAmount is required' }}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="font-medium">
+														Net Amount<span className="text-red-500">*</span>
+													</FormLabel>
+													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Net Amount" />
+													<FormMessage />
+												</FormItem>
+											)}
+										/>
+									</div>
+
+									<div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
+										{dynamicRowFields.map((item) => (
+											<FormField
+												key={item.name}
+												control={form.control}
+												name={item.name}
+												rules={getDynamicRules(item)}
+												render={({ field }) => (
+													<FormItem>
+														<FormLabel className="font-medium">
+															{item.label}
+															{item.mandatory && !item.disabled && <span className="text-red-500">*</span>}
+														</FormLabel>
+
+														<Input
+															{...field}
+															type={item.type === 'number' ? 'number' : 'text'}
+															placeholder={item.placeholder}
+															readOnly={item.readOnly}
+															disabled={item.disabled}
+															className={`h-10 ${
+																item.readOnly || item.disabled ? 'bg-gray-100 dark:bg-gray-700 cursor-not-allowed' : ''
+															} ${item.className || ''}`}
+															onChange={(e) =>
+																item.readOnly || item.disabled
+																	? undefined
+																	: item.type === 'number'
+																		? field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+																		: field.onChange(e.target.value)
+															}
+														/>
+														<div className="min-h-[20px]">
+															<FormMessage />
+														</div>
+													</FormItem>
+												)}
+											/>
+										))}
+									</div>
+								</div>
+							)}
+
+							<div className="col-span-3 grid grid-cols-2 gap-6">
+								<FormField
+									control={form.control}
+									name="invoiceFile"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel className="font-medium">
+												Attach Invoice<span className="text-red-500">*</span>
+											</FormLabel>
+											<div
+												className="border-2 border-dashed dark:border-gray-800 border-gray-300 rounded-lg p-4 dark:bg-inherit flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition h-[115px] cursor-pointer relative"
+												onClick={() => document.getElementById('invoiceFileInput')?.click()}
+											>
+												<input
+													type="file"
+													id="invoiceFileInput"
+													accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
+													className="hidden"
+													onChange={(e) => field.onChange(e.target.files && e.target.files[0])}
+												/>
+												{field.value ? (
+													<div className="flex flex-col items-center w-full">
+														<span className="text-sm text-gray-700 truncate max-w-xs">{field.value.name}</span>
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															className="mt-2"
+															onClick={(e) => {
+																e.stopPropagation();
+																field.onChange(null);
+															}}
+														>
+															Remove
+														</Button>
+													</div>
+												) : (
+													<span className="text-gray-400 text-sm">Drag & drop or click to upload (PDF, Word, PPT, XLS)</span>
+												)}
+											</div>
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+
+								<FormField
+									control={form.control}
+									name="comments"
+									render={({ field }) => (
+										<FormItem>
+											<FormLabel>Notes</FormLabel>
+											<textarea id="notes" rows={4} className="border rounded w-full p-2" placeholder="Enter notes here..." {...field} />
+											<FormMessage />
+										</FormItem>
+									)}
+								/>
+							</div>
+						</form>
+					</Form>
+
+					{/* Only visible the coverage details once the Account name selected */}
+					{selectedAccount.length > 0 && (
+						<div className="p-4">
+							<h3 className="text-lg font-semibold mb-2">Coverage Details</h3>
+
+							<div className="mb-4 flex gap-2 items-end" style={{ maxWidth: 500 }}>
+								<div style={{ position: 'relative', flex: 2 }}>
+									<AsyncTypeahead
+										id="employee_search"
+										labelKey={(option) => option.display_name}
+										options={employeeOptions}
+										isLoading={isEmployeeLoading}
+										minLength={1}
+										placeholder="Search employee name..."
+										onSearch={handleEmployeeSearch}
+										onChange={handleEmployeeChange}
+										selected={selectedEmployee}
+										inputProps={{
+											className: 'h-10 w-80 border rounded-md px-3 py-2 text-base ',
+										}}
+										menuStyle={{
+											zIndex: 1050,
+											width: '100%',
+											position: 'absolute',
+										}}
+										renderMenu={renderEmployeeMenu}
+									/>
+									{isEmployeeLoading && selectedEmployee.length > 0 && (
+										<ul
+											className="dark:bg-gray-800 bg-gray-100 border w-80"
+											style={{
+												position: 'absolute',
+												zIndex: 10,
+												borderRadius: 4,
+												margin: 0,
+												padding: 0,
+												width: '100%',
+												maxHeight: 120,
+												overflowY: 'auto',
+												listStyle: 'none',
+											}}
+										></ul>
+									)}
+								</div>
+
+								{selectedEmployee && selectedEmployee.length > 0 && (
+									<div className="flex items-center gap-2">
+										<Input
+											value={percentage}
+											onChange={(e) => {
+												const val = e.target.value.replace(/[^0-9.]/g, '');
+												setPercentage(val);
+												if (val !== '' && Number(val) > 100) {
+													setPercentageInputError('Percentage cannot be more than 100.');
+												} else {
+													setPercentageInputError('');
+												}
+											}}
+											type="number"
+											min={0}
+											max={100}
+											placeholder="%"
+											className="input input-bordered border rounded px-3 py-2 text-base w-24"
+											disabled={!selectedEmployee}
+										/>
+										<Button
+											type="button"
+											variant="default"
+											className="h-10"
+											onClick={handleAddCoverage}
+											disabled={!selectedEmployee || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
+										>
+											Add
+										</Button>
+									</div>
+								)}
+							</div>
+							{coverageRows.length > 0 && (
+								<div
+									className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'}  coverage-table w-full`}
+									style={{ height: 220, minHeight: 120, overflow: 'auto' }}
+								>
+									<AgGridReact
+										columnDefs={coverageColumns}
+										getRowId={getRowId}
+										rowData={coverageRows}
+										onCellValueChanged={onCellValueChanged}
+										rowHeight={34}
+										headerHeight={34}
+										domLayout="normal"
+										modules={[ClientSideRowModelModule]}
+										defaultColDef={defaultColDef.filter == ''}
+										suppressMovableColumns
+										context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: handleDeleteCoverage }}
+										onCellEditingStopped={cellEditingStopped}
+										noRowsOverlayComponent={() => <span>Record not found.</span>}
+										invalidEditValueMode={'block'}
+									/>
+								</div>
+							)}
+						</div>
+					)}
+					<SheetFooter className="flex flex-row justify-end">
+						<Button
+							className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
+							ref={null}
+							type="submit"
+							onClick={form.handleSubmit(handleFormSubmit)}
+						>
+							Save
+						</Button>
+						<Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
+							Cancel
+						</Button>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
+			<div className="flex justify-between pb-2">
+				<DateRangePicker
+					onCancel={dateRangeCancelHandler}
+					locale="en-US"
+					// initialDateFrom={rangeStartDate}
+					// initialDateTo={rangeEndDate}
+					onUpdate={dateRangeHandler}
+					showCompare={false}
+				></DateRangePicker>
+				<div className="flex gap-2 items-center">
+					<span className=" font-medium mr-2">#{rowData.length} Records</span>
+					<Button title={'Refresh'} className={'h-[40px]'} variant="outline">
+						<RefreshCcwIcon></RefreshCcwIcon>
+					</Button>
+					<Button onClick={() => toast.success('Download Completed')} title={'Download'} className={'h-[40px] border-custom-border'} variant="outline">
+						<Download></Download>
+						Excel
+					</Button>
+				</div>
+			</div>
+			<div
+				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
+				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
+			>
+				<AgGridReact
+					ref={gridRef}
+					columnDefs={columns.map((col) => {
+						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
+						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
+						return { ...col, cellRenderer: DefaultCellRenderer };
+					})}
+					defaultColDef={defaultColDef}
+					rowData={rowData}
+					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ClientSideRowModelModule]}
+					rowHeight={40}
+					headerHeight={40}
+					domLayout="normal"
+					sideBar={sideBar}
+					suppressMovableColumns
+					noRowsOverlayComponent={() => <span>Record not found.</span>}
+				/>
+			</div>
+			{/* Delete warning dialog using shadcn Dialog */}
+			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Invoice</DialogTitle>
+					</DialogHeader>
+					<div className="mb-6">Are you sure you want to delete this invoice? This action cannot be undone.</div>
+					<DialogFooter className="flex justify-end gap-2">
+						<Button variant="outline" onClick={handleDeleteCancel}>
+							Cancel
+						</Button>
+						<Button variant="destructive" onClick={handleDeleteConfirm}>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</div>
+	);
