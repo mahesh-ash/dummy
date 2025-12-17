@@ -1,309 +1,73 @@
-<Form {...form}>
-						<form className="grid grid-cols-3 gap-6 p-4 min-h-[20px]">
-							{/* Row 1 */}
-							<div>
-								<FormField
-									control={form.control}
-									name="account_id"
-									rules={{ required: 'Account Name is required' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Account Name<span className="text-red-500">*</span>
-											</FormLabel>
-											<div style={{ position: 'relative' }}>
-												<AsyncTypeahead
-													id="account_id"
-													labelKey="account_name"
-													options={accountOptions}
-													isLoading={isLoading}
-													minLength={1}
-													placeholder="Search Account Name"
-													onSearch={handleAccountSearch}
-													onChange={handleAccountChange}
-													selected={selectedAccount}
-													inputProps={{
-														className: 'h-11 w-full border rounded-md px-3 py-2 text-base ',
-														required: true,
-													}}
-													menuStyle={{
-														zIndex: 1050,
-														width: '100%',
-														position: 'absolute',
-													}}
-													renderMenu={renderAccountMenu}
-												/>
-											</div>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
+																																		const dynamicExtraFields = [
+  {
+    name: "extra_field_1",
+    label: "Reference Name",
+    placeholder: "Enter reference name",
+    type: "string",
+    mandatory: true,
+  },
+  {
+    name: "extra_field_2",
+    label: "Description",
+    placeholder: "Enter description",
+    type: "string",
+    mandatory: false,
+  },
+  {
+    name: "extra_field_3",
+    label: "Discount %",
+    placeholder: "Enter discount",
+    type: "number",
+    mandatory: true,
+  },
+  {
+    name: "extra_field_4",
+    label: "Tax Amount",
+    placeholder: "Enter tax amount",
+    type: "number",
+    mandatory: false,
+  },
+];const getValidationRules = (field: any) => {
+  if (!field.mandatory) return {};
 
-							<div>
-								<FormField
-									control={form.control}
-									name="comm_date"
-									rules={{ required: 'Invoice Date is required' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Invoice Date<span className="text-red-500">*</span>
-											</FormLabel>
-											<Popover open={open} onOpenChange={setOpen}>
-												<PopoverTrigger asChild>
-													<Button
-														variant="outline"
-														className={'w-full justify-start text-left font-normal h-11' + (field.value ? '' : ' text-muted-foreground')}
-													>
-														<CalendarIcon className="mr-2 h-4 w-4" />
-														{field.value ? field.value : <span>Pick a date</span>}
-													</Button>
-												</PopoverTrigger>
-												<PopoverContent className="w-auto p-0">
-													<Calendar
-														mode="single"
-														selected={field.value ? parseISO(field.value) : undefined}
-														onSelect={(date) => {
-															if (!date) {
-																field.onChange('');
-																if (typeof setDate === 'function') setDate(undefined);
-																return;
-															}
-															const formattedDate = format(date, 'yyyy-MM-dd');
+  return {
+    required: `${field.label} is required`,
+  };
+};{/* 🔹 Dynamic Extra Fields (4 only) */}
+<div className="col-span-3 grid grid-cols-2 gap-6">
+  {dynamicExtraFields.map((item) => (
+    <FormField
+      key={item.name}
+      control={form.control}
+      name={item.name}
+      rules={getValidationRules(item)}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel className="font-medium">
+            {item.label}
+            {item.mandatory && <span className="text-red-500">*</span>}
+          </FormLabel>
 
-															field.onChange(formattedDate);
+          <Input
+            {...field}
+            type={item.type === "number" ? "number" : "text"}
+            placeholder={item.placeholder}
+            className="h-11"
+            onChange={(e) =>
+              item.type === "number"
+                ? field.onChange(
+                    e.target.value === "" ? undefined : Number(e.target.value)
+                  )
+                : field.onChange(e.target.value)
+            }
+          />
 
-															if (typeof setDate === 'function') {
-																setDate(date);
-															}
-															 setOpen(false);
-														}}
-														initialFocus
-													/>
-												</PopoverContent>
-											</Popover>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-
-							<div>
-								<FormField
-									control={form.control}
-									name="comm_no"
-									rules={{ required: 'Invoice Number is required' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Invoice Number<span className="text-red-500">*</span>
-											</FormLabel>
-											<Input
-												{...field}
-												type="text"
-												maxLength={256}
-												className="focus:outline-none focus:ring-2 focus:ring-primary h-11"
-												placeholder="Enter invoice number"
-												required
-											/>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-
-							<div>
-								<FormField
-									control={form.control}
-									name="comm_status"
-									rules={{ required: 'Invoice Status is required' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Invoice Status<span className="text-red-500">*</span>
-											</FormLabel>
-											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
-												<SelectTrigger className="w-full justify-between h-11">
-													<SelectValue placeholder="Select status" />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="Open">Open</SelectItem>
-													<SelectItem value="Paid">Paid</SelectItem>
-												</SelectContent>
-											</Select>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-
-							<div>
-								<FormField
-									control={form.control}
-									name="commission"
-									rules={{ required: 'Commission is required' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Commission<span className="text-red-500">*</span>
-											</FormLabel>
-											<Input
-												{...field}
-												type="number"
-												step="any"
-												className="w-full focus:outline-none focus:ring-2 focus:ring-primary h-11"
-												placeholder="Enter commission amount"
-												required
-											/>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-
-							<div>
-								<FormField
-									control={form.control}
-									name="product"
-									rules={{ required: 'Product is required' }}
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Product<span className="text-red-500">*</span>
-											</FormLabel>
-											<Select value={field.value} onValueChange={field.onChange} disabled={field.disabled} required>
-												<SelectTrigger className="w-full justify-between h-11">
-													<SelectValue placeholder="Select status" />
-												</SelectTrigger>
-												<SelectContent>
-													<SelectItem value="syndicate">Syndicate</SelectItem>
-													<SelectItem value="invoice">Invoice</SelectItem>
-												</SelectContent>
-											</Select>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-							{watchedStatus === 'syndicate' && (
-								<div className="col-span-3 grid grid-cols-2 gap-6 mt-6">
-									<div className="col-span-2 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-4 gap-4 mb-4">
-										<FormField
-											control={form.control}
-											name="ticker"
-											rules={{ required: 'ticker is required' }}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="font-medium">
-														Ticker<span className="text-red-500">*</span>
-													</FormLabel>
-													<Input {...field} type="text" maxLength={32} className="h-10" placeholder="Ticker" />
-													<FormMessage />
-												</FormItem>
-											)}
-										/>
-										<FormField
-											control={form.control}
-											name="quantity"
-											rules={{ required: 'quantity is required' }}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="font-medium">
-														Quantity<span className="text-red-500">*</span>
-													</FormLabel>
-													<Input {...field} type="number" min={0} className="h-10" placeholder="Quantity" />
-													<FormMessage />
-												</FormItem>
-											)}
-										/>
-										<FormField
-											control={form.control}
-											name="price"
-											rules={{ required: 'price is required' }}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="font-medium">
-														Price<span className="text-red-500">*</span>
-													</FormLabel>
-													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Price" />
-													<FormMessage />
-												</FormItem>
-											)}
-										/>
-										<FormField
-											control={form.control}
-											name="net_amount"
-											rules={{ required: 'netAmount is required' }}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="font-medium">
-														Net Amount<span className="text-red-500">*</span>
-													</FormLabel>
-													<Input {...field} type="number" min={0} step="any" className="h-10" placeholder="Net Amount" />
-													<FormMessage />
-												</FormItem>
-											)}
-										/>
-									</div>
-								</div>
-							)}
-
-							<div className="col-span-3 grid grid-cols-2 gap-6">
-								<FormField
-									control={form.control}
-									name="invoiceFile"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel className="font-medium">
-												Attach Invoice<span className="text-red-500">*</span>
-											</FormLabel>
-											<div
-												className="border-2 border-dashed dark:border-gray-800 border-gray-300 rounded-lg p-4 dark:bg-inherit flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition h-[115px] cursor-pointer relative"
-												onClick={() => document.getElementById('invoiceFileInput')?.click()}
-											>
-												<input
-													type="file"
-													id="invoiceFileInput"
-													accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx"
-													className="hidden"
-													onChange={(e) => field.onChange(e.target.files && e.target.files[0])}
-												/>
-												{field.value ? (
-													<div className="flex flex-col items-center w-full">
-														<span className="text-sm text-gray-700 truncate max-w-xs">{field.value.name}</span>
-														<Button
-															type="button"
-															variant="outline"
-															size="sm"
-															className="mt-2"
-															onClick={(e) => {
-																e.stopPropagation();
-																field.onChange(null);
-															}}
-														>
-															Remove
-														</Button>
-													</div>
-												) : (
-													<span className="text-gray-400 text-sm">Drag & drop or click to upload (PDF, Word, PPT, XLS)</span>
-												)}
-											</div>
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-
-								<FormField
-									control={form.control}
-									name="comments"
-									render={({ field }) => (
-										<FormItem>
-											<FormLabel>Notes</FormLabel>
-											<textarea id="notes" rows={4} className="border rounded w-full p-2" placeholder="Enter notes here..." {...field} />
-											<FormMessage />
-										</FormItem>
-									)}
-								/>
-							</div>
-						</form>
+          {/* prevent UI jerk */}
+          <div className="min-h-[20px]">
+            <FormMessage />
+          </div>
+        </FormItem>
+      )}
+    />
+  ))}
+</div>
