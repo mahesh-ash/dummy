@@ -1,10 +1,14 @@
-																																		const dynamicExtraFields = [
+const dynamicExtraFields = [
   {
     name: "extra_field_1",
     label: "Reference Name",
     placeholder: "Enter reference name",
     type: "string",
     mandatory: true,
+    pattern: /^[A-Za-z ]+$/,
+    patternMessage: "Only alphabets allowed",
+    readOnly: false,
+    defaultValue: "ABC Corp",
   },
   {
     name: "extra_field_2",
@@ -12,6 +16,8 @@
     placeholder: "Enter description",
     type: "string",
     mandatory: false,
+    readOnly: true,
+    defaultValue: "Auto-generated description",
   },
   {
     name: "extra_field_3",
@@ -19,6 +25,10 @@
     placeholder: "Enter discount",
     type: "number",
     mandatory: true,
+    pattern: /^\d+(\.\d{1,2})?$/,
+    patternMessage: "Max 2 decimal places allowed",
+    readOnly: false,
+    defaultValue: 10,
   },
   {
     name: "extra_field_4",
@@ -26,15 +36,33 @@
     placeholder: "Enter tax amount",
     type: "number",
     mandatory: false,
+    readOnly: true,
+    defaultValue: 5,
   },
-];const getValidationRules = (field: any) => {
-  if (!field.mandatory) return {};
+];const dynamicDefaultValues = dynamicExtraFields.reduce((acc, field) => {
+  acc[field.name] = field.defaultValue ?? (field.type === "number" ? undefined : "");
+  return acc;
+}, {} as Record<string, any>);const form = useForm({
+  defaultValues: {
+    ...existingDefaultValues, // your current form values
+    ...dynamicDefaultValues,
+  },
+});const getValidationRules = (field: any) => {
+  const rules: any = {};
 
-  return {
-    required: `${field.label} is required`,
-  };
-};{/* 🔹 Dynamic Extra Fields (4 only) */}
-<div className="col-span-3 grid grid-cols-2 gap-6">
+  if (field.mandatory && !field.readOnly) {
+    rules.required = `${field.label} is required`;
+  }
+
+  if (field.pattern) {
+    rules.pattern = {
+      value: field.pattern,
+      message: field.patternMessage || "Invalid format",
+    };
+  }
+
+  return rules;
+};<div className="col-span-3 grid grid-cols-2 gap-6">
   {dynamicExtraFields.map((item) => (
     <FormField
       key={item.name}
@@ -45,16 +73,21 @@
         <FormItem>
           <FormLabel className="font-medium">
             {item.label}
-            {item.mandatory && <span className="text-red-500">*</span>}
+            {item.mandatory && !item.readOnly && (
+              <span className="text-red-500">*</span>
+            )}
           </FormLabel>
 
           <Input
             {...field}
             type={item.type === "number" ? "number" : "text"}
             placeholder={item.placeholder}
-            className="h-11"
+            className={`h-11 ${item.readOnly ? "bg-gray-100 cursor-not-allowed" : ""}`}
+            readOnly={item.readOnly}
             onChange={(e) =>
-              item.type === "number"
+              item.readOnly
+                ? undefined
+                : item.type === "number"
                 ? field.onChange(
                     e.target.value === "" ? undefined : Number(e.target.value)
                   )
