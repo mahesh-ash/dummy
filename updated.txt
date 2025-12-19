@@ -1,50 +1,984 @@
-return (
-	<div className="w-full">
-		<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-			<SheetContent className="sm:max-w-6xl flex flex-col">
-				<SheetHeader>
-					<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
-				</SheetHeader>
+import React, { useRef, useState, useMemo, useEffect, useCallback } from 'react';
+import { AsyncTypeahead } from 'react-bootstrap-typeahead';
+import { AgGridReact } from '@ag-grid-community/react';
+import { ColumnsToolPanelModule } from '@ag-grid-enterprise/column-tool-panel';
+import { SetFilterModule } from '@ag-grid-enterprise/set-filter';
+import { MenuModule } from '@ag-grid-enterprise/menu';
+import { ClientSideRowModelModule } from '@ag-grid-community/client-side-row-model';
+import { Eye, Pencil, Trash2, Plus, Download, CircleDot, CheckCircle2, Clock, RefreshCcw, RefreshCcwIcon } from 'lucide-react';
+import { Menu, MenuItem } from 'react-bootstrap-typeahead';
+import { ChevronDownCircle } from 'lucide-react';
+import httpClient from '@/common/helpers/httpClient';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { CalendarIcon } from 'lucide-react';
+import { Form, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { useForm } from 'react-hook-form';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { INVOICE_IMAGE_VARIABLE, IS_DARK } from '@/store/signals';
+import { useSignals } from '@preact/signals-react/runtime';
+import { DateRangePicker } from '../common/DateRangePicker';
+import { useMutation, useQuery } from 'react-query';
+import { getAllCommission, getConstant, saveinvoicemutations } from '@/utils/service';
+import { createFormData } from '@/utils/common';
+import z from 'zod';
+import { ServerSideRowModelModule } from '@ag-grid-enterprise/server-side-row-model';
+import { format, parseISO } from 'date-fns';
 
-				<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
-					<DialogContent>
-						<DialogHeader>
-							<DialogTitle>Unsaved Changes</DialogTitle>
-						</DialogHeader>
-						<div className="mb-6">You have unsaved changes. Are you sure you want to close?</div>
-						<DialogFooter className="flex justify-end gap-2">
-							<Button variant="outline" onClick={handleDialogCancel}>
-								Cancel
-							</Button>
-							<Button variant="destructive" onClick={handleDialogConfirm}>
-								Discard & Close
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
+const defaultColDef = {
+	sortable: true,
+	editable: false,
+	flex: 1,
+	filter: 'agTextColumnFilter', // Enable text filter for all columns
+	floatingFilter: true,
+	cellStyle: {
+		whiteSpace: 'nowrap',
+		overflow: 'hidden',
+		textOverflow: 'ellipsis',
+	},
+};
 
-				<Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
-					<DialogContent>
-						<DialogHeader>
-							<DialogTitle>{dialogConfig.title}</DialogTitle>
-						</DialogHeader>
-						<div className="mb-6">{dialogConfig.message}</div>
-						<DialogFooter className="flex justify-end gap-2">
-							<Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
-								Cancel
-							</Button>
-							<Button
-								variant="destructive"
+const dynamicRowFields = [
+  {
+    name:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.name|| "dyn_code",
+    label: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.label||"Code",
+    placeholder: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.placeholder||"Enter code",
+    type: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.type||"string",
+    mandatory: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.mandatory,
+    pattern: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.pattern||/^[A-Z0-9]+$/,
+    patternMessage:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.message|| "Only uppercase letters & numbers allowed",
+    readOnly: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.readOnly,
+    disabled: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.disabled,
+    defaultValue: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.disabled||"",
+    className:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[0]?.className|| "",
+  },
+  {
+    name: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.name||"dyn_description",
+    label: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.label||"Description",
+    placeholder:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.placeholder|| "Enter description",
+    type:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.type|| "string",
+    mandatory:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.mandatory,
+    readOnly: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.disabled,
+    disabled:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.disabled ,
+    defaultValue:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.defaultValue|| "",
+    className:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[1]?.className|| "",
+  },
+  {
+    name: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.name||"dyn_quantity",
+    label: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.label||"Quantity",
+    placeholder:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.placeholder|| "Qty",
+    type: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.type||"number",
+    mandatory:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.mandatory,
+    pattern:INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.pattern|| /^\d+$/,
+    patternMessage: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.patternMessage||"Only numbers allowed",
+    readOnly: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.readOnly,
+    disabled: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.disabled,
+    defaultValue: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.defaultValue||0,
+    className: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[2]?.className||"",
+  },
+  {
+    name: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.name||"dyn_amount",
+    label: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.label||"Amount",
+    placeholder: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.placeholder||"Amount",
+    type: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.type||"number",
+    mandatory: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.mandatory,
+    readOnly: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.readOnly,
+    disabled: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.disabled,
+    defaultValue: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.defaultValue||100,
+    className: INVOICE_IMAGE_VARIABLE.value.formConfig?.formFields?.[3]?.className,
+  },
+];
+
+
+
+
+const dynamicRowDefaults = dynamicRowFields.reduce((acc, field) => {
+	acc[field.name] = field.defaultValue ?? (field.type === 'number' ? undefined : '');
+	return acc;
+}, {});
+
+
+
+const getDynamicRules = (field) => {
+	const rules = {};
+
+	if (field.mandatory && !field.readOnly && !field.disabled) {
+		rules.required = `${field.label} is required`;
+	}
+
+	if (field.pattern && !field.disabled) {
+		rules.pattern = {
+			value: field.pattern,
+			message: field.patternMessage || 'Invalid format',
+		};
+	}
+
+	return rules;
+};
+
+
+
+
+const columns = [
+	{
+		headerName: 'Account Name',
+		field: 'account_name',
+		// filter: 'agTextColumnFilter',
+		filterParams: {
+			filterPlaceholder: (params) => {
+				return 'Search Account Name';
+			},
+		},
+		lockVisible: true,
+		minWidth: 150,
+	},
+	{ headerName: 'Account ID', field: 'acc_id', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
+	{
+		headerName: 'Invoice Date',
+		field: 'invoice_date',
+		headerClass: 'justify-center',
+		filter: false,
+		cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis',
+	}, // Disable filter for date column
+	{ headerName: 'Commission', field: 'commission', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
+	{ headerName: 'Status', field: 'invoice_status', cellRenderer: 'StatusCellRenderer', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
+	// { headerName: 'Invoice', field: 'invoice', cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis' },
+	{ headerName: 'Product', field: 'product' },
+	{ headerName: 'Quantity', field: 'quantity' },
+	{ headerName: 'Payout', field: 'payout' },
+	{ headerName: 'Comments', field: 'comments' },
+	{ headerName: 'Net Amount', field: 'net_amount' },
+	{
+		headerName: 'Action',
+		field: 'action',
+		filter: false,
+		sortable: false,
+		editable: false,
+		menuTabs: [], // disables column menu
+		cellRenderer: 'ActionCellRenderer',
+		pinned: 'right',
+		minWidth: 120,
+		maxWidth: 140,
+		filter: false,
+		sortable: false,
+		lockVisible: true,
+		suppressHeaderMenuButton: true,
+		cellStyle: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' },
+	},
+];
+
+function DefaultCellRenderer(props) {
+	const col = props.colDef;
+	// Custom Invoice column renderer with download icon on hover
+	if (col.field === 'invoice') {
+		return (
+			<div className={col.className + ' relative flex items-center'} style={col.cellStyle} title={props.value}>
+				<span>{props.value}</span>
+				<button
+					type="button"
+					className="ml-2 text-blue-500 hover:text-blue-700 transition-colors"
+					style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+					title="Download Invoice"
+					onClick={() => {
+						toast.success('Download Completed');
+						/* TODO: implement download logic if needed */
+					}}
+				>
+					<Download size={18} />
+				</button>
+			</div>
+		);
+	}
+	return (
+		<div className={col.className} style={col.cellStyle} title={props.value}>
+			{props.value}
+		</div>
+	);
+}
+
+function StatusCellRenderer(props) {
+	const status = props.value.toLowerCase();
+	const isDark = IS_DARK.value;
+	let color = isDark ? 'bg-gray-800 text-gray-200' : 'bg-gray-200 text-gray-800';
+	let icon = <CircleDot size={16} className={isDark ? 'mr-1 text-gray-400' : 'mr-1'} />;
+	if (status === 'open') {
+		color = isDark ? 'bg-yellow-900 text-yellow-200' : 'bg-yellow-100 text-yellow-800';
+		icon = <Clock size={16} className={isDark ? 'mr-1 text-yellow-300' : 'mr-1 text-yellow-600'} />;
+	}
+	if (status === 'paid') {
+		color = isDark ? 'bg-green-900 text-green-200' : 'bg-green-100 text-green-800';
+		icon = <CheckCircle2 size={16} className={isDark ? 'mr-1 text-green-300' : 'mr-1 text-green-600'} />;
+	}
+	if (status === 'pending') {
+		color = isDark ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800';
+		icon = <CircleDot size={16} className={isDark ? 'mr-1 text-blue-300' : 'mr-1 text-blue-600'} />;
+	}
+	if (status === 'active') {
+		color = isDark ? 'bg-cyan-900 text-cyan-200' : 'bg-cyan-100 text-cyan-800';
+		icon = <CheckCircle2 size={16} className={isDark ? 'mr-1 text-cyan-300' : 'mr-1 text-cyan-600'} />;
+	}
+	return (
+		<span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold gap-1 ${color}`} style={{ minWidth: 80 }}>
+			{icon}
+			{props.value}
+		</span>
+	);
+}
+
+export default function ManageInvoiceTable(props) {
+	// Typeahead for Account Name
+	useSignals();
+	const saveinvoicemutation = useMutation({
+		mutationFn: saveinvoicemutations,
+	});
+
+	// Loading states
+	const [isLoadingData, setIsLoadingData] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
+
+	// Typeahead for Account Name
+	const [accountOptions, setAccountOptions] = useState([]);
+	const [accountQuery, setAccountQuery] = useState('');
+	const [rangeStartDate, setRangeStartDate] = useState(new Date());
+	const [rangeEndDate, setRangeEndDate] = useState('');
+	const [selectedAccount, setSelectedAccount] = useState([]);
+
+	// Grid and sheet states
+	const gridRef = useRef();
+	const [rowData, setRowData] = useState([]);
+	const { sheetOpen, setSheetOpen } = props;
+	const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+	const [editingRow, setEditingRow] = useState(null);
+	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+	const [rowToDelete, setRowToDelete] = useState(null);
+
+	const [open, setOpen] = useState(false);
+
+	const [dialogConfig, setDialogConfig] = useState({
+		isOpen: false,
+		title: '',
+		message: '',
+		onConfirm: () => {},
+	});
+
+	// Coverage states
+
+	const [columnDefs, setColumnDefs] = useState([]);
+	const [showDropdown, setShowDropdown] = useState(false);
+	const [selectedCoverage, setSelectedCoverage] = useState(null);
+	const [percentage, setPercentage] = useState('');
+	const [coverageRows, setCoverageRows] = useState([]);
+	const [coverageError, setCoverageError] = useState('');
+	const [percentageInputError, setPercentageInputError] = useState('');
+	const [selectedEmployee, setSelectedEmployee] = useState([]);
+
+	useEffect(() => {
+		if (percentageInputError != '') {
+			toast.error(percentageInputError);
+		}
+	}, [percentageInputError]);
+
+	const [employeeQuery, setEmployeeQuery] = useState('');
+	const [employeeOptions, setEmployeeOptions] = useState([]);
+	const [isEmployeeLoading, setIsEmployeeLoading] = useState(false);
+
+	const [isLoading, setIsLoading] = useState(false);
+
+	async function handleEmployeeSearch(query) {
+		setEmployeeQuery(query);
+		setIsEmployeeLoading(true);
+		const employeeId = selectedAccount[0].account_id;
+
+		if (!employeeId) {
+			console.warn('No employee selected yet.');
+			setIsEmployeeLoading(false);
+			return;
+		}
+
+		try {
+			httpClient.get(`Search/GetSearchText?searchText=${employeeId}-${encodeURIComponent(query)}&type=empSearchByAccIDTxtQuery`).then((data) => {
+				setEmployeeOptions(data.data.data);
+				setIsEmployeeLoading(false);
+			});
+		} catch (error) {
+			console.error('Error searching Employees:', error);
+			setIsEmployeeLoading(false);
+		}
+	}
+
+	useEffect(() => {
+		if (saveinvoicemutation.data && saveinvoicemutation.data.status === 1) {
+			setSheetOpen(false);
+			form.reset(defaultValues);
+		} else if (saveinvoicemutation.data && saveinvoicemutation.data.status === 0) {
+			setSheetOpen(false);
+			setDisableSaveBtn(false);
+			form.reset(defaultValues);
+		}
+	}, [saveinvoicemutation.isSuccess]);
+
+	async function handleAccountSearch(query) {
+		setAccountQuery(query);
+		setIsLoading(true);
+		try {
+			httpClient.get(`Search/GetSearchText?searchText=${encodeURIComponent(query)}&type=accountQuery`).then((data) => {
+				setAccountOptions(data.data.data);
+				setIsLoading(false);
+			});
+		} catch (error) {
+			console.error('Error searching accounts:', error);
+			setIsLoading(false);
+		}
+	}
+
+	function dateRangeHandler(fromDate, toDate) {}
+
+	function dateRangeCancelHandler() {}
+
+	const handleEmployeeChange = (selected) => {
+		if (selected.length > 0) {
+			const employeeData = selected[0];
+
+			// Check if employee email exists in the Ag-Grid rows
+			const isAlreadyAdded = coverageRows.some((row) => row.email === employeeData.email);
+
+			if (isAlreadyAdded) {
+				// Show toast and reset selection immediately
+				toast.warning(`Employee is already in the coverage list.`);
+				setSelectedEmployee([]); // Resets the Typeahead
+				setPercentage(''); // Clears percentage
+				return;
+			}
+
+			// If not a duplicate, proceed normally
+			setSelectedEmployee(selected);
+		} else {
+			setSelectedEmployee([]);
+		}
+	};
+
+	function createDataSource() {
+		return {
+			getRows: async (requestParams) => {
+				const handleApiResponse = (apiPromise) => {
+					return apiPromise
+						.then((res) => {
+							console.log(res);
+							// Validate response structure
+							if (!res || typeof res !== 'object') {
+								throw new Error('Invalid response format');
+							}
+
+							const rowData = Array.isArray(res.data) ? res.data : [];
+							const totalCount = rowData.length;
+							requestParams.success({
+								rowData: rowData,
+								rowCount: totalCount,
+							});
+
+							// Handle overlay after success callback
+							setTimeout(() => {
+								if (gridRef.current?.api) {
+									if (rowData.length === 0) {
+										gridRef.current.api.showNoRowsOverlay();
+									} else {
+										gridRef.current.api.hideOverlay();
+									}
+								}
+							}, 100);
+						})
+						.catch((error) => {
+							console.error('API Error:', error);
+							// Check if still on same tab before showing error
+							if (gridRef.current?.api) {
+								gridRef.current.api.showNoRowsOverlay();
+							}
+							requestParams.success({
+								rowData: [],
+								rowCount: 0,
+							});
+						})
+						.finally(() => {});
+				};
+				const formData = createFormData({ start: 0, length: 20 });
+				handleApiResponse(getAllCommission(formData));
+			},
+		};
+	}
+
+	useEffect(() => {
+		setColumnDefs(columns);
+	}, []);
+
+	useEffect(() => {
+		setTimeout(() => {
+			const datasource = createDataSource(); // Clear search text for tab/dropdown changes
+			gridRef.current?.api?.setGridOption('serverSideDatasource', datasource);
+		}, 1000);
+	}, [columnDefs]);
+
+	async function handleAccountChange(selected) {
+		if (coverageRows.length > 0) {
+			setDialogConfig({
+				isOpen: true,
+				title: 'Confirm Account Change',
+				message: 'Changing the Account Name will remove currently listed employees. Proceed?',
+				onConfirm: () => executeAccountChange(selected),
+			});
+			return;
+		}
+		await executeAccountChange(selected);
+	}
+	async function executeAccountChange(selected) {
+		setSelectedAccount(selected);
+
+		if (selected.length > 0) {
+			const accountId = selected[0].account_id;
+        form.setValue('acc_id', accountId, { shouldValidate: true });
+
+			try {
+				const response = await httpClient.get(`Search/GetSearchText?searchText=${accountId}&type=employeeByAccIDQuery`);
+
+				if (response.data?.data?.length > 0) {
+					const employees = response.data.data;
+					setCoverageRows(employees);
+					const splitsArray = employees.map((emp) => ({
+						emp_id: emp.emp_id.toString(),
+						split: '',
+					}));
+					form.setValue('emp_splits', JSON.stringify(splitsArray), { shouldValidate: true });
+				} else {
+					setCoverageRows([]);
+					form.setValue('emp_splits', JSON.stringify([{ emp_id: '', split: '' }]), { shouldValidate: true });
+				}
+			} catch (error) {
+				setCoverageRows([]);
+				form.setValue('emp_splits', JSON.stringify([{ emp_id: '', split: '' }]));
+			}
+		} else {
+			// This runs when the user clears the account name
+        form.setValue('acc_id', '');
+			setCoverageRows([]);
+			form.setValue('emp_splits', JSON.stringify([{ emp_id: '', split: '' }]));
+        toast.info("Account removed and employees cleared.");
+		}
+	}
+
+
+
+	function renderAccountMenu(results, menuProps) {
+		if (accountQuery.length === 0 && accountOptions.length === 0) {
+			return null;
+		}
+
+		// DESTRICTURING: Remove the props React is complaining about
+		const { paginationText, newSelectionPrefix, renderMenuItemChildren, ...validMenuProps } = menuProps;
+
+		const items = results.map((result, index) => {
+			if (result.paginationOption) {
+				return (
+					<MenuItem className="default-menu-item rounded !p-0 justify-center gap-1 text-xm" href="javascript:void();" key={index} option={result}>
+						<div>Show More</div>
+						<ChevronDownCircle className="size-4 stroke-[#aaa]" />
+					</MenuItem>
+				);
+			} else {
+				return (
+					<MenuItem className="default-menu-item" href="javascript:void();" key={index} option={result}>
+						<div>{result.account_name}</div>
+					</MenuItem>
+				);
+			}
+		});
+
+		return (
+			// Use validMenuProps instead of the original menuProps
+			<Menu className="default-dropdown" {...validMenuProps}>
+				{items}
+			</Menu>
+		);
+	}
+
+
+	function renderEmployeeMenu(results, menuProps) {
+		if (employeeQuery.length === 0 && employeeOptions.length === 0) {
+			return null;
+		}
+
+		const { newSelectionPrefix, ...validMenuProps } = menuProps;
+		const items = results.map((result, index) => {
+			if (result.paginationOption) {
+				return (
+					<MenuItem className="default-menu-item rounded !p-0 justify-center gap-1 text-xm" href="javascript:void();" key={index} option={result}>
+						<div>Show More</div>
+						<ChevronDownCircle className="size-4 stroke-[#aaa]" />
+					</MenuItem>
+				);
+			} else {
+				return (
+					<MenuItem className="default-menu-item" href="javascript:void();" key={index} option={result}>
+						<div>{result.display_name}</div>
+					</MenuItem>
+				);
+			}
+		});
+		return (
+			<Menu className="default-dropdown" {...validMenuProps}>
+				{items}
+			</Menu>
+		);
+	}
+
+	const coverageColumns = [
+		{ headerName: 'Name', field: 'display_name', flex: 1 },
+		{ headerName: 'Role', field: 'corp_title', flex: 1 },
+		{ headerName: 'Email', field: 'email', flex: 1 },
+		{
+			headerName: 'Percentage',
+			field: 'percentage',
+			flex: 1,
+			editable: true,
+			cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis',
+			cellEditor: 'agNumberCellEditor',
+			cellEditorParams: {
+				min: 0,
+				max: 100,
+			},
+		},
+		{
+			headerName: 'Action',
+			field: 'action',
+			flex: 1,
+			cellClass: 'justify-center whitespace-nowrap overflow-hidden text-ellipsis',
+			minWidth: 100,
+			filter: false,
+			sortable: false,
+			headerClass: 'justify-center-custom',
+			lockVisible: true,
+			suppressHeaderMenuButton: true,
+			maxWidth: 120,
+			cellRenderer: function CoverageActionCellRenderer(params) {
+				return (
+					<div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+						<span style={{ cursor: 'pointer', color: '#999' }} title="Delete" onClick={() => params.context.onDeleteCoverage(params.data)}>
+							<Trash2 size={18} strokeWidth={1.5} />
+						</span>
+					</div>
+				);
+			},
+		},
+	];
+
+	function handleEditCoverage(row) {
+		setSelectedCoverage({ name: row.name, role: row.role, coverageStart: row.coverageStart, coverageEnd: row.coverageEnd });
+		setPercentage(row.percentage.toString());
+		setCoverageRows((prev) => prev.filter((r) => r.name !== row.name));
+	}
+
+	function handleDeleteCoverage(row) {
+		setCoverageRows((prev) => prev.filter((r) => r.emp_id !== row.emp_id));
+	}
+
+	function handleAddCoverage() {
+		// Check if an employee is selected (Typeahead returns an array)
+		if (!selectedEmployee || selectedEmployee.length === 0) {
+			setCoverageError('Please select an employee.');
+			return;
+		}
+
+		//  Get the specific employee object from the array
+		const employeeData = selectedEmployee[0];
+		if (percentage === '' || isNaN(Number(percentage))) {
+			setCoverageError('Please enter a valid percentage.');
+			return;
+		}
+
+		// Check for duplicates using email or display_name
+		if (coverageRows.some((row) => row.email === employeeData.email)) {
+			toast.warning('This employee is already added');
+			setSelectedEmployee([]); // Clear Typeahead
+			setPercentage('');
+			setCoverageError('');
+			return;
+		}
+		const pctValue = Number(percentage);
+
+		// Construct the new row merging API data + local percentage
+		const newRow = {
+			display_name: employeeData.display_name,
+			corp_title: employeeData.corp_title,
+			email: employeeData.email,
+			percentage: pctValue,
+		};
+
+		const updatedRows = [...coverageRows, newRow];
+		setCoverageRows(updatedRows);
+
+		//Reset UI
+		setSelectedEmployee([]);
+		setPercentage('');
+		setCoverageError('');
+	}
+
+	const EmpSplitSchema = z.object({
+		emp_id: z.string().nonempty(),
+		split: z.string().nonempty(),
+	});
+
+	
+
+	// Your existing default values for context (they match the schema structure)
+	const defaultValues = {
+		acc_id: '',
+		invoice_date: '',
+		invoice_no: '',
+		invoice_status: '',
+		commission: '',
+		product: '',
+		ticker: '',
+		quantity: '',
+		price: '',
+		payOut: true,
+		net_amount: '',
+		comments: '',
+		attach: '',        
+        att_name: '',   
+        att_size: '',   
+		emp_splits: [{ emp_id: '', split: '' }],
+	};
+
+	const form = useForm({
+		mode: 'onChange',
+		defaultValues: {
+			...defaultValues,
+			...dynamicRowDefaults,
+		},
+	});
+
+	const watchedStatus = form.watch('product');
+
+	useEffect(() => {
+		if (editingRow) {
+			form.reset({
+				accountname: editingRow.accountName || '',
+				invoiceDate: editingRow.date,
+				invoiceNumber: editingRow.invoice || '',
+				status: editingRow.status || '',
+				commission: editingRow.commission ? editingRow.commission.replace(/[^\d.]/g, '') : '',
+				includeClientsNotAssigned: false,
+				includeDeletedClients: false,
+				product: editingRow.product || '',
+				invoiceFile: editingRow.invoiceFile || null,
+				notes: editingRow.notes || '',
+				ticker: editingRow.ticker || '',
+				quantity: editingRow.quantity || '',
+				price: editingRow.price || '',
+				netAmount: editingRow.netAmount || '',
+			});
+			setSelectedAccount(editingRow.accountName ? [{ accountName: editingRow.accountName }] : []);
+			setSheetOpen(true);
+		}
+	}, [editingRow]);
+
+	function cellEditingStopped(e) {
+		if (e.colDef.field === 'percentage') {
+			let attemptedValue = e.newValue !== undefined ? Number(e.newValue) : Number(e.value);
+			if (!isNaN(attemptedValue) && attemptedValue > 100) {
+				toast.error('Percentage cannot be more than 100.');
+			}
+		}
+	}
+
+	const sideBar = useMemo(
+		() => ({
+			toolPanels: [
+				{
+					id: 'columns',
+					labelDefault: 'Columns',
+					labelKey: 'columns',
+					iconKey: 'columns',
+					toolPanel: 'agColumnsToolPanel',
+					toolPanelParams: {
+						suppressRowGroups: true,
+						suppressValues: true,
+						suppressPivotMode: true,
+						suppressColumnFilter: true,
+						suppressColumnSelectAll: true,
+						suppressColumnExpandAll: true,
+					},
+				},
+			],
+			defaultToolPanel: '',
+		}),
+		[]
+	);
+
+	// ActionCellRenderer for ag-Grid Action column
+	function ActionCellRenderer(params) {
+		const row = params.data;
+		return (
+			<TooltipProvider>
+				<div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button className="text-gray-400" style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setEditingRow(row)}>
+								<Pencil size={18} />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>Edit</TooltipContent>
+					</Tooltip>
+					<span style={{ color: '#d1d5db', fontWeight: 'bold', fontSize: '18px', userSelect: 'none' }}>|</span>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<button
+								className="text-gray-400"
+								style={{ background: 'none', border: 'none', cursor: 'pointer' }}
 								onClick={() => {
-									dialogConfig.onConfirm();
-									setDialogConfig((prev) => ({ ...prev, isOpen: false }));
+									setRowToDelete(row);
+									setShowDeleteDialog(true);
 								}}
 							>
-								Discard & Proceed
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
+								<Trash2 size={18} />
+							</button>
+						</TooltipTrigger>
+						<TooltipContent>Delete</TooltipContent>
+					</Tooltip>
+				</div>
+			</TooltipProvider>
+		);
+	}
+
+	const prevSheetOpenRef = useRef(sheetOpen);
+	useEffect(() => {
+		if (prevSheetOpenRef.current && !sheetOpen && form.formState.isDirty) {
+			setShowUnsavedDialog(true);
+			setSheetOpen(true);
+		}
+		prevSheetOpenRef.current = sheetOpen;
+	}, [sheetOpen, form.formState.isDirty]);
+
+	useEffect(() => {
+		if (!sheetOpen) {
+			form.reset(defaultValues);
+			setSelectedAccount([]);
+			setCoverageRows([]);
+			setEditingRow(null);
+		}
+	}, [sheetOpen]);
+
+	function handleSheetOpenChange(nextOpen) {
+		if (!nextOpen && form.formState.isDirty) {
+			setShowUnsavedDialog(true);
+			// Keep sheet open until dialog resolves
+			setSheetOpen(true);
+		} else {
+			setSheetOpen(nextOpen);
+		}
+	}
+
+	function handleDialogConfirm() {
+		setShowUnsavedDialog(false);
+		setSheetOpen(false);
+		form.reset();
+		setEditingRow(null);
+	}
+
+	function handleDialogCancel() {
+		setShowUnsavedDialog(false);
+		setSheetOpen(true);
+	}
+
+	async function handleDeleteConfirm() {
+		setShowDeleteDialog(false);
+		if (rowToDelete) {
+			try {
+				setRowData((prev) => prev.filter((row) => row !== rowToDelete));
+				setRowToDelete(null);
+				toast.success('Record deleted successfully');
+			} catch (error) {
+				console.error('Error deleting record:', error);
+				toast.error('Failed to delete record');
+			}
+		}
+	}
+
+	function handleDeleteCancel() {
+		setShowDeleteDialog(false);
+		setRowToDelete(null);
+	}
+
+	// to remove the undefined with empty values
+	const sanitizeData = (obj) => {
+		return Object.keys(obj).reduce(
+			(acc, key) => {
+				const value = obj[key];
+				// If it's a nested object (and not null), recurse; otherwise check for undefined
+				acc[key] = typeof value === 'object' && value !== null ? sanitizeData(value) : value === undefined ? '' : value;
+				return acc;
+			},
+			Array.isArray(obj) ? [] : {}
+		);
+	};
+
+	const getRowId = useCallback((params) => params.data.emp_id, []);
+	function handleFormSubmit(data) {
+		const cleanData = sanitizeData(data);
+		//  Calculate the total percentage from your table rows
+		const totalPercentage = coverageRows.reduce((sum, row) => {
+			return sum + (Number(row.percentage) || 0);
+		}, 0);
+
+		// Strict Validation: Must be exactly 100
+		if (totalPercentage !== 100) {
+			toast.error(`Total allocation must be exactly 100%. Current total: ${totalPercentage}%`);
+			return;
+		}
+
+		//  Filter out employees with 0% split before sending to API
+		const validEmployees = coverageRows.filter((row) => (Number(row.percentage) || 0) > 0);
+
+		const filteredSplits = validEmployees.map((emp) => ({
+			emp_id: emp.emp_id.toString(),
+			split: emp.percentage.toString(),
+		}));
+		// Update the 'data' object before createFormData runs
+		const updatedData = {
+			...cleanData,
+			emp_splits: JSON.stringify(filteredSplits),
+		};
+		console.log(updatedData)
+
+		//  Proceed with mutation
+		setIsSaving(true);
+		const formData = createFormData(updatedData);
+		saveinvoicemutation.mutate(formData);
+	}
+
+	const onCellValueChanged = (params) => {
+		// This ensures that when the user types a percentage,
+		// the 'coverageRows' state is updated immediately.
+		const updatedRows = [...coverageRows];
+		const index = updatedRows.findIndex((row) => row.emp_id === params.data.emp_id);
+		if (index > -1) {
+			updatedRows[index] = params.data;
+			setCoverageRows(updatedRows);
+		}
+	};
+
+	return (
+		<div className="w-full">
+			<div className="flex justify-between pb-2">
+				<DateRangePicker
+					onCancel={dateRangeCancelHandler}
+					locale="en-US"
+					initialDateFrom={rangeStartDate}
+					initialDateTo={rangeEndDate}
+					onUpdate={dateRangeHandler}
+					showCompare={false}
+				></DateRangePicker>
+				<div className="flex gap-2 items-center">
+					<span className=" font-medium mr-2">#{rowData.length} Records</span>
+					<Button title={'Refresh'} className={'h-[40px]'} variant="outline">
+						<RefreshCcwIcon></RefreshCcwIcon>
+					</Button>
+					<Button onClick={() => toast.success('Download Completed')} title={'Download'} className={'h-[40px] border-custom-border'} variant="outline">
+						<Download></Download>
+						Excel
+					</Button>
+				</div>
+			</div>
+			<div
+				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
+				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
+			>
+				<AgGridReact
+					ref={gridRef}
+					columnDefs={columnDefs.map((col) => {
+						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
+						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
+						return { ...col, cellRenderer: DefaultCellRenderer };
+					})}
+					defaultColDef={defaultColDef}
+					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ServerSideRowModelModule]}
+					rowHeight={40}
+					headerHeight={40}
+					rowModelType={'serverSide'}
+					pagination={true}
+					domLayout="normal"
+					sideBar={sideBar}
+					suppressMovableColumns
+					noRowsOverlayComponent={() => <span>Record not found.</span>}
+				/>
+			</div>
+			{/* Delete warning dialog using shadcn Dialog */}
+			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Invoice</DialogTitle>
+					</DialogHeader>
+					<div className="mb-6">Are you sure you want to delete this invoice? This action cannot be undone.</div>
+					<DialogFooter className="flex justify-end gap-2">
+						<Button variant="outline" onClick={handleDeleteCancel}>
+							Cancel
+						</Button>
+						<Button variant="destructive" onClick={handleDeleteConfirm}>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+			<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+				<SheetContent className="sm:max-w-6xl">
+					<SheetHeader>
+						<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
+					</SheetHeader>
+
+					<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Unsaved Changes</DialogTitle>
+							</DialogHeader>
+							<div className="mb-6">You have unsaved changes. Are you sure you want to close?</div>
+							<DialogFooter className="flex justify-end gap-2">
+								<Button variant="outline" onClick={handleDialogCancel}>
+									Cancel
+								</Button>
+								<Button variant="destructive" onClick={handleDialogConfirm}>
+									Discard & Close
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+
+					<Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>{dialogConfig.title}</DialogTitle>
+							</DialogHeader>
+							<div className="mb-6">{dialogConfig.message}</div>
+							<DialogFooter className="flex justify-end gap-2">
+								<Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
+									Cancel
+								</Button>
+								<Button
+									variant="destructive"
+									onClick={() => {
+										dialogConfig.onConfirm();
+										setDialogConfig((prev) => ({ ...prev, isOpen: false }));
+									}}
+								>
+									Discard & Proceed
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
 				{/* to add a scrollbar for visible the footer */}
 				<div className="flex-1 overflow-y-auto overflow-x-hidden pr-2">
 					<Form {...form}>
@@ -356,24 +1290,24 @@ return (
 												<input
 													type="file"
 													id="attach"
-													accept={`.${INVOICE_IMAGE_VARIABLE.value.fileFormat}||'.pdf`}
+													accept={`.${INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat}`||'.pdf'}
 													className="hidden"
 													onChange={async (e) => {
 														const file = e.target.files?.[0];
 														if (!file) return;
 
-														const allowedExt = INVOICE_IMAGE_VARIABLE.value.fileFormat.toLowerCase();
+														const allowedExt = INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat.toLowerCase();
 														const fileExt = file.name.split('.').pop().toLowerCase();
 														if (fileExt !== allowedExt) {
 															toast.warning(`Only ${allowedExt.toUpperCase()} files are allowed.`);
 															return;
 														}
 
-														const sizeLimitMB = parseInt(INVOICE_IMAGE_VARIABLE.value.fileSize);
+														const sizeLimitMB = parseInt(INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize||10);
 														const maxSizeInBytes = sizeLimitMB * 1024 * 1024;
 
 														if (file.size > maxSizeInBytes) {
-															toast.warning(`File size must be less than ${INVOICE_IMAGE_VARIABLE.value.fileSize}.`);
+															toast.warning(`File size must be less than ${INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize}.`);
 															return;
 														}
 
@@ -420,7 +1354,7 @@ return (
 													<div className="flex flex-col items-center text-center">
 														<span className="text-gray-400 text-xs sm:text-sm">Drag & drop or click to upload</span>
 														<span className="text-[9px] sm:text-[10px] text-gray-400 uppercase mt-1">
-															{INVOICE_IMAGE_VARIABLE.value.fileFormat} Max {INVOICE_IMAGE_VARIABLE.value.fileSize}
+															{INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat} Max {INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize}
 														</span>
 													</div>
 												)}
@@ -528,26 +1462,26 @@ return (
 									style={{ height: 220, minHeight: 120, overflow: 'auto' }}
 								>
 	
-										<AgGridReact
-											columnDefs={coverageColumns}
-											getRowId={getRowId}
-											rowData={coverageRows}
-											onCellValueChanged={onCellValueChanged}
-											rowHeight={34}
-											headerHeight={34}
-											domLayout="normal"
-											modules={[ClientSideRowModelModule]}
-											defaultColDef={defaultColDef.filter == ''}
-											suppressMovableColumns
-											context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: handleDeleteCoverage }}
-											onCellEditingStopped={cellEditingStopped}
-											noRowsOverlayComponent={() => <span>Record not found.</span>}
-											invalidEditValueMode={'block'}
-										/>
-									</div>
-								)}
-							</div>
-						)}
+									<AgGridReact
+										columnDefs={coverageColumns}
+										getRowId={getRowId}
+										rowData={coverageRows}
+										onCellValueChanged={onCellValueChanged}
+										rowHeight={34}
+										headerHeight={34}
+										domLayout="normal"
+										modules={[ClientSideRowModelModule]}
+										defaultColDef={defaultColDef.filter == ''}
+										suppressMovableColumns
+										context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: handleDeleteCoverage }}
+										onCellEditingStopped={cellEditingStopped}
+										noRowsOverlayComponent={() => <span>Record not found.</span>}
+										invalidEditValueMode={'block'}
+									/>
+								</div>
+							)}
+						</div>
+					)}
 					</div>
 					<SheetFooter className="flex flex-row justify-end border-t pt-4 mt-4">
 						<Button
@@ -564,64 +1498,6 @@ return (
 					</SheetFooter>
 				</SheetContent>
 			</Sheet>
-			<div className="flex justify-between pb-2">
-				<DateRangePicker
-					onCancel={dateRangeCancelHandler}
-					locale="en-US"
-					// initialDateFrom={rangeStartDate}
-					// initialDateTo={rangeEndDate}
-					onUpdate={dateRangeHandler}
-					showCompare={false}
-				></DateRangePicker>
-				<div className="flex gap-2 items-center">
-					<span className=" font-medium mr-2">#{rowData.length} Records</span>
-					<Button title={'Refresh'} className={'h-[40px]'} variant="outline">
-						<RefreshCcwIcon></RefreshCcwIcon>
-					</Button>
-					<Button onClick={() => toast.success('Download Completed')} title={'Download'} className={'h-[40px] border-custom-border'} variant="outline">
-						<Download></Download>
-						Excel
-					</Button>
-				</div>
-			</div>
-			<div
-				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
-				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
-			>
-				<AgGridReact
-					ref={gridRef}
-					columnDefs={columns.map((col) => {
-						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
-						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
-						return { ...col, cellRenderer: DefaultCellRenderer };
-					})}
-					defaultColDef={defaultColDef}
-					rowData={rowData}
-					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ClientSideRowModelModule]}
-					rowHeight={40}
-					headerHeight={40}
-					domLayout="normal"
-					sideBar={sideBar}
-					suppressMovableColumns
-					noRowsOverlayComponent={() => <span>Record not found.</span>}
-				/>
-			</div>
-			{/* Delete warning dialog using shadcn Dialog */}
-			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Delete Invoice</DialogTitle>
-					</DialogHeader>
-					<div className="mb-6">Are you sure you want to delete this invoice? This action cannot be undone.</div>
-					<DialogFooter className="flex justify-end gap-2">
-						<Button variant="outline" onClick={handleDeleteCancel}>
-							Cancel
-						</Button>
-						<Button variant="destructive" onClick={handleDeleteConfirm}>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
 		</div>
 	);
+}
