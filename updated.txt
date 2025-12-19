@@ -527,15 +527,101 @@ return (
 									className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} coverage-table w-full`}
 									style={{ height: 220, minHeight: 120, overflow: 'auto' }}
 								>
-									<AgGridReact
-										columnDefs={coverageColumns}
-										getRowId={getRowId}
-										rowData={coverageRows}
-										onCellValueChanged={onCellValueChanged}
-										rowHeight={34}
-										headerHeight={34}
-										domLayout="normal"
-										modules={[ClientSideRowModelModule]}
-										defaultColDef={defaultColDef.filter == ''}
-										suppressMovableColumns
-										context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: ha
+	
+										<AgGridReact
+											columnDefs={coverageColumns}
+											getRowId={getRowId}
+											rowData={coverageRows}
+											onCellValueChanged={onCellValueChanged}
+											rowHeight={34}
+											headerHeight={34}
+											domLayout="normal"
+											modules={[ClientSideRowModelModule]}
+											defaultColDef={defaultColDef.filter == ''}
+											suppressMovableColumns
+											context={{ onEditCoverage: handleEditCoverage, onDeleteCoverage: handleDeleteCoverage }}
+											onCellEditingStopped={cellEditingStopped}
+											noRowsOverlayComponent={() => <span>Record not found.</span>}
+											invalidEditValueMode={'block'}
+										/>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+					<SheetFooter className="flex flex-row justify-end border-t pt-4 mt-4">
+						<Button
+							className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
+							ref={null}
+							type="submit"
+							onClick={form.handleSubmit(handleFormSubmit)}
+						>
+							Save
+						</Button>
+						<Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
+							Cancel
+						</Button>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
+			<div className="flex justify-between pb-2">
+				<DateRangePicker
+					onCancel={dateRangeCancelHandler}
+					locale="en-US"
+					// initialDateFrom={rangeStartDate}
+					// initialDateTo={rangeEndDate}
+					onUpdate={dateRangeHandler}
+					showCompare={false}
+				></DateRangePicker>
+				<div className="flex gap-2 items-center">
+					<span className=" font-medium mr-2">#{rowData.length} Records</span>
+					<Button title={'Refresh'} className={'h-[40px]'} variant="outline">
+						<RefreshCcwIcon></RefreshCcwIcon>
+					</Button>
+					<Button onClick={() => toast.success('Download Completed')} title={'Download'} className={'h-[40px] border-custom-border'} variant="outline">
+						<Download></Download>
+						Excel
+					</Button>
+				</div>
+			</div>
+			<div
+				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
+				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
+			>
+				<AgGridReact
+					ref={gridRef}
+					columnDefs={columns.map((col) => {
+						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
+						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
+						return { ...col, cellRenderer: DefaultCellRenderer };
+					})}
+					defaultColDef={defaultColDef}
+					rowData={rowData}
+					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ClientSideRowModelModule]}
+					rowHeight={40}
+					headerHeight={40}
+					domLayout="normal"
+					sideBar={sideBar}
+					suppressMovableColumns
+					noRowsOverlayComponent={() => <span>Record not found.</span>}
+				/>
+			</div>
+			{/* Delete warning dialog using shadcn Dialog */}
+			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Invoice</DialogTitle>
+					</DialogHeader>
+					<div className="mb-6">Are you sure you want to delete this invoice? This action cannot be undone.</div>
+					<DialogFooter className="flex justify-end gap-2">
+						<Button variant="outline" onClick={handleDeleteCancel}>
+							Cancel
+						</Button>
+						<Button variant="destructive" onClick={handleDeleteConfirm}>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</div>
+	);
