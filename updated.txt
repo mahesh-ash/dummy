@@ -26,7 +26,7 @@ import { INVOICE_IMAGE_VARIABLE, IS_DARK } from '@/store/signals';
 import { useSignals } from '@preact/signals-react/runtime';
 import { DateRangePicker } from '../common/DateRangePicker';
 import { useMutation, useQuery } from 'react-query';
-import { getAllCommission, getConstant, saveinvoicemutations } from '@/utils/service';
+import { getAllCommission, getConstant, getInvoiceDetails, saveinvoicemutations } from '@/utils/service';
 import { createFormData } from '@/utils/common';
 import z from 'zod';
 import { ServerSideRowModelModule } from '@ag-grid-enterprise/server-side-row-model';
@@ -664,7 +664,50 @@ export default function ManageInvoiceTable(props) {
 
 	const watchedStatus = form.watch('product');
 
+
+const getinvoiceDetails = useMutation({
+		mutationFn: getInvoiceDetails,
+	});
+
 	useEffect(() => {
+		debugger;
+			if (getinvoiceDetails.data) {
+	// 			setCategoryDetails(getCategoryDetailsMutation.data);
+				const  editingRow= getinvoiceDetails.data;
+	// 			setParentCategoryTypeID(rowDatas.parent_category_type_id);
+	// 			searchCategoryNameMutation.mutate({ id: rowDatas.parent_id, type: rowDatas.parent_category_type_id });
+	// 			editStatusObj.cat_id = rowDatas.category_id;
+	// 			if (rowDatas.schedule_start_date) {
+	// 				setScheduleDefaultValue(rowDatas.schedule_start_date);
+	// 				setIsScheduled(true);
+	// 			}
+	// 			if (rowDatas.status == 'Inactive') {
+	// 				setIsScheduled(true);
+	// 			}
+				form.reset({
+					// cat_id: rowDatas.category_id,
+					// cat_name: rowDatas.category_name,
+					// bm_id: rowDatas.bm_id,
+					// parent_id: rowDatas.parent_id,
+					// show_api: rowDatas.show_in_api === 1 ? true : false,
+					// show_ui: rowDatas.show_in_ui === 1 ? true : false,
+					// status: rowDatas.status,
+
+					acc_id:editingRow.acc_id
+				});
+	// 			editStatusObj.cat_type_id = rowDatas.category_type_id;
+	// 			editStatusObj.old_cat_id = rowDatas.category_id;
+	// 			editStatusObj.id = rowDatas.id;
+	
+	// 			setCategoryType(+rowDatas.category_type_id);
+	// 			buttonText.value = 'Update';
+	// 			setSheetTitle('Edit');
+			}
+		}, [getinvoiceDetails.isSuccess]);
+
+	useEffect(() => {
+	debugger
+	console.log(editingRow);
 		if (editingRow) {
 			form.reset({
 				accountname: editingRow.accountName || '',
