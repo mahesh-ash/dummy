@@ -1,3 +1,18 @@
+const dynamicRowFields = formFields.map((f, index) => ({
+  name: f?.name || `dyn_field_${index}`,
+  label: f?.label || `Field ${index + 1}`,
+  placeholder: f?.placeholder || "",
+  type: f?.type || "string",
+  mandatory: f?.mandatory ?? false,
+  pattern: f?.pattern || null,
+  patternMessage: f?.message || "",
+  readOnly: f?.readOnly || false,
+  disabled: f?.disabled || false,
+  defaultValue: f?.defaultValue ?? "",
+  className: f?.className || "",
+}));
+
+
 function ActionCellRenderer(params) {
     const row = params.data;
     return (
@@ -1932,4 +1947,5 @@ export function CategoryList(props) {
 	);
 }
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 
