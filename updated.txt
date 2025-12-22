@@ -173,6 +173,61 @@ useEffect(() => {
         setIsSaving(false);
     }
 }, [sheetOpen]);
+--------------------------------------------------------------------
+// Add this state at the top with other states
+const [disableSaveBtn, setDisableSaveBtn] = useState(false);
+
+// Add this mutation hook
+const deleteinvoicemutation = useMutation({
+    mutationFn: deleteInvoiceMutation, // You'll need to import/create this service function
+});
+
+// Add this useEffect to handle delete mutation success
+useEffect(() => {
+    if (deleteinvoicemutation.data && deleteinvoicemutation.data.status === 1) {
+        setShowDeleteDialog(false);
+        setRowToDelete(null);
+        // Refresh the grid
+        const datasource = createDataSource();
+        gridRef.current?.api?.setGridOption('serverSideDatasource', datasource);
+        toast.success('Invoice deleted successfully');
+    } else if (deleteinvoicemutation.data && deleteinvoicemutation.data.status === 0) {
+        setShowDeleteDialog(false);
+        toast.error('Failed to delete invoice');
+    }
+}, [deleteinvoicemutation.isSuccess]);
+
+// Replace the handleDeleteConfirm function with this:
+async function handleDeleteConfirm() {
+    if (rowToDelete && rowToDelete.invoice_no) {
+        const formData = new FormData();
+        formData.append('invoice_no', rowToDelete.invoice_no);
+        deleteinvoicemutation.mutate(formData);
+    }
+}
+
+// Update the Delete Dialog to show proper confirmation message:
+<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+    <DialogContent onInteractOutside={(event) => event.preventDefault()}>
+        <DialogHeader>
+            <DialogTitle>Confirmation</DialogTitle>
+        </DialogHeader>
+        <div className="mb-6">
+            Are you sure you want to delete invoice <span className="font-bold">{rowToDelete?.invoice_no}</span>?
+        </div>
+        <DialogFooter className="flex justify-end gap-2">
+            <Button variant="outline" onClick={handleDeleteCancel}>
+                No
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+                Yes, Delete
+            </Button>
+        </DialogFooter>
+    </DialogContent>
+</Dialog>
+
+// Add overlay loader when deleting
+{deleteinvoicemutation.isLoading && <OverlayLoader />}
 ---------------------------------------------------------------------------------------------------------------------------------------
 import {
 	getAgGridTblSetting,
@@ -1947,5 +2002,6 @@ export function CategoryList(props) {
 	);
 }
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
 
 
