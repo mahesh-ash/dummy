@@ -1,956 +1,336 @@
-return (
-		<div className="w-full">
-			<div className="flex justify-end gap-4 items-center pb-2">
-				<TooltipProvider>
-					<Tooltip>
-						<TooltipTrigger asChild>
-							<Button onClick={handleRefresh} className={'h-[40px]'} variant="outline">
-								<RefreshCcwIcon className={`stroke-[#9ca3af]`}></RefreshCcwIcon>
-							</Button>
-						</TooltipTrigger>
-						<TooltipContent>Last Refreshed: {convertDate(lastRefresh)}</TooltipContent>
-					</Tooltip>
-				</TooltipProvider>
-				<DateRangePicker
-					onCancel={dateRangeCancelHandler}
-					locale="en-US"
-					initialDateFrom={rangeStartDate}
-					initialDateTo={rangeEndDate}
-					onUpdate={dateRangeHandler}
-					showCompare={false}
-				></DateRangePicker>
-				<Button onClick={excelDownloadHandler} className={'h-[40px]'} variant={'outline'}>
-					{!excelLoading && <LucideDownload className={`stroke-[#9ca3af]`}></LucideDownload>}
-					{excelLoading && <Spinner></Spinner>}
-					Excel
-				</Button>
-				<Button onClick={() => props?.onHistory && props.onHistory()} variant="outline" className="gap-2 h-[40px]">
-					History
-				</Button>
-				<Button onClick={() => setSheetOpen(true)} variant="default" className="gap-2 h-[40px]">
-					<Plus size={18} /> Add
-				</Button>
-			</div>
-			<div
-				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
-				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
-			>
-				<AgGridReact
-					ref={gridRef}
-					columnDefs={columnDefs.map((col) => {
-						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
-						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
-						if (col.cellRenderer === 'CurrencyCellRenderer') return { ...col, cellRenderer: CurrencyCellRenderer };
-						return { ...col, cellRenderer: DefaultCellRenderer };
-					})}
-					onSortChanged={(e) => {
-						if (e.source != 'api') {
-							saveGridSettings();
-						}
-					}}
-					onColumnVisible={(e) => {
-						if (e.source != 'api') {
-							saveGridSettings();
-						}
-					}}
-					onColumnPinned={(e) => {
-						if (e.source != 'api') {
-							saveGridSettings();
-						}
-					}}
-					defaultColDef={defaultColDef}
-					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ServerSideRowModelModule, RangeSelectionModule, ClipboardModule]}
-					rowHeight={40}
-					cellSelection
-					headerHeight={40}
-					paginationPageSize={20}
-					cacheBlockSize={20}
-					rowModelType={'serverSide'}
-					pagination={true}
-					domLayout="normal"
-					sideBar={sideBar}
-					suppressMovableColumns
-					suppressServerSideFullWidthLoadingRow={true}
-					noRowsOverlayComponent={() => <span>Record not found.</span>}
-				/>
-			</div>
-			{/* Warning dialog for Coverage Delete */}
-			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Delete Invoice</DialogTitle>
-					</DialogHeader>
-					<div>Are you sure you want to delete this invoice? This action cannot be undone.</div>
-					<DialogFooter className="flex justify-end gap-2">
-						<Button variant="outline" onClick={handleDeleteCancel}>
-							Cancel
-						</Button>
-						<Button variant="destructive" onClick={handleDeleteConfirm}>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-			<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-				<SheetContent className="sm:max-w-6xl">
-					<SheetHeader>
-						<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
-					</SheetHeader>
-					{/* Warning Dialog for Unsaved Changes in the form */}
-					<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
-						<DialogContent>
-							<DialogHeader>
-								<DialogTitle>Unsaved Changes</DialogTitle>
-							</DialogHeader>
-							<div>You have unsaved changes. Are you sure you want to close?</div>
-							<DialogFooter className="flex justify-end gap-2">
-								<Button variant="outline" onClick={handleDialogCancel}>
-									Cancel
-								</Button>
-								<Button variant="destructive" onClick={handleDialogConfirm}>
-									Discard & Close
-								</Button>
-							</DialogFooter>
-						</DialogContent>
-					</Dialog>
+// Replace your dynamicRowFields map section with this:
 
-					<Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
-						<DialogContent>
-							<DialogHeader>
-								<DialogTitle>{dialogConfig.title}</DialogTitle>
-							</DialogHeader>
-							<div>{dialogConfig.message}</div>
-							<DialogFooter className="flex justify-end gap-2">
-								<Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
-									Cancel
-								</Button>
-								<Button
-									variant="destructive"
-									onClick={() => {
-										dialogConfig.onConfirm();
-										setDialogConfig((prev) => ({ ...prev, isOpen: false }));
-									}}
-								>
-									Discard & Proceed
-								</Button>
-							</DialogFooter>
-						</DialogContent>
-					</Dialog>
-					{/* to add a scrollbar for visible the footer */}
-					<div className="flex-1 overflow-y-auto overflow-x-hidden pr-2">
-						<Form {...form}>
-							<form className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 sm:gap-x-6 p-2 sm:p-4">
-								{!getConfig('acc_id').hidden && (
-									<div>
-										<FormField
-											control={form.control}
-											name="acc_id"
-											rules={{
-												required: getConfig('acc_id').mandatory ? 'Account Name is required' : false,
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="gap-1 font-medium">
-														Account Name
-														{getConfig('acc_id').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
-													<div style={{ position: 'relative' }}>
-														<AsyncTypeahead
-															id="acc_id"
-															labelKey="account_name"
-															options={accountOptions}
-															isLoading={isLoading}
-															minLength={1}
-															placeholder="Search Account Name"
-															onSearch={handleAccountSearch}
-															onChange={handleAccountChange}
-															selected={selectedAccount}
-															// Dynamic disabled state
-															disabled={getConfig('acc_id').disabled || !!editingRow}
-															inputProps={{
-																// Use this to match the Account Name style exactly
-																className:
-																	'flex h-11 w-full rounded-md border border-input bg-background px-4 py-2 text-sm sm:text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:bg-blue-100 disabled:opacity-50',
-																required: getConfig('acc_id').mandatory,
-															}}
-															menuStyle={{
-																zIndex: 1050,
-																width: '100%',
-																position: 'absolute',
-															}}
-															renderMenu={renderAccountMenu}
-														/>
-													</div>
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
-								{!getConfig('invoice_date').hidden && (
-									<div>
-										<FormField
-											control={form.control}
-											name="invoice_date"
-											rules={{
-												required: getConfig('invoice_date').mandatory ? 'Invoice Date is required' : false,
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className={`gap-1 font-medium ${getConfig('invoice_date').disabled ? 'opacity-50' : ''}`}>
-														Invoice Date
-														{getConfig('invoice_date').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
+{dynamicRowFields.map((item) => (
 
-													<Popover open={open} onOpenChange={setOpen}>
-														<PopoverTrigger asChild>
-															<Button
-																variant="outline"
-																disabled={getConfig('invoice_date').disabled}
-																className={
-																	'w-full justify-start text-left font-normal h-11 text-sm sm:text-base ' +
-																	'flex rounded-md border border-input bg-background px-4 py-2 ring-offset-background ' +
-																	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 ' +
-																	(field.value ? '' : ' text-muted-foreground') +
-																	(getConfig('invoice_date').disabled ? ' opacity-50 cursor-not-allowed bg-blue-100' : '')
-																}
-															>
-																<CalendarIcon className="mr-2 h-4 w-4" />
-																{field.value ? formatDateTime(field.value) : <span>Pick a date</span>}
-															</Button>
-														</PopoverTrigger>
-														{!getConfig('invoice_date').disabled && (
-															<PopoverContent className="w-auto p-0">
-																<Calendar
-																	mode="single"
-																	selected={field.value ? parseISO(field.value) : undefined}
-																	onSelect={(date) => {
-																		if (!date) {
-																			field.onChange('');
-																			return;
-																		}
-																		const formattedDate = format(date, 'yyyy-MM-dd');
-																		field.onChange(formattedDate);
-																		setOpen(false);
-																	}}
-																	initialFocus
-																/>
-															</PopoverContent>
-														)}
-													</Popover>
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
+  <FormField
 
-								{!getConfig('invoice_no').hidden && (
-									<div>
-										<FormField
-											control={form.control}
-											name="invoice_no"
-											rules={{
-												required: getConfig('invoice_no').mandatory ? 'Invoice Number is required' : false,
-												min: {
-													value: 0,
-													message: 'invoice number cannot be negative',
-												},
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="gap-1 font-medium">
-														Invoice Number
-														{getConfig('invoice_no').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
-													<Input
-														{...field}
-														type="text"
-														disabled={getConfig('invoice_no').disabled || !!editingRow}
-														maxLength={256}
-														className="flex h-11 w-full disabled:bg-blue-100 rounded-md border border-input bg-background px-4 py-2 text-sm sm:text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
-														placeholder="Enter invoice number"
-														required={getConfig('invoice_no').mandatory}
-													/>
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
+    key={item.name}
 
-								{!getConfig('invoice_status').hidden && (
-									<div>
-										<FormField
-											control={form.control}
-											name="invoice_status"
-											rules={{
-												required: getConfig('invoice_status').mandatory ? 'Invoice Status is required' : false,
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="gap-1 font-medium">
-														Invoice Status
-														{getConfig('invoice_status').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
-													<Select
-														value={field.value}
-														onValueChange={field.onChange}
-														disabled={getConfig('invoice_status').disabled}
-														required={getConfig('invoice_status').mandatory}
-													>
-														<SelectTrigger className="w-full justify-between disabled:bg-blue-100 h-11 text-sm sm:text-base">
-															<SelectValue placeholder="Select status" />
-														</SelectTrigger>
-														<SelectContent>
-															{getConfig('invoice_status').options.map((option) => (
-																<SelectItem key={option.value} value={option.value}>
-																	{option.label}
-																</SelectItem>
-															))}
-														</SelectContent>
-													</Select>
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
+    control={form.control}
 
-								{!getConfig('commission').hidden && (
-									<div>
-										<FormField
-											control={form.control}
-											name="commission"
-											rules={{
-												required: getConfig('commission').mandatory ? 'Commission is required' : false,
-												min: {
-													value: 0,
-													message: 'commission number cannot be negative',
-												},
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="gap-1 font-medium">
-														Commission
-														{getConfig('commission').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
-													<Input
-														{...field}
-														type="number"
-														onBlur={(e) => {
-															field.onBlur();
-															if (e.target.value !== '') {
-																field.onChange(parseFloat(e.target.value).toFixed(2));
-															}
-														}}
-														disabled={getConfig('commission').disabled}
-														className="flex h-11 w-full rounded-md border border-input bg-background px-4 py-2 text-sm sm:text-base ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-blue-100"
-														placeholder="Enter commission amount"
-														required={getConfig('commission').mandatory}
-													/>
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
+    name={item.name}
 
-								{!getConfig('product').hidden && (
-									<div>
-										<FormField
-											control={form.control}
-											name="product"
-											rules={{
-												required: getConfig('product').mandatory ? 'Product is required' : false,
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="gap-1 font-medium">
-														Product
-														{getConfig('product').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
-													<Select value={field.value} onValueChange={field.onChange} disabled={getConfig('product').disabled || !!editingRow}>
-														<SelectTrigger className="w-full justify-between h-11 text-sm disabled:bg-blue-100 sm:text-base">
-															<SelectValue placeholder="Select product" />
-														</SelectTrigger>
-														<SelectContent>
-															{getConfig('product').options.map((option) => (
-																<SelectItem key={option.value} value={option.value}>
-																	{option.label}
-																</SelectItem>
-															))}
-														</SelectContent>
-													</Select>
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									</div>
-								)}
+    rules={getDynamicRules(item)}
 
-								{watchedStatus === 'syndicate' && (
-									<div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 gap-0 mt-2 sm:mt-6">
-										<div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
-											{!getConfig('ticker').hidden && (
-												<FormField
-													control={form.control}
-													name="ticker"
-													rules={{
-														required: getConfig('ticker').mandatory ? 'Ticker is required' : false,
-														min: {
-															value: 0,
-															message: 'Ticker cannot be negative',
-														},
-													}}
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="gap-1 font-medium text-sm">
-																Ticker{getConfig('ticker').mandatory && <span className="text-red-500">*</span>}
-															</FormLabel>
-															<AsyncTypeahead
-																id="ticker"
-																labelKey={(option) => option.ticker_description || option.ticker_symbol}
-																options={tickerOptions}
-																isLoading={isTickerLoading}
-																minLength={1}
-																placeholder="Search Ticker..."
-																onSearch={handleTickerSearch}
-																onChange={handleTickerChange} 
-																selected={selectedTicker}
-																disabled={getConfig('ticker').disabled}
-																inputProps={{
-																	className:
-																		'h-10 w-full border disabled:bg-blue-100 rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-ring focus:outline-none',
-																	maxLength: 32,
-																}}
-																menuStyle={{
-																	zIndex: 1050,
-																	width: '100%',
-																	position: 'absolute',
-																}}
-																renderMenu={renderTickerMenu} 
-															/>
+    render={({ field }) => (
 
-															<div className="min-h-[20px]">
-																<FormMessage />
-															</div>
-														</FormItem>
-													)}
-												/>
-											)}
-											{!getConfig('quantity').hidden && (
-												<FormField
-													control={form.control}
-													name="quantity"
-													rules={{
-														required: getConfig('quantity').mandatory ? 'Quantity is required' : false,
-														min: {
-															value: 0,
-															message: 'Quantity cannot be negative',
-														},
-													}}
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="gap-1 font-medium text-sm">
-																Quantity{getConfig('quantity').mandatory && <span className="text-red-500">*</span>}
-															</FormLabel>
-															<Input
-																{...field}
-																disabled={getConfig('quantity').disabled}
-																type="number"
-																onBlur={(e) => {
-																	field.onBlur();
-																	if (e.target.value !== '') {
-																		field.onChange(parseFloat(e.target.value).toFixed(2));
-																	}
-																}}
-																min={0}
-																className="h-10 text-sm sm:text-base disabled:bg-blue-100"
-																placeholder="Quantity"
-															/>
-															<div className="min-h-[20px]">
-																<FormMessage />
-															</div>
-														</FormItem>
-													)}
-												/>
-											)}
-											{!getConfig('price').hidden && (
-												<FormField
-													control={form.control}
-													name="price"
-													rules={{
-														required: getConfig('price').mandatory ? 'Price is required' : false,
-														min: {
-															value: 0,
-															message: 'Price cannot be negative',
-														},
-													}}
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="gap-1 font-medium text-sm">
-																Price{getConfig('price').mandatory && <span className="text-red-500">*</span>}
-															</FormLabel>
-															<Input
-																{...field}
-																disabled={getConfig('price').disabled}
-																type="number"
-																onBlur={(e) => {
-																	field.onBlur();
-																	if (e.target.value !== '') {
-																		field.onChange(parseFloat(e.target.value).toFixed(2));
-																	}
-																}}
-																min={0}
-																step="any"
-																className="h-10 text-sm sm:text-base disabled:bg-blue-100"
-																placeholder="Price"
-															/>
-															<div className="min-h-[20px]">
-																<FormMessage />
-															</div>
-														</FormItem>
-													)}
-												/>
-											)}
-											{!getConfig('net_amount').hidden && (
-												<FormField
-													control={form.control}
-													name="net_amount"
-													rules={{
-														required: getConfig('net_amount').mandatory ? 'Net Amount is required' : false,
-														min: {
-															value: 0,
-															message: 'net Amount cannot be negative',
-														},
-													}}
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="gap-1 font-medium text-sm">
-																Net Amount{getConfig('net_amount').mandatory && <span className="text-red-500">*</span>}
-															</FormLabel>
-															<Input
-																{...field}
-																disabled={getConfig('net_amount').disabled}
-																type="number"
-																onBlur={(e) => {
-																	field.onBlur();
-																	if (e.target.value !== '') {
-																		field.onChange(parseFloat(e.target.value).toFixed(2));
-																	}
-																}}
-																min={0}
-																step="any"
-																className="h-10 text-sm sm:text-base disabled:bg-blue-100"
-																placeholder="Net Amount"
-															/>
-															<div className="min-h-[20px]">
-																<FormMessage />
-															</div>
-														</FormItem>
-													)}
-												/>
-											)}
-										</div>
+      <FormItem>
 
-										{/* to get the dynamic fields from dynamicRowFields array */}
-										<div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
-											{dynamicRowFields.map((item) => (
-												<FormField
-													key={item.name}
-													control={form.control}
-													name={item.name}
-													rules={getDynamicRules(item)}
-													render={({ field }) => (
-														<FormItem>
-															<FormLabel className="gap-1 font-medium text-sm">
-																{item.label}
-																{item.mandatory && !item.disabled && <span className="text-red-500">*</span>}
-															</FormLabel>
+        <FormLabel className="gap-1 font-medium text-sm">
 
-															<Input
-																{...field}
-																type={item.type === 'number' ? 'number' : 'text'}
-																placeholder={item.placeholder}
-																readOnly={item.readOnly}
-																disabled={item.disabled}
-																className={`h-10 text-sm sm:text-base disabled:bg-blue-100  ${item.className || ''}`}
-																onChange={(e) =>
-																	item.readOnly || item.disabled
-																		? undefined
-																		: item.type === 'number'
-																			? field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
-																			: field.onChange(e.target.value)
-																}
-															/>
-															<div className="min-h-[20px]">
-																<FormMessage />
-															</div>
-														</FormItem>
-													)}
-												/>
-											))}
-										</div>
-									</div>
-								)}
+          {item.label}
 
-								<div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-									<FormField
-										control={form.control}
-										rules={{
-											required: 'Invoice attachment is required',
-										}}
-										name="att_id"
-										render={({ field }) => (
-											<FormItem>
-												<FormLabel className="gap-1 font-medium">
-													Attach Invoice<span className="text-red-500">*</span>
-												</FormLabel>
-												<div
-													className="border-2 border-dashed border-gray-300 dark:border-gray-800 rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 dark:bg-[#182028] dark:hover:bg-gray-800 transition h-[100px] sm:h-[115px] cursor-pointer relative"
-													onClick={() => document.getElementById('att_id')?.click()}
-												>
-													<input
-														type="file"
-														id="att_id"
-														accept={`.${INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat}` || '.pdf'}
-														className="hidden"
-														onChange={async (e) => {
-															const file = e.target.files?.[0];
-															if (!file) return;
+          {item.mandatory && !item.disabled && <span className="text-red-500">*</span>}
 
-															const allowedExt = INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat.toLowerCase();
-															const fileExt = file.name.split('.').pop().toLowerCase();
-															if (fileExt !== allowedExt) {
-																toast.warning(`Only ${allowedExt.toUpperCase()} files are allowed.`);
-																return;
-															}
+        </FormLabel>
 
-															const sizeLimitMB = parseInt(INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize || 10);
-															const maxSizeInBytes = sizeLimitMB * 1024 * 1024;
+        <Input
 
-															if (file.size > maxSizeInBytes) {
-																toast.warning(`File size must be less than ${INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize}.`);
-																return;
-															}
+          {...field}
 
-															const reader = new FileReader();
-															reader.onloadend = () => {
-																const base64Content = reader.result.split(',')[1];
-																form.setValue('invoiceFile', file);
+          type={item.type === 'number' ? 'number' : 'text'}
 
-																// Pass { shouldValidate: true } to trigger the FormMessage check immediately
-																form.setValue('att_id', base64Content, { shouldValidate: true });
+          placeholder={item.placeholder}
 
-																form.setValue('att_name', file.name);
-																form.setValue('att_size', Math.round(file.size / 1024).toString());
-															};
+          readOnly={item.readOnly}
 
-															reader.readAsDataURL(file);
-														}}
-													/>
+          disabled={item.disabled}
 
-													{/* Outer check: only show anything if att_id exists */}
-													{form.watch('att_id') ? (
-														<div className="flex flex-col items-center justify-center w-full space-y-1 min-w-0">
-															{/* Only show this div if we actually have a name to display */}
-															{(form.watch('invoiceFile')?.name || form.watch('att_name')) && (
-																<div className="flex flex-col items-center text-center">
-																	<span className="text-xs sm:text-sm font-semibold text-blue-600 truncate block max-w-full">
-																		{form.watch('invoiceFile')?.name || form.watch('att_name')}
-																	</span>
+          value={field.value ?? ''}  // Add null coalescing
 
-																	{/* Show size if available */}
-																	{(form.watch('invoiceFile') || form.watch('att_size')) && (
-																		<span className="text-[10px] sm:text-xs text-gray-500">
-																			(
-																			{form.watch('invoiceFile')
-																				? (form.watch('invoiceFile').size / 1024).toFixed(0)
-																				: form.watch('att_size')}{' '}
-																			KB)
-																		</span>
-																	)}
-																</div>
-															)}
+          className={`h-10 text-sm sm:text-base disabled:bg-blue-100 ${item.className || ''}`}
 
-															<div className="flex gap-2 w-full max-w-[200px]">
-																{/* Download button - only if it's an existing server file */}
-																{editingRow && form.watch('att_id') && !form.watch('invoiceFile') && (
-																	<Button
-																		type="button"
-																		variant="outline"
-																		size="sm"
-																		className="h-7 flex-1 text-[10px]"
-																		onClick={(e) => {
-																			e.stopPropagation();
-																			downloadInvoice(editingRow.invoice_no);
-																		}}
-																	>
-																		<Download className="mr-1" size={12} /> Download
-																	</Button>
-																)}
+          onChange={(e) => {
 
-																<Button
-																	type="button"
-																	variant="destructive"
-																	size="sm"
-																	className="h-7 flex-1 text-[10px]"
-																	onClick={(e) => {
-																		e.stopPropagation();
-																		form.setValue('att_id', '', { shouldValidate: true });
-																		form.setValue('invoiceFile', null);
-																		form.setValue('att_name', '');
-																		form.setValue('att_url', '');
-																	}}
-																>
-																	Remove
-																</Button>
-															</div>
-														</div>
-													) : (
-														<div className="flex flex-col items-center text-center">
-															<span className="text-gray-400 text-xs sm:text-sm">Drag & drop or click to upload</span>
-															<span className="text-[9px] sm:text-[10px] text-gray-400 uppercase mt-1">
-																{INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat} Max {INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize}
-															</span>
-														</div>
-													)}
-												</div>
-												<div className="min-h-[20px]">
-													<FormMessage />
-												</div>
-											</FormItem>
-										)}
-									/>
+            if (item.readOnly || item.disabled) return;
 
-									{!getConfig('comments').hidden && (
-										<FormField
-											control={form.control}
-											name="comments"
-											rules={{
-												required: getConfig('comments').mandatory ? 'Notes are required' : false,
-											}}
-											render={({ field }) => (
-												<FormItem>
-													<FormLabel className="gap-1 font-medium">
-														Notes
-														{getConfig('comments').mandatory && <span className="text-red-500">*</span>}
-													</FormLabel>
-													<Textarea
-														{...field}
-														id="notes"
-														rows={4}
-														disabled={getConfig('comments').disabled}
-														className="shadow-none max-h-[150px] disabled:bg-blue-100 min-h-[115px]"
-														placeholder="Enter notes here..."
-														required={getConfig('comments').mandatory}
-													></Textarea>
+            
 
-													{/* <textarea
-														{...field}
-														id="notes"
-														rows={4}
-														disabled={getConfig('comments').disabled}
-														className="border rounded w-full min-w-0 p-2 text-sm sm:text-base focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:bg-gray-100"
-														placeholder="Enter notes here..."
-														required={getConfig('comments').mandatory}
-													/> */}
-													<div className="min-h-[20px]">
-														<FormMessage />
-													</div>
-												</FormItem>
-											)}
-										/>
-									)}
-								</div>
-							</form>
-						</Form>
+            if (item.type === 'number') {
 
-						{selectedAccount.length > 0 && (
-							<div className="p-2 sm:p-4">
-								<h3 className="text-base sm:text-lg font-semibold mb-2">Coverage Details</h3>
+              const val = e.target.value;
 
-								<div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-end max-w-full sm:max-w-[500px]">
-									<div style={{ position: 'relative' }} className="flex-1 w-full sm:flex-[2]">
-										<AsyncTypeahead
-											id="employee_search"
-											labelKey={(option) => option.display_name}
-											options={employeeOptions}
-											isLoading={isEmployeeLoading}
-											minLength={1}
-											placeholder="Search employee name..."
-											onSearch={handleEmployeeSearch}
-											onChange={handleEmployeeChange}
-											selected={selectedEmployee}
-											inputProps={{
-												className: 'h-10 w-full border rounded-md px-3 py-2 text-sm sm:text-base',
-											}}
-											menuStyle={{
-												zIndex: 1050,
-												width: '100%',
-												position: 'absolute',
-											}}
-											renderMenu={renderEmployeeMenu}
-										/>
-										{isEmployeeLoading && selectedEmployee.length > 0 && (
-											<ul
-												className="dark:bg-gray-800 bg-gray-100 border"
-												style={{
-													position: 'absolute',
-													zIndex: 10,
-													borderRadius: 4,
-													margin: 0,
-													padding: 0,
-													width: '100%',
-													maxHeight: 120,
-													overflowY: 'auto',
-													listStyle: 'none',
-												}}
-											></ul>
-										)}
-									</div>
+              field.onChange(val === '' ? '' : Number(val));
 
-									{selectedEmployee && selectedEmployee.length > 0 && (
-										<div className="flex items-center gap-2">
-											<Input
-												value={parseFloat(percentage).toFixed(2)}
-												onChange={(e) => {
-													const val = e.target.value.replace(/[^0-9.]/g, '');
-													setPercentage(val);
-													if (val !== '' && Number(val) > 100) {
-														setPercentageInputError('Percentage cannot be more than 100.');
-													} else {
-														setPercentageInputError('');
-													}
-												}}
-												type="number"
-												min={0}
-												max={100}
-												placeholder="%"
-												className="input input-bordered border rounded px-3 py-2 text-sm sm:text-base w-20 sm:w-24 h-10"
-												disabled={!selectedEmployee}
-											/>
-											<Button
-												type="button"
-												variant="default"
-												className="h-10 text-sm sm:text-base whitespace-nowrap"
-												onClick={handleAddCoverage}
-												disabled={!selectedEmployee || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
-											>
-												Add
-											</Button>
-										</div>
-									)}
-								</div>
-								{coverageRows.length > 0 && (
-									<div className="w-full border rounded-md overflow-hidden" style={{ height: 220, minHeight: 120, overflow: 'auto' }}>
-										<table className="w-full text-sm text-left border-collapse">
-											<thead className={`${IS_DARK.value ? 'bg-[#2d3436] text-white' : 'bg-gray-100'} sticky top-0 z-10`}>
-												<tr style={{ height: 34 }}>
-													{coverageColumns.map((col) => (
-														<th key={col.headerName} className="px-4 font-semibold border-b text-xs uppercase tracking-wider">
-															{col.headerName}
-														</th>
-													))}
-												</tr>
-											</thead>
-											<tbody className={IS_DARK.value ? 'bg-[#181d1f] text-gray-300' : 'bg-white text-gray-700'}>
-												{coverageRows.map((row, index) => (
-													<tr key={row.id || index} style={{ height: 34 }} className="border-b hover:bg-gray-50/5 transition-colors">
-														<td className="px-4 truncate">{row.display_name}</td>
-														<td className="px-4 truncate">{row.corp_title}</td>
-														<td className="px-4 truncate">{row.email}</td>
-														<td className="px-4">
-															<Input
-																type="number"
-																value={parseFloat(row.percentage).toFixed(2) || ''}
-																onChange={(e) => {
-																	const val = e.target.value;
-																	// Use a unique identifier. If emp_id isn't there yet, the row won't update.
-																	const updatedRows = coverageRows.map((r) => (r.email === row.email ? { ...r, percentage: val } : r));
-																	setCoverageRows(updatedRows);
-																}}
-																onBlur={(e) => {
-																	const val = parseFloat(e.target.value);
-																	if (!isNaN(val)) {
-																		// Re-enforce the 2 decimals when they stop typing
-																		const formattedVal = val.toFixed(2);
-																		const updatedRows = coverageRows.map((r) =>
-																			r.email === row.email ? { ...r, percentage: formattedVal } : r
-																		);
-																		setCoverageRows(updatedRows);
-																	}
-																}}
-																className="w-full h-8 rounded-md px-2 transition-all"
-																min="0"
-																max="100"
-															/>
-														</td>
+            } else {
 
-														<td className="px-4">
-															<div className="flex justify-center gap-2">
-																<button
-																	type="button"
-																	className="cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
-																	title="Delete"
-																	onClick={() => handleDeleteCoverage(row)}
-																>
-																	<Trash2 size={18} strokeWidth={1.5} />
-																</button>
-																{/* Coverage Delete warning dialog */}
-																<Dialog open={showCoverageDeleteDialog} onOpenChange={setShowCoverageDeleteDialog}>
-																	<DialogContent>
-																		<DialogHeader>
-																			<DialogTitle>Delete Coverage</DialogTitle>
-																		</DialogHeader>
-																		<div>Are you sure you want to delete this coverage entry? This action cannot be undone.</div>
-																		<DialogFooter className="flex justify-end gap-2">
-																			<Button variant="outline" onClick={handleCoverageDeleteCancel}>
-																				Cancel
-																			</Button>
-																			<Button variant="destructive" onClick={handleCoverageDeleteConfirm}>
-																				Delete
-																			</Button>
-																		</DialogFooter>
-																	</DialogContent>
-																</Dialog>
-															</div>
-														</td>
-													</tr>
-												))}
-											</tbody>
-										</table>
-									</div>
-								)}
-							</div>
-						)}
-					</div>
-					<SheetFooter className="flex flex-row justify-end border-t pt-4 mt-4">
-						<Button
-							className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
-							type="submit"
-							onClick={form.handleSubmit(editingRow ? handleUpdateSubmit : handleFormSubmit)}
-						>
-							{editingRow ? 'Update' : 'Save'}
-						</Button>
-						<Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
-							Cancel
-						</Button>
-					</SheetFooter>
-				</SheetContent>
-			</Sheet>
-		</div>
-	);
+              field.onChange(e.target.value);
+
+            }
+
+          }}
+
+          onBlur={(e) => {
+
+            field.onBlur();
+
+            if (item.type === 'number' && e.target.value !== '') {
+
+              field.onChange(parseFloat(e.target.value).toFixed(2));
+
+            }
+
+          }}
+
+        />
+
+        <div className="min-h-[20px]">
+
+          <FormMessage />
+
+        </div>
+
+      </FormItem>
+
+    )}
+
+  />
+
+))}
+
+
+
+
+
+
+
+
+
+// Replace the percentage input section:
+
+<Input
+
+  value={percentage}  // Remove parseFloat here
+
+  onChange={(e) => {
+
+    const val = e.target.value.replace(/[^0-9.]/g, '');
+
+    setPercentage(val);
+
+    if (val !== '' && Number(val) > 100) {
+
+      setPercentageInputError('Percentage cannot be more than 100.');
+
+    } else {
+
+      setPercentageInputError('');
+
+    }
+
+  }}
+
+  onBlur={(e) => {
+
+    // Format to 2 decimals on blur
+
+    const val = e.target.value;
+
+    if (val !== '' && !isNaN(val)) {
+
+      setPercentage(parseFloat(val).toFixed(2));
+
+    }
+
+  }}
+
+  type="number"
+
+  min={0}
+
+  max={100}
+
+  placeholder="%"
+
+  className="input input-bordered border rounded px-3 py-2 text-sm sm:text-base w-20 sm:w-24 h-10"
+
+  disabled={!selectedEmployee}
+
+/>
+
+
+
+
+
+
+
+// Replace the attachment and notes section:
+
+<div className="col-span-1 sm:col-span-2 lg:col-span-3">
+
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+
+    {/* Attachment Field */}
+
+    <FormField
+
+      control={form.control}
+
+      rules={{
+
+        required: 'Invoice attachment is required',
+
+      }}
+
+      name="att_id"
+
+      render={({ field }) => (
+
+        <FormItem className="flex flex-col">
+
+          <FormLabel className="gap-1 font-medium">
+
+            Attach Invoice<span className="text-red-500">*</span>
+
+          </FormLabel>
+
+          <div
+
+            className="border-2 border-dashed border-gray-300 dark:border-gray-800 rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 dark:bg-[#182028] dark:hover:bg-gray-800 transition min-h-[115px] cursor-pointer relative"
+
+            onClick={() => document.getElementById('att_id')?.click()}
+
+          >
+
+            {/* Your existing attachment code */}
+
+            {/* ... */}
+
+          </div>
+
+          <div className="min-h-[20px]">
+
+            <FormMessage />
+
+          </div>
+
+        </FormItem>
+
+      )}
+
+    />
+
+
+
+    {/* Notes Field */}
+
+    {!getConfig('comments').hidden && (
+
+      <FormField
+
+        control={form.control}
+
+        name="comments"
+
+        rules={{
+
+          required: getConfig('comments').mandatory ? 'Notes are required' : false,
+
+        }}
+
+        render={({ field }) => (
+
+          <FormItem className="flex flex-col">
+
+            <FormLabel className="gap-1 font-medium">
+
+              Notes
+
+              {getConfig('comments').mandatory && <span className="text-red-500">*</span>}
+
+            </FormLabel>
+
+            <Textarea
+
+              {...field}
+
+              id="notes"
+
+              rows={4}
+
+              disabled={getConfig('comments').disabled}
+
+              className="shadow-none flex-1 disabled:bg-blue-100 min-h-[115px] resize-none"
+
+              placeholder="Enter notes here..."
+
+              required={getConfig('comments').mandatory}
+
+            />
+
+            <div className="min-h-[20px]">
+
+              <FormMessage />
+
+            </div>
+
+          </FormItem>
+
+        )}
+
+      />
+
+    )}
+
+  </div>
+
+</div>
+
+
+
+// In the coverage table, fix the percentage input:
+
+<Input
+
+  type="number"
+
+  value={row.percentage ?? ''}  // Add null coalescing
+
+  onChange={(e) => {
+
+    const val = e.target.value;
+
+    const updatedRows = coverageRows.map((r) => 
+
+      r.email === row.email ? { ...r, percentage: val } : r
+
+    );
+
+    setCoverageRows(updatedRows);
+
+  }}
+
+  onBlur={(e) => {
+
+    const val = e.target.value;
+
+    if (val !== '' && !isNaN(val)) {
+
+      const formattedVal = parseFloat(val).toFixed(2);
+
+      const updatedRows = coverageRows.map((r) =>
+
+        r.email === row.email ? { ...r, percentage: formattedVal } : r
+
+      );
+
+      setCoverageRows(updatedRows);
+
+    }
+
+  }}
+
+  className="w-full h-8 rounded-md px-2 transition-all"
+
+  min="0"
+
+  max="100"
+
+  step="0.01"
+
+/>
+
+
+
+
+
