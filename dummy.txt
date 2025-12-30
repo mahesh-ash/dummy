@@ -1,4274 +1,956 @@
-import { API_CONFIG } from '@/lib/constants'
-import React, { useState, useEffect, useRef } from 'react'
-import { useToast } from '@/hooks/use-toast'
-import { createAuthHeaders } from '@/lib/legacyUtils'
-import { MdEmail, MdEdit, MdClose, MdPhone, MdFilterList } from 'react-icons/md'
-import DOMPurify from 'dompurify'
-// import { Dialog } from '@/components/ui/dialog';
-import * as Dialog from '@radix-ui/react-dialog'
-import { Input } from '@/components/ui/input'
-
-type NormalizedContact = {
-  contactId: string
-  contactName: string
-  accountName: string
-  accountType: string
-  lastInteractedDateMe: string
-  lastInteractedModeMe: string
-  comments: string
-  email: string
-  accountTier: string
-  commFreq: string
-  lastInteractedEmpName: string
-  lastInteractedDate: string
-  contactNotes: string
-  contactPhone: string
-}
-type RawContactItem = NormalizedContact
-
-interface FilterObject {
-  isExcelGenerate: boolean
-  daysAgo: string
-  accountName: string[]
-  includeAccName: boolean
-  excludeAccName: boolean
-  accountType: string[]
-  includeAccType: boolean
-  excludeAccType: boolean
-  tier: any[]
-  conSubRes: boolean
-  myCoveredContact: boolean
-  distributionList: boolean
-  list: any[]
-  conAccVoted: boolean
-  conAccVotedMe: boolean
-  conSubMyRes: boolean
-  conSubMyCovTicker: boolean
-  allCriteria: boolean
-  oneOrMoreCriteria: boolean
-}
-
-const initialFilterObj: FilterObject = {
-  isExcelGenerate: false,
-  daysAgo: '',
-  accountName: [],
-  includeAccName: true,
-  excludeAccName: false,
-  accountType: [],
-  includeAccType: true,
-  excludeAccType: false,
-  tier: [],
-  conSubRes: false,
-  myCoveredContact: false,
-  distributionList: false,
-  list: [],
-  conAccVoted: false,
-  conAccVotedMe: false,
-  conSubMyRes: false,
-  conSubMyCovTicker: false,
-  allCriteria: true,
-  oneOrMoreCriteria: false,
-}
-
-interface AccountName {
-  text: string;
-  value: string;
-  code?: string;
-}
-
-interface AccountType{
-  text: string;
-  value: string;
-  code?: string;
-}
-
-interface DistributionList{
-    text:string;
-    value: string;
-    code?: string;
-}
-
-
-export const FadingContactComponent = ({ tabType }: { tabType: string }) => {
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [contacts, setContacts] = useState<NormalizedContact[]>([])
-  const [isModalOpen, setModalOpen] = useState(false)
-  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false)
-  const [isDistributionChecked, setIsDistributionChecked] = useState(false)
-
-  const [query, setQuery] = useState('');
-  const [results, setResults] = useState<AccountName[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<AccountName[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const componentRef = useRef<HTMLDivElement>(null);
-
-  const [queryString, setQueryString] = useState('');
-  const [result, setResult] = useState<AccountType[]>([]);
-  const [selectedType, setSelectedType] = useState<AccountType[]>([]);
-  const [isloadings, setisLoadings] = useState(false);
-  const [isOpens, setIsOpens] = useState(false);
-  const inputRefs = useRef<HTMLInputElement>(null);
-//   const componentRefs = useRef<HTMLDivElement>(null);
-
-
-  const { toast } = useToast()
-
-    useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!query.trim()) {
-        setResults([]);
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      const queryString = new URLSearchParams({
-        filtertype: 'allaccount', 
-        moduletype: 'account',  
-        searchtext: query,     
-      }).toString();
-
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`;
-
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        });
-
-        const data: AccountName[] = await res.json();
-
-        if (Array.isArray(data)) {
-          const filteredData = data.filter(item => 
-            !selectedTypes.some(selected => selected.value === item.value)
-          );
-          setResults(filteredData);
-          setIsOpen(true); // Open dropdown when results arrive
-        } else {
-          setResults([]);
-        }
-      } catch (err) {
-        console.error('Fetch account types error:', err);
-        setResults([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300); return () => clearTimeout(timer);
-  }, [query, selectedTypes]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (componentRef.current && !componentRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        setQuery(''); 
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const selectOption = (option: AccountName) => {
-    setSelectedTypes(prev => [...prev, option]);
-    setQuery('');
-    setResults([]);
-    setIsOpen(false);
-    if (inputRef.current) inputRef.current.focus();
-  };
-
-   const removeOption = (value: string) => {
-    setSelectedTypes(prev => prev.filter(item => item.value !== value));
-  };
-
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!queryString.trim()) {
-        setResult([]);
-        setisLoadings(false);
-        return;
-      }
-
-      setLoading(true);
-      const queryStrings = new URLSearchParams({
-        filtertype: 'accounttype', 
-        moduletype: 'account',  
-        searchtext: queryString,     
-      }).toString();
-
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryStrings}`;
-
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        });
-
-        const data: AccountType[] = await res.json();
-
-        if (Array.isArray(data)) {
-          const filteredData = data.filter(item => 
-            !selectedType.some(selected => selected.value === item.value)
-          );
-          setResult(filteredData);
-          setIsOpens(true); 
-        } else {
-          setResult([]);
-        }
-      } catch (err) {
-        console.error('Fetch account types error:', err);
-        setResult([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 300); return () => clearTimeout(timer);
-  }, [queryString, selectedType]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (componentRef.current && !componentRef.current.contains(event.target as Node)) {
-        setIsOpens(false);
-        setQueryString(''); 
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const selectOptions = (option: AccountType) => {
-    setSelectedType(prev => [...prev, option]);
-    setQueryString('');
-    setResult([]);
-    setIsOpens(false);
-    if (inputRef.current) inputRef.current.focus();
-  };
-
-   const removeOptions = (value: string) => {
-    setSelectedType(prev => prev.filter(item => item.value !== value));
-  };
-
-
-  const handleDialogOpenChange = (open: boolean) => {
-    if (!open) {
-      setModalOpen(false)
-    } else {
-      setModalOpen(true)
-    }
-  }
-
-  const handleCheckboxChange = (event) => {
-    setIsDistributionChecked(event.target.checked)
-  }
-
-  const openCloseConfirm = () => {
-    setIsCloseConfirmOpen(true)
-    setModalOpen(false)
-  }
-
-  const DeleteConfirmationModal = ({
-    isOpen,
-    onClose,
-    onConfirm,
-    title = 'Delete Task',
-    message = 'Are you sure you want to delete this task?',
-    confirmLabel = 'Yes',
-    cancelLabel = 'No',
-  }: any) => {
-    if (!isOpen) return null
-
-    return (
-      <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black bg-opacity-50">
-        <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="mb-4 text-xl font-bold text-gray-800">{title}</h2>
-          <p className="mb-6 text-gray-600">{message}</p>
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="rounded bg-gray-200 px-4 py-2 text-gray-800 hover:bg-gray-300"
-            >
-              {cancelLabel}
-            </button>
-            <button
-              onClick={onConfirm}
-              className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-            >
-              {confirmLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const fetchFadingContacts = async () => {
-    setIsLoading(true)
-    try {
-      const startVar = 0
-      const lengVar = 0
-
-      const filterDataStr = JSON.stringify(initialFilterObj)
-
-      const bodyParams = new URLSearchParams({
-        top: 'collapse',
-        action: 'collapse',
-        start: startVar.toString(),
-        length: lengVar.toString(),
-        data: filterDataStr,
-      }).toString()
-
-      const response = await fetch(`${API_CONFIG.baseUrl}/contact/retrievefadingcontact`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: bodyParams,
-        credentials: 'include',
-      })
-
-      const data = await response.json()
-
-      if (data.status === 1 || data.status === 0) {
-        const rawContacts: RawContactItem[] = Array.isArray(data.data) ? data.data : []
-        setContacts(rawContacts)
-      } else {
-        setContacts([])
-      }
-    } catch (err) {
-      console.error('fetchFadingContacts error', err)
-      setError('Failed to fetch fading contacts.')
-      toast({ title: 'Error', description: 'Failed to fetch contacts' })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleEmail = (email: string | undefined) => {
-    alert(`Emailing: ${email}`)
-    window.location.href = `mailto:${email}`
-  }
-
-  const handlePhoneCall = (phone: string | undefined) => {
-    if (phone) {
-      alert(`Calling: ${phone}`)
-      window.location.href = `tel:${phone}`
-    } else {
-      alert('Phone number is missing.')
-    }
-  }
-
-  const handleLogInteraction = (contactId: string) => {
-    alert(`Logging interaction for Contact ID: ${contactId}`)
-  }
-
-  const handleDismiss = (contactId: string) => {
-    alert(`Dismissing contact alert for ID: ${contactId}`)
-  }
-
-  const handleFilterClick = () => {
-    alert('Opening filter options...')
-  }
-
-  useEffect(() => {
-    fetchFadingContacts()
-  }, [tabType])
-
-  if (isLoading) {
-    return <div>Loading fading contacts...</div>
-  }
-
-  if (contacts.length === 0) {
-    return <p className="align-center">No fading contacts found.</p>
-  }
-
-  return (
-    <div className="p-5">
-      <div className="mb-4 flex justify-end">
-        <button
-          onClick={() => {
-            setModalOpen(true)
-          }}
-          className="rounded-full bg-blue-500 p-2 text-white shadow-md hover:bg-blue-600"
-          title="Filter Contacts"
-        >
-          <MdFilterList className="h-6 w-6" />
-        </button>
-      </div>
-
-      <DeleteConfirmationModal
-        isOpen={isCloseConfirmOpen}
-        onClose={() => {
-          setIsCloseConfirmOpen(false)
-          setModalOpen(true)
-        }}
-        onConfirm={() => {
-          setIsCloseConfirmOpen(false)
-          setModalOpen(false)
-        }}
-        title="Confirm"
-        message="Are you sure you want to close the window?"
-        confirmLabel="Yes"
-        cancelLabel="No"
-      />
-      <div>
-        <Dialog.Root open={isModalOpen} onOpenChange={handleDialogOpenChange}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm" />
-
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-[9999] max-h-[90vh] w-[700px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
-              <button
-                type="button"
-                className="absolute right-3 top-3 text-gray-600 hover:text-black"
-                onClick={openCloseConfirm} 
-                aria-label="Close"
-              >
-                X
-              </button>
-
-              <Dialog.Title className="mb-4 text-xl font-semibold">
-                Filter Fading Contacts
-              </Dialog.Title>
-
-              <div className="space-y-6">
-                <div>
-                  <label
-                    htmlFor="daysSinceInteracted"
-                    className="mb-1 block text-sm font-medium text-gray-700"
-                  >
-                    Days since last interacted
-                  </label>
-                  <select
-                    id="daysSinceInteracted"
-                    className="mt-1 block w-full rounded-md border border-black shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    defaultValue=""
-                  >
-                    <option value="">Select</option>
-                    <option value="7_days_ago">Greater than 7 days ago</option>
-                    <option value="14_days_ago">Greater than 14 days ago</option>
-                    <option value="21_days_ago">Greater than 21 days ago</option>
-                    <option value="28_days_ago">Greater than 28 days ago</option>
-                    <option value="35_days_ago">Greater than 35 days ago</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
-                  <div className="md:col-span-1">
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Account Name
-                    </label>
-                    <div className="mt-2 flex items-center space-x-4">
-                      <label className="flex items-center">
-                        <input
-                          name="accountNameRadio"
-                          type="radio"
-                          className="h-4 w-4 border-black text-blue-600 focus:ring-blue-500"
-                          defaultChecked
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Include</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          name="accountNameRadio"
-                          type="radio"
-                          className="h-4 w-4 border-black text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Exclude</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <div className="md:col-span-2"> 
-
-  <div className="relative">
-    <div className="relative flex max-h-28 min-h-[3rem] flex-wrap items-center gap-2 overflow-y-auto rounded-md border border-black bg-gray-50 p-2 focus-within:border-blue-500 focus-within:bg-white">
-      
-      {selectedTypes.map((type) => (
-        <span
-          key={type.value}
-          className="inline-flex max-w-[220px] items-center truncate rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
-        >
-          <span className="inline-block max-w-[180px] truncate">{type.text}</span>
-          <button
-            type="button"
-            onClick={() => removeOption(type.value ?? '')} 
-            className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
-          >
-            &times;
-          </button>
-        </span>
-      ))}
-      <Input
-        ref={inputRef}
-        type="text"
-        placeholder={selectedTypes.length === 0 ? "Search and add account Name..." : ""}
-        value={query}
-        onChange={(e) => setQuery(e.target.value)} 
-        onFocus={() => setIsOpen(true)}
-        className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
-      />
-    </div>
-
-   
-    {isOpen && query.length > 0 && (
-      <ul className="absolute z-[10000] mt-1 max-h-40 w-full overflow-auto rounded-md border border-black bg-white py-1 text-base shadow-lg">
-        {loading ? ( 
-          <li className="p-2 text-gray-700">Loading...</li>
-        ) : results.length > 0 ? ( 
-          results.map((option) => (
-            <li
-              key={option.value}
-              className="cursor-pointer p-2 hover:bg-blue-600 hover:text-white"
-              onClick={() => selectOption(option)} 
-            >
-              {option.text}
-            </li>
-          ))
-        ) : (
-           <li className="p-2 text-gray-700">No results found</li>
-        )}
-      </ul>
-    )}
-    </div>
-  </div>
-</div>
-
-                <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-3">
-                  <div className="md:col-span-1">
-                    <label className="mb-1 block text-sm font-medium text-gray-700">
-                      Account Type
-                    </label>
-                    <div className="mt-2 flex items-center space-x-4">
-                      <label className="flex items-center">
-                        <input
-                          name="accountTypeRadio"
-                          type="radio"
-                          className="h-4 w-4 border-black text-blue-600 focus:ring-blue-500"
-                          defaultChecked
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Include</span>
-                      </label>
-                      <label className="flex items-center">
-                        <input
-                          name="accountTypeRadio"
-                          type="radio"
-                          className="h-4 w-4 border-black text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Exclude</span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-                <div className="md:col-span-2">
-                 <div className="relative">
-    <div className="relative flex max-h-28 min-h-[3rem] flex-wrap items-center gap-2 overflow-y-auto rounded-md border border-black bg-gray-50 p-2 focus-within:border-blue-500 focus-within:bg-white">
-      
-      {selectedType.map((type) => (
-        <span
-          key={type.value}
-          className="inline-flex max-w-[220px] items-center truncate rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
-        >
-          <span className="inline-block max-w-[180px] truncate">{type.text}</span>
-          <button
-            type="button"
-            onClick={() => removeOptions(type.value ?? '')} 
-            className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
-          >
-            &times;
-          </button>
-        </span>
-      ))}
-      <Input
-        ref={inputRefs}
-        type="text"
-        placeholder={selectedType.length === 0 ? "Search and add account types..." : ""}
-        value={queryString}
-        onChange={(e) => setQueryString(e.target.value)} 
-        onFocus={() => setIsOpens(true)}
-        className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
-      />
-    </div>
-
-   
-    {isOpens && queryString.length > 0 && (
-      <ul className="absolute z-[10000] mt-1 max-h-40 w-full overflow-auto rounded-md border border-black bg-white py-1 text-base shadow-lg">
-        {loading ? ( 
-          <li className="p-2 text-gray-700">Loading...</li>
-        ) : result.length > 0 ? ( 
-          result.map((option) => (
-            <li
-              key={option.value}
-              className="cursor-pointer p-2 hover:bg-blue-600 hover:text-white"
-              onClick={() => selectOptions(option)} 
-            >
-              {option.text}
-            </li>
-          ))
-        ) : (
-           <li className="p-2 text-gray-700">No results found</li>
-        )}
-      </ul>
-    )}
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label
-                      htmlFor="accountTierSelect"
-                      className="mb-1 block text-sm font-medium text-gray-700"
-                    >
-                      Account Tier
-                    </label>
-                    <select
-                      id="accountTierSelect"
-                      className="mt-1 block w-full rounded-md border border-black shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                      defaultValue="Select"
-                    >
-                      <option value="1.2">1.2</option>
-                      <option value="1.3">1.3</option>
-                    </select>
-
-                    <div className="flex flex-col justify-end space-y-3 pb-1">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-black text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">
-                          Contacts subscribed to any of the firm's research
-                        </span>
-                      </label>
-                      <div className="flex flex-col space-y-2">
-                        <label className="flex items-center">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-black text-blue-600 focus:ring-blue-500"
-                            checked={isDistributionChecked} 
-                            onChange={handleCheckboxChange} 
-                          />
-                          <span className="ml-2 text-sm text-gray-700">Distribution list</span>
-                        </label>
-
-                        
-                        {isDistributionChecked && (
-                          <textarea
-                            placeholder="Enter distribution list names (comma separated)"
-                            rows={2}
-                            className="ml-6 block w-full rounded-md border border-black shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" 
-                          ></textarea>
-                        )}
-                      </div>
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-black text-blue-600 focus:ring-blue-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">
-                          Contacts from voting Accounts
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                </div>
-               
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">
-                    Filter by contacts that satisfy
-                  </label>
-                  <div className="mt-2 flex flex-col space-y-2">
-                    <label className="block flex w-full items-center">
-                      <input
-                        name="contactSatisfactionRadio"
-                        type="radio"
-                        className="h-4 w-4 border-black text-blue-600 focus:ring-blue-500"
-                        defaultChecked
-                      />
-                      <span className="ml-2 text-sm text-gray-700">All criteria selected </span>
-                    </label>
-
-                    <label className="block flex w-full items-center">
-                      <input
-                        name="contactSatisfactionRadio"
-                        type="radio"
-                        className="h-4 w-4 border-black text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="ml-2 text-sm text-gray-700">
-                        One or more of the criteria is selected{' '}
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  onClick={openCloseConfirm}
-                  className="rounded border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
-                >
-                  reset
-                </button>
-                <button
-                  onClick={handleFilterClick}
-                  className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-                >
-                  Filter
-                </button>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      </div>
-
-      <ul className="space-y-3">
-        {contacts.map((contact) => {
-          const sanitizedContactName = DOMPurify.sanitize(contact.contactName)
-          const sanitizedAccountName = DOMPurify.sanitize(contact.accountName)
-          const isPhoneMissing = !contact.contactPhone
-
-          return (
-            <li
-              key={contact.contactId}
-              className="relative flex flex-col rounded border bg-gray-50 p-4 shadow-sm"
-            >
-              <div className="absolute right-2 top-2 flex space-x-2">
-                <button
-                  onClick={() => handlePhoneCall(contact.contactPhone || '')}
-                  className={`rounded-full p-1 transition-colors ${isPhoneMissing ? 'cursor-not-allowed text-gray-400' : 'text-gray-600 hover:text-blue-500'}`}
-                  title={isPhoneMissing ? 'Contact number is missing' : 'Call Contact'}
-                  disabled={isPhoneMissing}
-                >
-                  <MdPhone className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => handleEmail(contact.email)}
-                  className="rounded-full p-1 text-gray-600 transition-colors hover:text-blue-500"
-                  title="Email Contact"
-                >
-                  <MdEmail className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => handleLogInteraction(contact.contactId)}
-                  className="rounded-full p-1 text-gray-600 transition-colors hover:text-blue-500"
-                  title="Log Interaction"
-                >
-                  <MdEdit className="h-4 w-4" />
-                </button>
-
-                <button
-                  onClick={() => handleDismiss(contact.contactId)}
-                  className="rounded-full p-1 text-red-500 transition-colors hover:text-red-700"
-                  title="Dismiss Alert"
-                >
-                  <MdClose className="h-4 w-4" />
-                </button>
-              </div>
-
-              <h3
-                className="pr-32 font-bold"
-                dangerouslySetInnerHTML={{ __html: sanitizedContactName }}
-              />
-              <p className="mt-1 text-sm text-gray-600">Email: {contact.email}</p>
-              <p className="text-sm text-gray-600">
-                Account Type: {contact.accountType} | Account Tier: {contact.accountTier}
-              </p>
-              <p className="text-sm text-gray-600">
-                AccountName: <span dangerouslySetInnerHTML={{ __html: sanitizedAccountName }} />
-              </p>
-              <p className="text-sm text-gray-600">
-                Last Interacted: {contact.lastInteractedDateMe} | Comm Freq: {contact.commFreq} |
-                Last Interacted Emp Name: {contact.lastInteractedEmpName}
-              </p>
-            </li>
-          )
-        })}
-      </ul>
-    </div>
-  )
-}
-
-export default FadingContactComponent
-
-// import { Loader2 } from 'lucide-react'
-// import { useState, useEffect, useCallback } from 'react'
-
-// import { Button } from '@/components/ui/button'
-// import { useToast } from '@/hooks/use-toast'
-// import { API_CONFIG } from '@/lib/constants'
-// import { createAuthHeaders } from '@/lib/legacyUtils'
-
-// interface FadingContacts1Props {
-//   id: string
-//   clientId: string
-//   searchCode?: string
-// }
-
-// interface FadingContacts1Data {
-//   [key: string]: unknown
-// }
-
-// const FadingContacts1: React.FC<FadingContacts1Props> = ({
-//   id,
-//   clientId,
-//   searchCode
-// }) => {
-//   const { toast } = useToast()
-
-//   // State management
-//   const [loading, setLoading] = useState(false)
-//   const [data, setData] = useState<FadingContacts1Data[]>([])
-//   const [error, setError] = useState<string | null>(null)
-
-//   // Fetch data from API
-//   const fetchData = useCallback(async () => {
-//     if (!clientId) return
-
-//     setLoading(true)
-//     setError(null)
-
-//     try {
-//       // TODO: Replace with actual API endpoint for fading_contacts1
-//       const response = await fetch(`${API_CONFIG.fullUrl}/reports/fading_contacts1`, {
-//         method: 'POST',
-//         headers: createAuthHeaders(),
-//         body: JSON.stringify({
-//           clientId,
-//           searchCode,
-//           id
-//         })
-//       })
-
-//       if (!response.ok) {
-//         throw new Error(`HTTP error! status: ${response.status}`)
-//       }
-
-//       // Check if response has content and is JSON
-
-//       const contentType = response.headers.get('content-type')
-
-//       if (!contentType || !contentType.includes('application/json')) {
-
-//         throw new Error('Invalid response format - expected JSON')
-
-//       }
-
-//       const responseText = await response.text()
-
-//       if (!responseText.trim()) {
-
-//         throw new Error('Empty response from server')
-
-//       }
-
-//       let result
-
-//       try {
-
-//         result = JSON.parse(responseText)
-
-//       } catch (jsonError) {
-
-//         throw new Error('Invalid JSON response from server')
-
-//       }
-
-//       if (result.success && result.data) {
-//         setData(result.data)
-//       } else {
-//         throw new Error(result.message || 'Failed to fetch data')
-//       }
-//     } catch (err) {
-//       const errorMsg = err instanceof Error ? err.message : 'Failed to fetch fading_contacts1 data'
-//       setError(errorMsg)
-//       toast({
-//         title: 'Error',
-//         description: errorMsg,
-//         variant: 'destructive'
-//       })
-//     } finally {
-//       setLoading(false)
-//     }
-//   }, [clientId, searchCode, id, toast])
-
-//   // Load data on component mount
-//   useEffect(() => {
-//     fetchData()
-//   }, [fetchData])
-
-//   if (loading) {
-//     return (
-//       <div className="flex items-center justify-center p-8">
-//         <Loader2 className="h-8 w-8 animate-spin" />
-//         <span className="ml-2">Loading FadingContacts1...</span>
-//       </div>
-//     )
-//   }
-
-//   return (
-//     <div>
-
-//       {error ? (
-//           <div className="text-center py-8">
-//             <p className="text-destructive mb-4">{error}</p>
-//             <Button onClick={fetchData} variant="outline" size="sm">
-//               Try Again
-//             </Button>
-//           </div>
-//         ) : data.length === 0 ? (
-//           <div className="text-center py-12">
-//             <p className="text-muted-foreground text-lg mb-2">No data available</p>
-//             <p className="text-muted-foreground text-sm">
-//               Configure API endpoint to load data for fading_contacts1
-//             </p>
-//           </div>
-//         ) : (
-//           <div className="space-y-4">
-//             {/* TODO: Implement React-based UI components for this report */}
-//             <div className="grid gap-4">
-//               {data.slice(0, 10).map((item, _index) => (
-//                 <div key={_index}>
-//                   <pre className="text-sm text-muted-foreground overflow-auto">
-//                     {JSON.stringify(item, null, 2)}
-//                   </pre>
-//                 </div>
-//               ))}
-//               {data.length > 10 && (
-//                 <p className="text-sm text-muted-foreground text-center">
-//                   Showing 10 of {data.length} items
-//                 </p>
-//               )}
-//             </div>
-//           </div>
-//         )}
-//     </div>
-//   )
-// }
-
-// export default FadingContacts1
----------------------------------------------------------------------
-var repScreenACStatus = 'collapsed';
-var fadingContactSelf = (function(){
-	var filterValue = '', filterObjVal = '';
-	var id = '', thisRepID = '', thisRepIboxID = '', thisRepInternalID = '';
-	var thisFileName = 'reports - fading_contacts1.js';
-	var prepareTypeaheadArr = [],prepareMultiselectArr = [], prepareSelectsArr = [], prepareTokenizerArr = [],getFilterVal = [];
-	var formsettingval = {},filterInfoObj = {};
-	var filterObj =  {"isExcelGenerate":false,"daysAgo":"","accountName":[],"includeAccName":true,"excludeAccName":false,"accountType":[],"includeAccType":true,"excludeAccType":false,"tier":[],"conSubRes":false,"myCoveredContact":false,"distributionList":false,"list":[],"conAccVoted":false,"conAccVotedMe":false,"conSubMyRes":false,"conSubMyCovTicker":false,"allCriteria":true,"oneOrMoreCriteria":false};
-	var filterhtml = '<div class="pull-right filter-icons"><i class="icon font-xs icon-filter-filled-tool c-pointer fading_filter" aria-hidden="true" title="Filter this list"></i><span title="Filtered By" class="info-icons"><i class="fa font-sm1 fa-info-circle m-l-xs c-pointer list_popover" id="fadingFilterInfo" data-toggle="popover" data-html="true" data-placement="left"  data-container="body" data-content=""></i></span></div>';
-
-	$(window).resizeEnd(function(){
-		getActiveID();
-	});
-
-	//TO GET ACTIVE REPORT ID
-	function getActiveID(){
-		try{
-			//id = $('.fading_contact_cont .box_panels').attr('id');
-			var targetID = '';
-			var fadContLength=$('#appTsheetContainer .tsheetdivcontainer.active .tab-content .tab-pane.active .fading_contact_cont .box_panels');
-			if($('.dashContainer').css('display') == 'none'&&fadContLength.length>0){
-				targetID=fadContLength.attr('id');
-			}else{
-				targetID = $('.dashContainer .fading_contact_cont .box_panels').attr('id');
-			}
-			id = targetID;
-			thisRepID = id;
-			thisRepIboxID = id+'_ibox';
-			thisRepInternalID = thisRepID+' #fading-contacts-contents';
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//CLICK EVENT FOR FILTER BUTTON
-	$("body").undelegate(".fading_filter","click")
-	$("body").delegate(".fading_filter","click",function(e){
-		$('#loading_screen').show();
-		$('.fadingFilterModal').modal({
-			backdrop: 'static',
-			keyboard: false,
-			show: 'true'
-		});
-		prepareTypeahead(prepareTypeaheadArr,function(status){});
-		prepareSelects(prepareSelectsArr, function(status){
-			if(status){
-				prepareSelectsArr = [];
-				setTimeout(function(){
-					prepareMultiselect(prepareMultiselectArr); // multi select
-				}, 300);
-			};
-		});
-		prepareTokenizer(prepareTokenizerArr, function (status) {
-			if (status) prepareTokenizerArr = [];
-		});
-		setTimeout(function(){
-			gettblfieldsval(1);
-			$('#loading_screen').hide();
-		}, 500);
-	});
-
-	//TO RESIZE FADING CONTACTS DATA TABLE
-	$('body').click(function(e){
-		if($(e.target).parents('.fading_contact_cont').length > 0 && repScreenACStatus == 'expanded'){ helper.dataTableResize(); }
-	});
-
-	//CLICK EVENT FOR SUBMIT FADING CONTACT FILTER BUTTON
-	$("body").undelegate("#submitAdvanceFilter","click")
-	$("body").delegate("#submitAdvanceFilter","click",function(e){
-		$('#loading_screen').show();
-		$('.fadingFilterModal').modal('hide');
-		getfiltervalues();
-		setTimeout(function(){
-			if(getFilterVal != ''){
-				var tblId = 'fadingcontact_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
-				utils.scriptErrorHandling('Fading contact filter - '+tblId, 'Fading contact filter - '+tblId, JSON.stringify(getFilterVal));
-
-				_server.post({
-					url: serviceURLJava + "tableconfig/settblfields",
-					data: {"tblid": tblId, "settings": JSON.stringify(getFilterVal)},
-					success: function(response){
-						utils.info_toaster(_prismsuccMsgs["00057"], 's');
-						$('#loading_screen').hide();
-					},
-					error: function(jqXHR){
-						$('#loading_screen').hide();
-						utils.scriptErrorHandling(thisFileName, 'tableconfig/settblfields', jqXHR.responseText);
-					}
-				});
-			}
-			if(repScreenACStatus == 'collapsed'){
-				getFadingContactCollapsed(repScreenACStatus);
-			}else{
-				getFadingContactTable();
-			}
-		}, 500);
-	});
-
-	//DISMISS ICON CLICK
-	$("body").undelegate("#dismissResonsPopupClose, #cancel_dismiss","click")
-	$("body").delegate("#dismissResonsPopupClose, #cancel_dismiss","click",function(e){
-		utils.drawConfirmationPopupOutlook(_prismcommMsgs["00011"],  _prismcommMsgs["00012"], 'dismissOk', 'dismissCancel');
-	});
-
-	//POPUP CLOSE YES CLICK
-	$("body").undelegate("#dismissOk","click")
-	$("body").delegate("#dismissOk","click",function(e){
-		$('#dashboard_popup').modal('hide');
-	});
-
-	//POPUP CLOSE NO CLICK
-	$("body").undelegate("#dismissCancel","click")
-	$("body").delegate("#dismissCancel","click",function(e){
-		$('#dashboard_popup').modal('hide');
-		$('#fading_contact_dismiss_popup').modal('show');
-	});
-
-
-	//GET SETTING FOR DATATABLE
-	function getFadingContactTable(){
-		try{
-			var tableHTML = '<table id="' + thisRepInternalID + '_dataTable_fadingcontact" class="compact table theme-table table-bordered table-striped data-ellipsis" style="width: 100%;"></table>';
-			_server.post({
-				url: serviceURLJava + 'tableconfig/gettablesetting',
-				data:{
-					rpttype: 'getfadingcontacts',
-					moduletype: 'contact'
-				},
-				success: function (response){
-					if(response.status == 1){
-						DrawFadingContactTable(response);
-					}else{
-						$('#loading_screen').hide();
-						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					}
-				},
-				error: function (response){
-					$('#loading_screen').hide();
-					$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					utils.scriptErrorHandling(thisFileName, "tableconfig/gettablesetting", e);
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	 //GET SETTING FOR DATATABLE
-	 function getFadingContactCollapsed(tabetype){
-		try{
-			$('#'+thisRepID+' .fading-contacts').html(PrismSpinner)
-			var startVar = 0;
-			var lengVar = config["fadingContactLimit"];
-			_server.post({
-				url: serviceURLJava+"contact/retrievefadingcontact",
-				data:{
-					"top": tabetype,"action":tabetype,"start": startVar,"length": lengVar,
-					"data": JSON.stringify(filterObj)
-				},
-				success: function(response){
-					if(response.status==1 ||response.status == 0){
-						callbackLoadFadingContacts(response);
-					}else{
-						$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					}
-				},
-				error:function(e){
-					$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-					utils.scriptErrorHandling(thisFileName, "fading_contacts/FadingContactTable", e);
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//FUNCTION TO DRAW FADING CONTACTS TABLES
-	function DrawFadingContactTable(tableSetting){
-		try{
-			$('#loading_screen').show();
-			filterdata = JSON.stringify(filterObj)
-			var tableObj ={};
-			var start = 0;
-			var tablength = 20;
-			var scrollFlag = utils.validateInputs(_prismConstantValues['FADING_CONTACT_LAZY_LOAD']);
-			var columns = [];
-			var table_settings = tableSetting.table_settings;
-			var cols = tableSetting.cols;
-			var title = tableSetting.title;
-			var colsAlign = tableSetting.colsAlign;
-			var numberFormatType = tableSetting.formatter;
-			var tableHTML = '<table id="dataTable_fadingcontact_'+repScreenACStatus+'" class="compact fading-contact-detail-table table-striped table-bordered theme-table table data-ellipsis" style="width: 100%;"></table>';
-			$(title).each(function (index, heading) {
-				columns.push({
-					"title": heading,
-					"sName": heading,
-					"name": heading,
-					"data": cols[index],
-					"className": "border-all " + colsAlign[index],
-					"target": [index],
-					"isDefault": table_settings[index].blockchk,
-					createdCell:  function (td, cellData, rowData, row, col) {
-						$(td).attr('title',utils.stripHTMLTags(cellData));
-						if(cols[col] == 'comments'){
-							cellData = (cellData == null || cellData == '') ? '-' : utils.replaceHTMLStrings(cellData);
-							$(td).html(cellData).prepend('<button class="icon fa fa-comments-o animate-hover cmnt-acty-account cursor m-r-sm font-sm" title="" data-placement="auto" data-content="'+cellData+'"   data-toggle="popover" data-trigger="click" data-container="body" ></button>' ).addClass('dt-left');
+return (
+		<div className="w-full">
+			<div className="flex justify-end gap-4 items-center pb-2">
+				<TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger asChild>
+							<Button onClick={handleRefresh} className={'h-[40px]'} variant="outline">
+								<RefreshCcwIcon className={`stroke-[#9ca3af]`}></RefreshCcwIcon>
+							</Button>
+						</TooltipTrigger>
+						<TooltipContent>Last Refreshed: {convertDate(lastRefresh)}</TooltipContent>
+					</Tooltip>
+				</TooltipProvider>
+				<DateRangePicker
+					onCancel={dateRangeCancelHandler}
+					locale="en-US"
+					initialDateFrom={rangeStartDate}
+					initialDateTo={rangeEndDate}
+					onUpdate={dateRangeHandler}
+					showCompare={false}
+				></DateRangePicker>
+				<Button onClick={excelDownloadHandler} className={'h-[40px]'} variant={'outline'}>
+					{!excelLoading && <LucideDownload className={`stroke-[#9ca3af]`}></LucideDownload>}
+					{excelLoading && <Spinner></Spinner>}
+					Excel
+				</Button>
+				<Button onClick={() => props?.onHistory && props.onHistory()} variant="outline" className="gap-2 h-[40px]">
+					History
+				</Button>
+				<Button onClick={() => setSheetOpen(true)} variant="default" className="gap-2 h-[40px]">
+					<Plus size={18} /> Add
+				</Button>
+			</div>
+			<div
+				className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
+				style={{ height: 700, minHeight: 300, overflow: 'auto' }}
+			>
+				<AgGridReact
+					ref={gridRef}
+					columnDefs={columnDefs.map((col) => {
+						if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
+						if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
+						if (col.cellRenderer === 'CurrencyCellRenderer') return { ...col, cellRenderer: CurrencyCellRenderer };
+						return { ...col, cellRenderer: DefaultCellRenderer };
+					})}
+					onSortChanged={(e) => {
+						if (e.source != 'api') {
+							saveGridSettings();
 						}
-					}           
-				});
-			});
-			var scrollYHeight =  ($(window).height() - 220) + "px";
-			var id1 = '#dataTable_fadingcontact_'+repScreenACStatus;
-			$("#"+thisRepInternalID).html(tableHTML);
-			tableObj = $.extend({
-				processing: true,
-				language: {
-					"loadingRecords": "loading..."
-				},
-				serverSide: true,
-				ajax: {
-					url: serviceURLJava + "contact/retrievefadingcontact",
-					dataType: "json",
-					method: "POST",
-					headers:{
-						auth_token: utils._prismGetAuthToken('1')
-					},
-					"data": function(result){
-						var resultLen = utils.validateInputs($('#'+thisRepID).attr('data-fadingLen'));
-						if(resultLen == ''){ $('#'+thisRepID).attr('data-fadingLen', utils.validateInputs(result.length)); }
-						else{ result.length = resultLen; }
-						var objSend = utils.formDataTableReqObj(result);
-						objSend = $.extend({
-							top: 'collapsed',
-							action:repScreenACStatus,
-							// start: start,
-							// length: tablength,
-							data: JSON.stringify(filterObj)
-						}, objSend);
-						return objSend;
-					}
-				},
-				id:id1,
-				settings:true,
-				table_settings: table_settings,
-				columns: columns,
-				sScrollY: scrollYHeight,
-				scrollX: true,
-				lengthChange:false,
-				numberFormatType:numberFormatType,
-				excelExport:true,
-				order: [[tableSetting.defColSort, tableSetting.defColSortType]],
-				numeberFormatCels: tableSetting.colsCnt,
-				beforePaginateAdd: true,
-				destroy: true,
-				bInfo: true,
-				deferRender: true,
-				bPaginate: true,
-				pageLength: 50,
-				enableScroll: true,
-				scrollCollapse: false,
-				loadPopover: true,
-				loadPopoverFn: function(result){
-					popoverTrigger();
-				},
-				ExcelUrl:serviceURLJava+"contact/retrievefadingcontact?top="+repScreenACStatus+"&action="+repScreenACStatus+"&start="+start+"&length="+tablength+"&data="+encodeURIComponent(filterdata),
-				drawCallback: function(settings){
-					if(utils.callCiaOnOffFlag() == false){ $('.dismisscall').hide(); }
-					$('#loading_screen').hide();
-					$(id1 + " tr:last td").css('padding-bottom','4px');
-					if(repScreenACStatus == 'collapsed'){
-						$("#col_visb_div").css('display','none');
-					}
-					$('#dataTable_fadingcontact_'+repScreenACStatus+' thead tr').css('height','0px');
-//					var api = this.api();
-//					var rows = api.rows({page:'current'}).nodes();
-//					var ind = _.findIndex(settings.aoColumns,{data:'comments'})+1;
-//					var CommentData = api.column(_.findIndex(settings.aoColumns,{data:'comments'})).data();
-//					api.column(ind-1,{page:'current'}).data().each( function(group,i){
-//						var comData = (CommentData[i] == '') ? '-' : CommentData[i];
-//						$(rows).eq(i).find("td.activitydescription").prepend('<button class="icon fa fa-comments-o animate-hover cmnt-acty-account cursor m-r-sm font-sm" title="" data-placement="auto" data-content="'+utils.replaceHTMLStrings(comData)+'"   data-toggle="popover" data-trigger="click" data-container="body" id="cmnt-acty-account"></button>' ).addClass('dt-left');
-//					})
-					if(scrollFlag == '2' || (scrollFlag == '1' && !utils.checkifIE())){
-						$("#" + settings.sTableId + "_wrapper .dataTables_paginate .pagination").hide();						
-                    }
-					popoverTrigger();
-					$(id1+' .fadingActions').attr('title', '')
-					setTimeout(function(){
-						helper.dataTableResize();
-					},1000)
-				},
-				fnRowCallback: function(domRow, rowData, rowIdx){
-					if(utils.validateInputs(rowData.lastInteractedDate) !=''){
-						var dateTime = moment(rowData.lastInteractedDate,_prismSTDateOrgFormatSlash+" hh:mm").format(_prismSTDateFormatSlash+" hh:mm A");
-						$(domRow).find("td.intDateCol").attr('title',dateTime).html(dateTime);
-					}
-					if(utils.validateInputs(rowData.lastInteractedDateMe) !=''){
-						var dateTimeMe = moment(rowData.lastInteractedDateMe,_prismSTDateOrgFormatSlash+" hh:mm").format(_prismSTDateFormatSlash+" hh:mm A");
-						$(domRow).find("td.intDateColMe").attr('title',dateTimeMe).html(dateTimeMe);
-					}
-				},
-			}, tableObj);
-			if(scrollFlag == '2' || (scrollFlag == '1' && !utils.checkifIE())){
-				tableObj = $.extend({ "enableScroll": true, "scrollCollapse": false, "lengthChange": false}, tableObj);
-			}else{
-				tableObj = $.extend({ "enableScroll": false, "scrollCollapse": true }, dataTableObj);
-			}
-			utils.DrawDatatable(tableObj);
-			setTimeout(function(){
-				var data = _.keys(filterInfoObj);
-				var contentData = '<b>Filters Applied: </b>'+data;
-				if(filterObjVal == ''){
-					$('#fadingFilterInfo').css('display','none');
-				}else{
-					$('#fadingFilterInfo').css('display','inline-block');
-					if(filterObjVal == '<b class="fw-100">All the criteria is selected </b><div class="fltr-val fw-100">True</div>' || filterObjVal == '<b class="fw-100">One or more of the criteria is selected </b><div class="fltr-val fw-100">True</div>' ){
-						$('#fadingFilterInfo').hide()
-					}else{
-						$('#fadingFilterInfo').attr('data-content',filterObjVal);
-						popoverTrigger();
-					}
-				}
-				
-			},500);
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//FUNCTION TO LOAD FADING CONTACT
-	function callbackLoadFadingContacts(response){
-		try{
-			getActiveID();
-			var dataRes = (typeof response['data'] !== 'undefined' && $.isEmptyObject(response['data']) == false)?response['data']:'';
-			var dataStatus = (typeof response['status'] !== 'undefined' && response['status'] != '')?response['status']:'';
-			var res = "";
-			var i;
-			var conDetails = '';
-			var contactName,accountName,contactId,accountId,lastIntDays,type,desc,empId,mailId,accountType;
-			var errFetchRec = '<div class="no-data">'+_prismerrMsgs["00002"]+'</div>';
-			var noRecVar = '<div class="no-data">'+_prismcommMsgs["00001"]+'</div>';
-			if(dataStatus == 1 || dataStatus == 0){
-				$("#"+thisRepID+"_ibox .ibox-tools .filter-icons").remove();
-				if(dataStatus == 1 && dataRes.length > 0){
-					res += '<div class="fading-small-widget"><table class="table table-striped fading-contact-table">'+
-								'<tbody class="tbl-body">';
-					try{
-						for(i=0;i<dataRes.length;i++){
-							if(typeof dataRes[i] !== 'undefined'){
-								conDetails = dataRes[i];
-								
-								contactName = utils.stripHTMLTags(utils.validateInputs(conDetails['contactName']));
-								accountName = (typeof conDetails['accountName'] !== 'undefined' && conDetails['accountName'] !== '')?'('+utils.validateInputs(utils.stripHTMLTags(conDetails['accountName'])).trim()+')':'';
-								accountType= utils.validateInputs(conDetails['accountType']);
-								contactId = utils.validateInputs(conDetails['contactId']);
-								accountId = utils.validateInputs(conDetails['accountId']);
-								mailId = (typeof conDetails['email'] !== 'undefined' && conDetails['email'] !== '')?'mailto:'+conDetails['email']:'#';
-								empId = utils.validateInputs(conDetails['empId']);
-								lastIntDays = utils.validateInputs(conDetails['lastInteracted']);
-								lastIntDays = (lastIntDays >1)?lastIntDays+' days ago':lastIntDays+' day ago';
-								
-								type = (typeof conDetails['lastInteractedMode'] !== 'undefined' && conDetails['lastInteractedMode'] !== '')?'<span class="" title="'+conDetails['lastInteractedMode']+'">'+conDetails['lastInteractedMode']+'</span>':'';
-								desc = (typeof conDetails['desc'] !== 'undefined' && conDetails['desc'] !== '')?'<div class="small text-ellipsis"><span class="int_desc" title="'+conDetails['desc']+'">'+conDetails['desc']+'</span></div>':'';
-								res += '<tr id="fdc_row_'+contactId+'" class="fdc-row">'+
-											'<td colspan="2">'+
-											   '<div class="text-ellipsis" title="'+utils.replaceQuotes(contactName+accountName)+'">'+utils.replaceHTMLStrings(contactName+accountName)+'</div>'+			  
-											'</td>'+
-											'<td>'+
-												'<div style="text-align:right;" title="'+accountType+'">'+accountType+'</div>'+
-											'</td>'+
-										'</tr>'+
-										'<tr>'+
-											'<td colspan="2">'+desc+'</td>'+
-										'</tr>'+
-										'<tr>'+
-											'<td>'+type+'</td>'+
-											'<td><div class="small contact-days dt-left"><b>' + lastIntDays + '</b></div></td>'+
-											'<td>'+
-												'<div class="icons-list">'+
-													'<input type="hidden" value="'+contactId+'" class="contactId" />'+
-													'<input type="hidden" value="'+accountId+'" class="accountId" />'+
-													'<input type="hidden" value="'+empId+'" class="employeeId" />'+
-													'<input type="hidden" value="'+utils.replaceHTMLStrings(utils.validateInputs(conDetails['accountName']))+'" class="accountNme" />'+
-													'<input type="hidden" value="'+contactName+'" class="contactNme" />'+
-													'<input type="hidden" value="'+utils.validateInputs(conDetails['email'])+'" class="contactMail" />'+
-													conDetails['action']+
-												'</div>'+
-											'</td>'+
-										'</tr>';
-							}		
+					}}
+					onColumnVisible={(e) => {
+						if (e.source != 'api') {
+							saveGridSettings();
 						}
-					}catch(e){
-						utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-					}			
-					res += '</tbody>'+
-								'</table></div>';
-								//'<button type="button" class="btn theme-more"><span>More..</span></button>';			
-				}else{
-					res += noRecVar;
-				}
-			}else{
-				res +=  errFetchRec
-			}
-			$('#'+thisRepInternalID).html(res);
-			setTimeout(function(){
-				if(utils.callCiaOnOffFlag() == false){ $('.dismisscall').hide(); }
-				if(filterObjVal != '' || dataStatus == 1){
-					$(filterhtml).appendTo($("#"+thisRepID+"_ibox .ibox-tools"));
-				}
-				var data = _.keys(filterInfoObj);
-				var contentData = '<b>Filters Applied: </b>'+data;
-				if(filterObjVal == ''){
-					$('#fadingFilterInfo').css('display','none');
-				}else{
-					$('#fadingFilterInfo').css('display','inline-block');
-					if(filterObjVal == '<b class="fw-100">All the criteria is selected </b><div class="fltr-val fw-100">true</div>' || filterObjVal == '<b class="fw-100">One or more of the criteria is selected </b><div class="fltr-val fw-100">true</div>' ){
-						$('#fadingFilterInfo').css('display','none');
-					}else{
-						$('#fadingFilterInfo').attr('data-content',filterObjVal);
-						popoverTrigger();
-					}
-				}
-				
-			},500);
-			$('#loading_screen').hide();
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//CALLBACK FUNCTION
-	function thisRepCB(){
-		try{
-			$('#loading_screen').show();
-			$(window).resizeEnd();
-			gettblfieldsval(0);
-		}catch(e){
-			$('#'+thisRepInternalID).html('<p class="align-center">'+_prismerrMsgs["00002"]+'</p>');
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//FUNCTION TO TRIGGER POPOVER
-	function popoverTrigger(){
-		try{
-			$('.popover').remove();
-			$('[data-toggle="popover"]').popover({
-					"placement": wheretoplace,
-					"container": 'body',
-					"classname": 'fading-filter-popover'
-			});
-			function wheretoplace(){
-				var MyTop = utils.validateInputs($(this)[0].$element.offset().top);
-				if (MyTop != '' && MyTop < 1100)	return 'bottom';  
-				else return 'top';
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//SERVICE CALL FOR GET TABLE VALUES
-	function gettblfieldsval(val){
-		try{
-			var tblId = 'fadingcontact_'+userDetails.roleId+'_'+userDetails.used_id+'_'+userDetails.empId;
-			_server.post({
-				url: serviceURLJava + "tableconfig/gettblfields",
-				data: {"tblid": tblId},
-				success: function(response){
-					if(response.status == 1){
-						var data = (utils.validateInputs(response.settings.column_def) != '') ? JSON.parse(response.settings.column_def) : '';
-						if(val == 1){
-							settblfeildsval(data,val);
+					}}
+					onColumnPinned={(e) => {
+						if (e.source != 'api') {
+							saveGridSettings();
 						}
-						defaultfiltervalues(data,val)
-					}else{
-						defaultfiltervalues('',val);
-					}
-				},
-				error: function(jqXHR){
-					$('#loading_screen').hide();
-					utils.scriptErrorHandling(thisFileName, 'tableconfig/gettblfields', jqXHR.responseText);
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	//FUNCTION TO FORM FILTER INFORMATION
-	function defaultfiltervalues(response,val){
-		try{
-			if(response != ''){
-				filterInfoObj = {}
-				_.map(response, function (tokenObj, key){
-					switch(utils.validateInputs(tokenObj.type).toLowerCase()){
-						case 'radiotokenizer':
-						case 'tokenizer':
-							var tempdata = _.pluck(tokenObj.values, 'val');
-							var tempdatas = _.pluck(tokenObj.values,'txt');
-							filterObj[tokenObj.key] = tempdata;
-							if(tempdata.length >= 1 ){
-								filterInfoObj[tokenObj.title] = tempdatas;
-							}
-						break;
-						case 'select':
-							filterObj[tokenObj.key] = tokenObj.values;
-							if(utils.validateInputs(tokenObj.values) != '' ){
-								filterInfoObj[tokenObj.title] = tokenObj.values;
-							}
-						break;
-						case 'checkbox':
-							filterObj[tokenObj.key] = tokenObj.values;
-							if(utils.validateInputs(tokenObj.values) == true ){
-								filterInfoObj[tokenObj.title] = tokenObj.values;
-							}
-						break;
-						default:
-							filterObj[tokenObj.key] = tokenObj.values;
-							var tokenObjKey=utils.validateInputs(tokenObj.key).toLowerCase();
-							if(tokenObj.values == true || utils.validateInputs(tokenObj.values) != '' || utils.validateInputs(tokenObj.values).length > 0){
-								if(tokenObjKey.indexOf('include') != -1 || tokenObjKey.indexOf('exclude') != -1){
-									filterInfoObj[tokenObj.key] = tokenObj.values;
-								}else{ filterInfoObj[tokenObj.title] = tokenObj.values; }
-							}
-						break;
-					}
-				});
-				if(!filterObj.distributionList){
-					filterObj.list = [];
-					filterInfoObj = _.omit(filterInfoObj, 'List name');
-				}	
-				if(utils.validateInputs(filterObj.accountName).length == 0) {
-					filterInfoObj = _.omit(filterInfoObj, 'includeAccName','excludeAccName');
-				}
-				 if(utils.validateInputs(filterObj.accountType).length == 0){
-					filterInfoObj = _.omit(filterInfoObj, 'includeAccType','excludeAccType');
-				}
-				setTimeout(function(){
-					if(_.size(filterInfoObj) > 1){
-						filterObjVal = '<div><b class="fw-100">Filter Applied:</b><br>';
-					}else{
-						filterObjVal = '<div>No filter applied</div>';
-					}
-					// filterObjVal = "";
-					var keyLowerCase ="";
-					$.each(filterInfoObj,function(key,val){
-						// if(typeof val == 'string'){
-							// filterObjVal += '<b class="fw-100">'+key+'</b><div class="fltr-val">'+val+'</div>';
-						// }else if(typeof val == 'boolean'){
-							// filterObjVal += '<b class="fw-100">'+key+'</b><div class="fltr-val">'+val+'</div>';
-						// }else if(typeof val == 'object'){
-							if(_.size(filterInfoObj) > 1){
-								keyLowerCase= utils.validateInputs(key).toLowerCase();
-								if(keyLowerCase.indexOf('include') != -1){key = 'Include';}
-								if(keyLowerCase.indexOf('exclude') != -1){key = 'Exclude';}
-
-								val = (typeof val == 'object')? val.toString() : val;
-								if(val === true){ val = ''; }
-								if(val === false){ val = ''; }
-								filterObjVal += '<b class="fw-100">'+key+' </b><div class="fltr-val fw-100">'+val+'</div>';
-							}
-						//}
-					})
-					filterObjVal += '</div>';
-				}, 500);
-			}
-			if(val == 0){
-				if(repScreenACStatus == 'collapsed'){
-					getFadingContactCollapsed(repScreenACStatus);
-				}else{
-					getFadingContactTable();
-				}
-				drawFadingContactFilterForm();
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	//FUNCTION TO SET FILTER VALUES TO FORM
-	function settblfeildsval(data){
-		try{
-			_.map(data, function(tokenObj,key){
-				switch(utils.validateInputs(tokenObj.type).toLowerCase()){
-					case "checkbox":
-					case "radio":
-						$('#'+tokenObj.id).prop('checked',tokenObj.values);
-						$('#'+tokenObj.id).trigger('change');
-					break;
-					case "select":
-					if(typeof tokenObj.values == 'object'){
-						setTimeout(function(){
-							$("#"+tokenObj.id).val(tokenObj.values).trigger("chosen:updated");
-						}, 300);
-					}else{
-						$('#'+tokenObj.id).val(tokenObj.values);
-					}
-					break;
-					case 'tokenizer':
-						$.each(tokenObj.values,function(key,val){
-							$(".fadingFilterModal .modal-body #"+tokenObj.id).tokenize().tokenAdd(val.val, val.txt);
-						})
-					break;
-					default:
-						$('#'+tokenObj.id).val(tokenObj.values);
-					break;
-				}
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	//FUNCTION TO DRAW FADING CONTACT FITER FORM
-	function drawFadingContactFilterForm(){
-		try{
-			formsettingval = utils.validateInputs(_prismFormSettingValues['FADINGCONTACTFILTER']);
-			var formDetail = JSON.parse(formsettingval);
-			var htmlContent = '<div class="modal-dialog" data-targetid="fadingContact">'+
-									'<div class="modal-content animated fadeInRight popupcenter">'+
-										'<div class="modal-header bg-primaryLight"><button type="button" class="close" data-dismiss="" id="advance_pop_up_close"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button><span id="poptitle" style="text-align:center;" class="text-center modal-title">Fading Contact Filters</span></div>'+
-										
-										'<div class="modal-body"><div class="panel-form form-xs" id="">';
-			$.each(formDetail, function(i, ele){
-				var formcondition = (ele.role == "" || (ele.role.toLowerCase().indexOf(userDetails.role.toLowerCase())!= -1)) ? true : false;
-				if(formcondition){
-					htmlContent += formFields(ele);
-				}
-			});					
-			htmlContent +=	'</div></div>'+
-								'<div class="modal-footer">'+
-									'<button id="resetAdvanceFilter" data-action="" class="advfilter-btn-cancel adv-filter-btns btn-custom btn-dflt m-r-xs" type="button" >Reset</button>'+
-									'<button id="submitAdvanceFilter" data-clickid="'+_prismSTClickTrackMessages.dashfadingcontactfilter+'" data-action="" class="advfilter-btn-save adv-filter-btns comm_btn_ok btn-custom btn-green dashfadingcontactfilter" type="button">Apply</button>'+
-									'</div>'+
-								'</div>'+
-							'</div>';
-			$('.fadingFilterModal').html(htmlContent);
-			popoverTrigger();
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//TO FORM FILTER FORM FIELD
-	function formFields(obj){
-		try{
-			var content = '';
-			switch(utils.validateInputs(obj.type).toLowerCase()){
-				case 'select':
-					if(obj.options.length == 0){
-						prepareSelectsArr.push({
-							id: obj.id,
-							url: obj.optionsUrl,
-							reqData: ((obj.reqData != undefined) ? obj.reqData : {}),
-							title: obj.name,
-							defaultValue: obj.defaultValue,
-							multiSelect: obj.multiSelect,
-							customOption:utils.validateInputs(obj.customOption)
-						})
-						if(obj.multiSelect == true){
-							prepareMultiselectArr.push(obj.id);
-						}
-					}
-					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label><select class="'+obj.classname+ '" data-placeholder="Select ' +( (obj.name == 'Account Tier')?'tiers':obj.name )+ '"   id="'+obj.id+'" ' + (obj.multiSelect ? "multiple" : "") + '>';
-						$.each(obj.options, function(j, jele){
-							content += '<option value="'+jele.value+'">'+jele.text+'</option>';
-						});
-					content += '</select>'+
-								'</div>';
-					return content;
-				break;
-				case 'checkbox':
-					content += '<div class="form-fields '+obj.classname+'"><div class="checkbox checkbox-primary checkbox-inline custom-checkbox" style="width:100%">' +
-						'<input id="'+obj.id+'" value="'+obj.name+'" style="height:auto" type="checkbox" name="'+obj.name+'">' +
-						'<label for="'+obj.id+'">'+obj.name+'</label>';
-					if(typeof obj.info !== 'undefined' && obj.info != ''){
-						content += '<i class="fa font-sm1 fa-info-circle m-l-xs c-pointer tier_popover" data-toggle="popover" data-html="true" data-placement="auto"  data-container="body" data-content="'+obj.info+'"></i>';
-					}
-					content +=	'</div></div>';
-					return content;
-				break;
-				case 'tokenizer':
-					prepareTokenizerArr.push({ ele: obj, id: obj.id });
-					var display = (utils.validateInputs(obj.display) == true) ? 'block' : 'none' ;
-					content += '<div class="form-fields '+obj.classname+'" style="display:'+display+'"><div class="tokenize-container" id="'+obj.id+ '_list">' +
-						'<select id="'+obj.id+'" multiple="multiple" class="tokenize-sample Tokenize TokensContainer"></select>' +
-						'</div></div>';
-					return content;
-				break;
-				case 'radio':
-					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label>';
-					$.each(obj.options,function(j,jele){
-						var defaultcheck = (utils.validateInputs(jele.defaultcheck) == true) ? 'checked':'';
-						content += '<div class="radio radio-circle radio-primary radio-inline '+obj.classname+'">' +
-						'<input id="'+jele.value+'" value="' + jele.value + '" type="radio" '+defaultcheck+ ' name="'+jele.name+'">' +
-						'<label for="'+jele.value+'">' + jele.text + '</label>' +
-						'</div>';
-					});
-					content += '</div>';
-					return content;
-				break;
-				default:
-					content += '<div class="form-fields '+obj.classname+'"><label>'+obj.name+'</label></div>';
-					return content;
-				break;
-			}	
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-		}
-	}
-
-	//FUNCTION TO CLEAR FILTER VALUES
-	function clearFilterValue(){
-		try{
-			var response = JSON.parse(formsettingval);
-			_.map(response, function (tokenObj, key){
-				var type = tokenObj.type.toLowerCase();
-				if(type == 'select'){
-					if(utils.validateInputs(tokenObj.multiSelect) != '' && tokenObj.multiSelect == true){
-							$('#'+tokenObj.id).val('').trigger("chosen:updated");
-					}else{
-						$('#'+tokenObj.id).val('');
-					}
-				}else if(type == 'checkbox'){
-					$('#'+tokenObj.id).prop('checked',false).trigger('change');
-				}else if(type == 'tokenizer'){
-					if(utils.validateInputs($('#'+tokenObj.id).tokenize()) != ''){
-						$('#'+tokenObj.id).tokenize().clear();
-					}	
-				}else if(type == 'radio'){
-					$.each(tokenObj.options,function(key,val){
-						if(val.defaultcheck == true){
-							$('#'+val.value).prop('checked',true).trigger('change');
-						}
-					})
-				}
-			})
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	// FUNCTION TO PREPARE TYPEAHEAD
-	function prepareTypeahead(arr, callback){
-		try{
-			_.map(arr, function(ele){
-				$("#" + ele.id).typeahead('destroy');
-				var maxItem = utils.validateInputs(ele.ele.typeaheadParams.maxItem)
-				$.typeahead({
-					input: "#" +ele.id,
-					minLength: ele.ele.typeaheadParams.minLength,
-					maxItem: (maxItem != '') ? maxItem : typeaHeadMaxItem,
-					mustSelectItem: ele.ele.typeaheadParams.mustSelectItem,
-					delay: 300,
-					emptyTemplate: ele.ele.typeaheadParams.emptyTemplate,
-					dynamic: ele.ele.typeaheadParams.dynamic,
-					cache: false,
-					// template: ele.ele.typeaheadParams.template,
-					template: function(query, item){
-						var temp = ele.ele.typeaheadParams.template;
-						return temp;
-					},
-					source: {
-						search: {
-							display: ele.ele.typeaheadParams.display,
-							url: [{
-								type: "POST",
-								url: serviceURLJava + ele.ele.typeaheadParams.url,
-								data: {
-									searchtext: "{{query}}",
-									// type: "dashboard",
-									filtertype: ele.ele.typeaheadParams.filtertype
-								},
-								headers:{
-									auth_token: utils._prismGetAuthToken('1')
-								},
-								callback: {
-									done: function(data){
-										$("#" + ele.id+ ' .typeahead__result .typeahead__list').remove();
-										return data.data;
-									}
-								}
-							}]
-						}
-					},
-					callback: {
-						onClick: function(node, a, obj, e){
-							if(ele.ele.duplicateValidation)
-								return false;
-							else{
-								setTimeout(function(){
-									$("#" + ele.id).val(obj[ele.ele.typeaheadParams.display[0]]);
-								},0);
-							}
-						},
-						onClickAfter: function(node, a, obj, e){
-							$("#" + ele.id).val('').val(obj[ele.ele.typeaheadParams.display[0]]);
-							$("#" + ele.id).data("value", obj);
-							$("#" + ele.id).trigger("change");
-						}
-					}
-				});
-			})
-			callback(true);
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	/* Start: multiselect init function */
-	function prepareMultiselect(arr){
-		try{
-			if(arr.length > 0){
-				var ids = arr.join(', #')
-				setTimeout(function() {
-					$('#' + ids).chosen({ width: "520px" });
-					$('#' + ids).trigger('chosen:updated');
-				}, 500)
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-		}
-	}
-
-	//FUNCTION TO PREPARE SELECT
-	function prepareSelects(arr, callback){
-		try{
-			if(arr.length > 0){
-				_.map(arr, function(obj, key){
-					_server.post({
-						url: serviceURLJava + obj.url,
-						cache: false,
-						data: obj.reqData,
-						success: function(res){
-							if(res.status >= 0 && res.data){
-								var options ='';
-								var thisid = utils.validateInputs(obj.id);
-								/* Setting Account tier or Research tier Based on Config */
-								var accountResearchTier = "0";
-								var thisdata = res.data;
-								try{
-									var researchTierKey = utils.validateInputs(utils.jsonDataObj(_prismConstantValues["MIFID_CONFIG"]));
-									accountResearchTier = (utils.validateInputs(researchTierKey.Acct_Research_Tier) != '')? researchTierKey.Acct_Research_Tier : accountResearchTier;
-								}catch(e){}
-								if(accountResearchTier == '1' || accountResearchTier == 1){
-									thisdata = (utils.validateInputs(obj.customOption) != "") ? utils.validateInputs(obj.customOption) :res.data;
-								}
-								if(thisdata.length >0){
-									_.map(thisdata, function(opt){
-										if(obj.reqData != undefined && obj.reqData.type != undefined) {
-											options += '<option value="' + opt.text + '" ' + ((obj.defaultValue != "NA" && obj.defaultValue == opt.value) ? "selected" : "") + '>' + opt.text + '</option>';
-										}else{
-											options += '<option value="' + opt.text + '" ' + ((obj.defaultValue != "NA" && obj.defaultValue == opt.text) ? "selected" : "") + '>' + opt.text + '</option>';
-										}
-									});
-									$("#" + obj.id + ' > option').remove();
-									$("#" + obj.id).append(options);
-								}
-							}
-						},
-						error: function(e){
-							utils.scriptErrorHandling(thisFileName, obj.url, e);
-						}
-					});
-					if(key == arr.length - 1){
-						callback(true);
-					}
-				})
-			}else{
-				callback(true);
-			}
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	//FUNCTION TO FORM TOKENIZER
-	function prepareTokenizer(arr, callback){
-		try {
-			_.map(arr, function (obj){
-				var filterparam = (utils.validateInputs(obj.ele.filterarray) != '') ? ('&'+obj.ele.filterarray) : ''
-				$(".fadingFilterModal .modal-body #" +obj.id).tokenize({
-					datas: serviceURLJava + obj.ele.filterURL+'?1=1'+filterparam,
-					searchParam: 'searchtext',
-					placeholder: obj.ele.placeHolder,
-					newElements: "true",
-					maxElements:obj.ele.maxLength,
-					onRemoveToken: function (value, e) { },
-					onAddToken: function (value, e) { }
-				});
-			})
-			callback(true);
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-
-	//FUNCTION TO GET FILTER VALUES
-	function getfiltervalues(){
-		try{
-			getFilterVal = [];
-			var filterform = JSON.parse(formsettingval);
-			_.map(filterform, function(tokenObj, key){
-				switch(utils.validateInputs(tokenObj.type).toLowerCase()){
-					case 'select':
-						if(typeof tokenObj.requestkey == 'string'){
-							if(utils.validateInputs(tokenObj.multiSelect) == '' || !tokenObj.multiSelect){
-								getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('#'+tokenObj.id+' option:selected').val(),"id":tokenObj.id,"title":tokenObj.name})
-							}else{
-								getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('#'+tokenObj.id).val(),"id":tokenObj.id,"title":tokenObj.name})
-							}
-						}
-					break;
-					case 'checkbox':
-						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":$('.fadingFilterModal #'+tokenObj.id).is(':checked'),"id":tokenObj.id,"title":tokenObj.name})
-					break;
-					case 'tokenizer':
-						var tokenval = ($('#'+tokenObj.id).tokenize().getFullDtls() == '')?[]:$('#'+tokenObj.id).tokenize().getFullDtls();
-						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":tokenObj.requestkey,"key":tokenObj.requestkey,"values":tokenval,"id":tokenObj.id,"title":tokenObj.name})
-					break;
-					case 'radio':
-					$.each(tokenObj.options,function(key,val){
-						var tempdata = $('#'+val.value).is(':checked');
-						getFilterVal.push({"type":tokenObj.type.toLowerCase(),"data":val.key,"key":val.key,"values":tempdata,"id":val.value,"title":val.text})
-					})
-					break;
-					default:
-					break;
-				}
-				setTimeout(function(){
-					defaultfiltervalues(getFilterVal)
-				}, 500);
-			});
-		}catch(e){
-			utils.scriptErrorHandling(thisFileName, arguments.callee.name, e);
-			callback(false);
-		}
-	}
-	
-	return {
-		getFadingContactCollapsed: getFadingContactCollapsed,
-		DrawFadingContactTable: DrawFadingContactTable,
-		getFadingContactTable: getFadingContactTable,
-		callbackLoadFadingContacts: callbackLoadFadingContacts,
-		popoverTrigger: popoverTrigger,
-		thisRepCB: thisRepCB,
-		gettblfieldsval: gettblfieldsval,
-		defaultfiltervalues: defaultfiltervalues,
-		settblfeildsval: settblfeildsval,
-		drawFadingContactFilterForm: drawFadingContactFilterForm,
-		formFields: formFields,
-		clearFilterValue: clearFilterValue,
-		prepareTypeahead: prepareTypeahead,
-		prepareMultiselect: prepareMultiselect,
-		prepareSelects: prepareSelects,
-		prepareTokenizer: prepareTokenizer,
-		getfiltervalues: getfiltervalues
-	};
-})();
-
-function fading_contacts(id, clientID, searchCode){
-	try{
-		var thisRepID = id;
-		var thisRepIboxID = id+'_ibox';
-		var filterValue = '';
-		var thisFileName = 'reports - fading_contacts1.js';
-		var thisRepInternalID = thisRepID+' #fading-contacts-contents';
-		
-		/**** Start Events ****/
-		//FADING CONTACT DISMISS CLICK EVENT
-		$("body").undelegate("#"+thisRepID+" #dismissfadingcontact","click");
-		$("body").delegate("#"+thisRepID+" #dismissfadingcontact","click",function(e){
-			var thisParent = $(this).parent();
-			var conId = thisParent.data('contactid');
-			var empId = thisParent.data('empid');
-			var accountNme = thisParent.data('accountname');
-			var contactNme = thisParent.data('contactname');
-			var contactMail = $(this).data('mailid');
-			var searchCode = thisParent.data('searchcode');
-			var commFreq = thisParent.parent().siblings('td.commFreq').attr('data-order');
-
-			var dissmissObj = {};
-			dissmissObj.conId = conId;
-			dissmissObj.empId = empId;
-			dissmissObj.commFreq = commFreq;
-			dissmissObj.searchCode = searchCode;
-
-			conInfo.contactEmail = contactMail;
-			conInfo.contactId = conId; 
-			conInfo.contactName = contactNme;
-			conInfo.acctName = accountNme;
-			
-			if(conId != ''){
-				dismissResonsPopup(dissmissObj);
-			}else{
-				utils.info_toaster(_prismerrMsgs["00003"], 'e');
-			}
-		});
-
-		//CHANGE EVENT FOR DISTRIBUTION LIST CHECKBOX
-		$("body").undelegate("#distributionlist","change")
-		$("body").delegate("#distributionlist","change",function(e){
-			if($('#distributionlist').is(':checked') == true){
-				$('#distributionlistname_list').parent().css('display','block');
-			}else{
-				$('#distributionlistname_list').parent().css('display','none');
-			}
-		});
-
-		//CLICK EVENT FOR RESET FILTER BUTTON
-		$("body").undelegate("#resetAdvanceFilter","click")
-		$("body").delegate("#resetAdvanceFilter","click",function(e){
-			fadingContactSelf.clearFilterValue();
-		});
-
-		//FULLSCREEN LINK CLICK
-		$('body').undelegate('.fading_contact_cont #'+thisRepIboxID+' .fullscreen-link i','click');
-		$('body').delegate('.fading_contact_cont #'+thisRepIboxID+' .fullscreen-link i','click',function (){
-			if($(this).hasClass('fa-expand')){
-				repScreenACStatus = 'expanded';
-				$('#'+thisRepID).attr('data-fadingLen','');
-				$('.fading_contact_cont #'+thisRepIboxID).addClass('fad-full');
-				$('#loading_screen').show();
-			}else{
-				repScreenACStatus = 'collapsed';
-				$('.fading_contact_cont #'+thisRepIboxID).removeClass('fad-full');
-			}
-			
-			if($('.grid-stack').length >0){
-				utils.toggleFullscreen($(this));
-				var iboxCls = $('.fading_contact_cont #'+thisRepIboxID).attr('class');
-				if(iboxCls.indexOf('gridHt')==-1){ $('.fading_contact_cont #'+thisRepIboxID).addClass('gridHt'); }
-			}
-			fadingContactSelf.thisRepCB();
-		});
-
-		//CHANGE EVENT FOR DISMISS POPUP RADIO BUTTON
-		$("body").undelegate(".frm_fc_dismission_options .choose_dismiss_opt","change")
-		$("body").delegate(".frm_fc_dismission_options .choose_dismiss_opt","change",function(e){
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio input#rdo_comm_freq').is(':checked') == true){
-				$('.choose_dismiss_opt_container .dismiss_communication_frequency').css('display','block');
-			}else{
-				$('.choose_dismiss_opt_container .dismiss_communication_frequency').css('display','none');
-			}
-
-			$("#submit_dismiss").removeClass('disabled');
-			if($(this).val() == 1){
-				$('.frm_fc_dismiss_day_options').show();
-			}else{
-				$('.frm_fc_dismiss_day_options input.choose_dismiss_day_opt').first().trigger('click');
-				$('.frm_fc_dismiss_day_options').hide();
-			}	
-		});
-		
-		//CLICK EVENT FOR LOG INTERACTION IN FADING CONTACT TABLE 
-		$("body").undelegate("#interactionedit","click")
-		$("body").delegate("#interactionedit","click",function(e){
-			var thisParent = $(this).parent();
-			var contactname = utils.replaceSlashDoubleQuotes(thisParent.data('contactname'));
-			var parentCon = utils.validateInputs(thisParent.data('contactid'));
-			parentCon = (typeof parentCon == 'number') ? parentCon.toString() : parentCon;
-			var propObject = {"popTitle":contactname+' -'+lblConfig["contactlogInteractionsPopupHeader"]};
-			conInfo.contactId = parentCon;
-			conInfo.contactName = contactname;
-			conInfo.acctName = utils.replaceSlashDoubleQuotes(thisParent.data('accountname'));
-			conInfo.fromFadingCont = true;
-			conInfo.screenSts = repScreenACStatus;
-			interactionLogDash.openLogInteractionPopup(propObject);
-		});
-
-		//CLOSE CLICK EVENT FOR FADING CONTACT FILTER BUTTON
-		$("body").undelegate("#advance_pop_up_close","click")
-		$("body").delegate("#advance_pop_up_close","click",function(e){
-			$('.fadingFilterModal').modal('hide');
-			var confTitle = 'Confirmation';
-			var yesID = 'fadingContactFilterYes';
-			var noID = 'fadingContactFilterNo';
-			utils.drawConfirmationPopup(confTitle, _prismcommMsgs['00024'], yesID, noID);
-		});
-
-		//TO CLOSE CONFIRMATION BOX
-		$('body').undelegate('#fadingContactFilterNo','click');
-		$('body').delegate('#fadingContactFilterNo','click',function(){
-			$('.fadingFilterModal').modal('show');
-		});
-
-		//TO RESET ADVANCE FILTER
-		$('body').undelegate('#fadingContactFilterYes','click');
-		$('body').delegate('#fadingContactFilterYes','click',function(){
-			fadingContactSelf.clearFilterValue();
-			$('#dashboard_popup').modal('hide');
-		});
-		
-		//CLICK EVENT FOR CALL IN FADING CONTACT TABLE
-		$("body").undelegate("#dismisscall","click")
-		$("body").delegate("#dismisscall","click",function(e){
-			var uniqPhone = utils.validateInputs($(this).parent().data('phone'));			
-			if(uniqPhone != ''){
-				var contact_id = utils.validateInputs($(this).parent().data('contactid'));
-				if(utils.validateInputs(contact_id) != '') {	
-					$('#loading_screen').show();			
-					var phObj ={
-						contact_id: contact_id,
-						phone_number: '',
-						sel_num: '',
-						uniqPhone: uniqPhone
-					}		
-					quickcall.start.qc_load_start(phObj);
-				}
-			}				
-		});		
-		
-		//CLICK EVENT FOR DISMISS POPUP SUBMIT BUTTON
-		$("body").undelegate("#submit_dismiss","click");
-		$("body").delegate("#submit_dismiss","click",function(e){
-			var dismiss_ws = $('.choose_dismiss_opt_content .radio .choose_dismiss_opt:checked').attr('dismiss');
-			var commfreq = '';
-			var stopalert = 0;
-			var isSelected = false;
-			var contactid=$('.fading_contact_title').attr('contactid');
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #rdo_comm_freq').is(':checked') == true){
-				isSelected = true;
-				commfreq = $('.choose_dismiss_opt_container .dismiss_communication_frequency select option:selected').val();
-			}
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #stopalert').is(':checked') == true){
-				isSelected = true;
-				stopalert = 1;
-			}
-			if(dismiss_ws == "true"){
-				var dismissData = {};
-				dismissData.contactId = contactid;
-				dismissData.commFreq = commfreq;
-				dismissData.stopAlert = stopalert;
-
-				utils.scriptErrorHandling('Fading contact dismiss - '+contactid, 'Fading contact dismiss - '+contactid, JSON.stringify(dismissData));
-				$('#submit_dismiss').data('clickid',_prismSTClickTrackMessages.dashfadingcontactdismiss);
-
-				_server.post({
-					url: serviceURLJava + 'contact/dismissfadingcontact',
-					data:{
-						"data" : JSON.stringify(dismissData)
-					},
-					success: function (response){
-						if(response.status ==1){
-							utils.info_toaster(_prismsuccMsgs["00056"], 's');
-							if(repScreenACStatus == 'collapsed'){
-								fadingContactSelf.getFadingContactCollapsed(repScreenACStatus);
-							}else{
-								fadingContactSelf.getFadingContactTable();
-							}
-						}else{
-							utils.info_toaster(_prismerrMsgs["00260"], 'e');
-						}
-						$('#fading_contact_dismiss_popup').modal('hide');
-					},
-					error: function (response){
-						utils.info_toaster(_prismerrMsgs["00260"], 'e');
-						$('#fading_contact_dismiss_popup').modal('hide');
-						utils.scriptErrorHandling(thisFileName, "contact/dismissfadingcontact", e);
-					}
-				});
-			}
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #dismissinactive').is(':checked') == true){
-				isSelected = true;
-				$('#loading_screen').show();
-				$('#fading_contact_dismiss_popup').modal('hide');
-				if(utils.validateInputs(contactid) != ''){
-					conInfo.isfadingCon = true;
-					conInfo.screenSts = repScreenACStatus;
-					contactCRMObj.editContactInfo(contactid);
-				}else{
-					alert("Invalid contact details.");
-				}
-			}
-
-			if($('.choose_dismiss_opt_container .choose_dismiss_opt_content .radio #dismissempchange').is(':checked') == true){
-				$('#fading_contact_dismiss_popup').modal('hide');
-				isSelected = true;
-				if(utils.validateInputs(contactid) != ''){
-					conInfo.isfadingCon = false;
-					conInfo.isFadEmpChange = true;
-					conInfo.screenSts = repScreenACStatus;
-					contactCRMObj.empChange(contactid);
-				}else{
-					alert("Invalid contact details.");
-				}
-			}
-			if(!isSelected){
-				utils.info_toaster(_prismerrMsgs["00461"], 'w');
-			}
-		});
-		
-		//CALL ICON CLICK EVENT CALL CIA FLAG IS IN OFF
-		$("body").undelegate(".phone-nos-call","click");
-		$("body").delegate(".phone-nos-call","click",function(e){
-			var contactid = $(this).data('contactid')
-			var thisVar = $(this);
-			if(utils.validateInputs(contactid)!='' && utils.validateInputs($(this).find('.icon-phone-call').attr('data-content')) =='' ){
-				$(this).find('.icon-phone-call').attr('data-content','')				
-				$('#loading_screen').show();
-				_server.get({
-					url: serviceURLJava+ "contact/getcontactinfo",
-					data: {
-						contactid: contactid
-					},
-					success: function(response) {
-						if(response.status == 1){
-							var tableHTML = '<table class="table fund_managertable theme-table table-striped"><thead><tr><th>Phone Label</th><th>Phone No</th></tr></thead><tbody>'
-							var data = response.data[0];
-							if(data.crmDet.phone.length > 0){
-								$.each(data.crmDet.phone, function(ind,value){
-									tableHTML+='<tr><td>'+data.crmDet.phoneLabel[ind]+'</td><td>'+value+'</td></tr>';
-								})
-							}
-							tableHTML+='</tbody></table>';
-						}
-						thisVar.find('.icon-phone-call').popover({html:true,placement: 'auto',"container": "body"})
-						thisVar.find('.icon-phone-call').attr('data-content', tableHTML.toString()).popover('show')
-						$('#loading_screen').hide();
-					},
-					error: function (jqXHR){
-						if(jqXHR.responseText != ''){
-							$('#loading_screen').hide();
-							utils.scriptErrorHandling(thisFileName, "contact/getcontactinfo", jqXHR.responseText);
-						}
-						$('#loading_screen').hide();
-					}
-				});
-			}else if($(this).find('.icon-phone-call').data('bs.popover').tip().hasClass('in') == true){
-				$(this).find('.icon-phone-call').popover('hide');
-			}else if(utils.validateInputs($(this).find('.icon-phone-call').attr('data-content')) !='' &&  $(this).find('.icon-phone-call').data('bs.popover').tip().hasClass('in') == false){
-				$(this).find('.icon-phone-call').popover('show');
-			}
-		})
-			
-
-		/**** End Events ****/
-		
-		// TO LOAD FADING CONTACT DISMISS POPUP
-		function dismissResonsPopup(dissmissObj){
-			try{
-				var conId = dissmissObj.conId;
-				var empId = dissmissObj.empId;
-				var commFreq = dissmissObj.commFreq;
-				var searchCode = dissmissObj.searchCode;
-				var commFreqval = JSON.parse(_prismConstantValues['ADD_CRM_DROP_DOWN_COMM_FREQ']);
-				var idx = 0;
-				var CtSrchCode = utils._prismTsheetSearchCode({mainType: 'cont', subType: 'deflt'});
-				var nonCtSrchCode = utils._prismTsheetSearchCode({mainType: 'cont', subType: 'non_covd'});
-				var pHtml = '<div class="modal-dialog right fadeInRight">';
-						pHtml += '<div class="modal-content animated fadeInRight popupcenter">'
-							pHtml += '<div class="modal-header bg-primaryLight"><span id="poptitle" class="fading_contact_title text-center modal-title" contactid='+conId+'>'+lblConfig["fadinContactDismissPopupHeader"]+'</span><button type="button" class="close" data-dismiss="modal" id="dismissResonsPopupClose"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button></div>';
-							pHtml += '<div class="fading-modal panel-form modal-body">';
-				
-									pHtml += '<form class="frm_fc_dismission_options"><div class="choose_dismiss_opt_container">';
-									if(utils.checkPermission("SHOW_CONTACT_COMM_FREQ") == true){
-											pHtml += '<div class="choose_dismiss_opt_content" style="width:100%">'+
-											'<div class="radio radio-circle  radio-inline custom-radio-btn">'+
-												'<input type="radio" id="rdo_comm_freq" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="1" dismiss="true" />'+
-												'<label for="rdo_comm_freq">'+lblConfig["fadinOptionChgFrq"]+'</label>'+
-											'</div>'+
-										'</div>';
-									}	
-									pHtml += '<div class="dismiss_communication_frequency" style="display:none;">'+
-									'<select class="form-control" id="dismiss_contactInfo_commuFreq" data-fldid="" data-placeholder="Select How often would prefer to be in touch?" autocomplete="off" style="width:75% !important">'+
-										'<option value="" selected="">Select Communication Frequency</option>';
-										$.each(commFreqval,function(key,val){
-											pHtml += '<option value="'+val.value+'">'+val.text+'</option>';
-										});
-									pHtml += '</select>'+
-								'</div><br>'+
-								'<div class="choose_dismiss_opt_content" style="width:100%">'+
-										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
-												'<input type="radio" id="stopalert" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="true" />'+
-												'<label for="stopalert">Stop receiving alerts for this contact</label>'+
-											'</div>'+
-										'</div>';
-										if((utils.checkPermission("CT_EDIT_CONTACT") == true && searchCode == CtSrchCode) || (utils.checkPermission("NCT_EDIT_CONTACT") == true && searchCode == nonCtSrchCode)){
-										pHtml += '<div class="choose_dismiss_opt_content" style="width:100%">'+
-										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
-												'<input type="radio" id="dismissinactive" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="false" />'+
-												'<label for="dismissinactive">Contact is inactive</label>'+
-											'</div>'+
-										'</div>';
-										}
-										if((utils.checkPermission("CT_EMP_CHANGE") == true && searchCode == CtSrchCode) || (utils.checkPermission("NCT_EMP_CHANGE") == true && searchCode == nonCtSrchCode)){
-										pHtml += '<div class="choose_dismiss_opt_content">'+
-										  	'<div class="radio radio-circle   radio-inline custom-radio-btn">'+
-												'<input type="radio" id="dismissempchange" class="common_ipt_rado choose_dismiss_opt" name="dismiss_opt" value="0" dismiss="false" />'+
-												'<label for="dismissempchange">Contact has changed employment</label>'+
-											'</div>'+
-										'</div>';
-										}
-										pHtml += '<div class="clearfix"></div>'+
-									 '</div></form>';
-								pHtml += '<form class="frm_fc_dismiss_day_options"><div class="dismiss_day_opt_container">';
-									if(!$.isEmptyObject(_prismContactFilters)){
-										if(typeof _prismContactFilters.commFreq !== 'undefined'){
-											/*for (var dayKey in lblConfig["fadinOptionDays"]) {
-										
-											if (lblConfig["fadinOptionDays"].hasOwnProperty(dayKey)) {*/
-												$.each(_prismContactFilters.commFreq,function(i, ele){
-													pHtml += '<div class="dismiss_day_opt_content"><div class="radio radio-circle radio-inline custom-radio-btn">'+
-															//'+((idx==0)?'checked="checked"':'')+'	
-															  '<input type="radio" id="rdo_'+idx+'_days" class="common_ipt_rado choose_dismiss_day_opt" name="dismiss_day_opt" '+((idx==0)?'checked="checked"':'')+' value="'+ele.value+'" />'+
-															  '<label for="rdo_'+idx+'_days">'+ele.text+'</label>'+	
-															'</div></div>';
-													idx++;		
-												});
-										}
-									}
-								pHtml += '<div class="dismiss-controls pull-right">';
-									pHtml += '<input class="contactId" type="hidden" value="'+conId+'" />';
-									pHtml += '<input class="employeeId" type="hidden" value="'+empId+'" />';
-								pHtml += '</div>';	
-								pHtml += '</div></form>';	
-						
-							pHtml += '</div>';
-							
-							pHtml += '<div class="modal-footer">'+
-												'<input id="submit_dismiss" class="fading-contact-btns comm_btn_ok m-r-sm btn-custom btn-green disabled" type="button" value="Update" />'+
-												'<input id="cancel_dismiss" class="fading-contact-btns comm_btn_cancel btn-custom btn-dflt" data-dismiss="modal" type="button" value="Cancel" />'+
-										'</div>';
-							pHtml +='</div></div>';
-				
-				$('#fading_contact_dismiss_popup').html(pHtml).removeAttr('data-tableid').attr('data-tableid','dismissResonsPopup');
-				$('#fading_contact_dismiss_popup').modal({
-					backdrop: 'static',
-					keyboard: false,
-					show:'true'
-				});
-				if(commFreq != ''){
-					$('#dismiss_contactInfo_commuFreq option[value="'+commFreq+'"]').attr("selected", "selected");
-				}
-			}catch(e){
-				utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-			}
-		}
-					
-		templateFn(thisRepID, '', '<div class="fading-contacts" id="fading-contacts-contents"></div> <!-- fading-contacts -->', fadingContactSelf.thisRepCB);
-	}catch(e){
-		utils.scriptErrorHandling(thisFileName,arguments.callee.name,e);
-	}
-}-
-----------------------------------------------------------------------------------------------
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import {
-  ChevronDownIcon,
-  ChevronUpIcon,
-  EyeIcon,
-  PencilIcon,
-  PlusIcon,
-  Search,
-  Trash2Icon,
-  TrashIcon,
-} from 'lucide-react'
-import { MagnifyingGlassIcon, TableCellsIcon, FunnelIcon } from '@heroicons/react/24/outline'
-
-import DatePicker from 'react-datepicker'
-
-import { Input } from '@/components/ui/input'
-import { useToast } from '@/hooks/use-toast'
-import { API_CONFIG } from '@/lib/constants'
-import { createAuthHeaders } from '@/lib/legacyUtils'
-import { prismStorage } from '@/lib/prismStorage'
-
-import 'react-datepicker/dist/react-datepicker.css'
-
-import TimePicker from 'react-time-picker'
-import 'react-time-picker/dist/TimePicker.css'
-import 'react-clock/dist/Clock.css'
-import moment from 'moment-timezone'
-import ReactUtils from '@/lib/reactUtils'
-import {
-  useDataTableState,
-  DrawDataTableCore,
-  DataTableSettings,
-  type UserTableSettings,
-  type DataTableColumn,
-} from '@/lib/datatable-utils'
-import DataTableFormatters from '@/lib/data-table-formatters'
-
-import { DataTable } from '@/components/ui/DataTable'
-import { TableColumn } from 'react-data-table-component'
-
-type TaskItem = {
-  taskId: string
-  taskName?: string
-  taskComment?: string
-  taskDate?: string
-  taskAssignedName?: string[]
-  taskAssignedId?: string[]
-  taskType?: string
-  taskStatus?: string
-  contacts?: string[] 
-  contactName?: string[] | string 
-  accountName?: string[] | string
-  taskComments?: string
-  reminder?: any[]
-  contactList?: { contact_name: string; contact_id: string; account_name: string }[]
-}
-
-interface AssigneeOption {
-  text?: string
-  value?: string
-  code?: string
-  style?: string
-  docName?: string | null
-  docId?: string | null
-}
-
-interface ContactOption {
-  text?: string
-  value?: string
-  code?: string
-  style?: string
-  docName?: string | null
-  docId?: string | null
-  account_name?: string
-}
-interface TaskOption {
-  value: string
-  text: string
-}
-
-interface TableSettingsResponse {
-  status: number
-  reasons: string
-  settings: {
-    column_def: string
-    column_sort: string
-    is_visible: number
-  }
-}
-
-type UserTableSetting = {
-  isDefault: string | boolean
-  data: string
-  checked: boolean
-  title: string
-}
-
-interface DynamicTableConfigResponse {
-  status: number
-  message: string | null
-  reason: string | null
-  defColSort: string | null
-  defColSortType: 'asc' | 'desc' | null
-  reportName: string | null
-  cols: string[] // dataIndex keys
-  tabCols: (string | null)[]
-  title: string[] // Column Headings
-  data: any[] // The actual table data rows (can be typed more specifically if needed)
-  recordsTotal?: number
-  recordsFiltered?: number
-  draw?: number
-  colsCnt?: string[]
-  formatter: string[]
-}
-
-interface TaskPayload {
-  top: 'collapsed' | 'expanded' 
-  action: 'expanded' | 'collapsed' 
-  clienttimezone: string
-  enablelink: boolean
-  start: number
-  length: number
-  search: {
-    value: string
-    regex: boolean
-  }
-  order: Array<{
-    column: number
-    dir: 'asc' | 'desc'
-    name: string
-  }>
-  columns: Array<{
-    data: string
-    name: string
-    searchable: boolean
-    orderable: boolean
-    search: {
-      value: string
-      regex: boolean
-    }
-  }>
-}
-
-export default function TasksWidget() {
-  const { toast } = useToast()
-  const [tasks, setTasks] = useState<TaskItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [editTask, setEditTask] = useState<TaskItem | null>(null)
-  const [subject, setSubject] = useState('')
-  // const [assignedToIds, setAssignedTo] = useState('')
-  const [assignedToIds, setAssignedTo] = useState('')
-  const [assigneeList, setAssigneeList] = useState<AssigneeOption[]>([]) // This is the list used for the UI map
-  const [taskType, setTaskType] = useState('')
-  const [status, setStatus] = useState('')
-  const [description, setDescription] = useState('')
-  const [dueDate, setDueDate] = useState<Date | null>(new Date())
-  // const [timeStr, setTimeStr] = useState('10:00')
-  const [timeStr, setTimeStr] = useState<string | null>('')
-  const [query, setQuery] = useState('')
-  const [assigneeResults, setAssigneeResults] = useState<AssigneeOption[]>([])
-  const [loadingSearch, setLoadingSearch] = useState(false)
-  const [isOpen, setIsOpen] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(-1)
-  const [isModalOpen, setModalOpen] = useState(false)
-  const inputRef = useRef(null)
-  // const [assignedToName, setAssignedToName] = useState('')
-
-  // const [assigneeList, setAssigneeList] = useState<Assignee[]>([]);
-
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
-
-  //  const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
-  const [assignedToNames, setAssignedToNames] = useState<string[]>([])
-  const [contactNames, setContactNames] = useState<string[]>([])
-  const [contacts, setContacts] = useState<string[]>([])
-  const [contactQuery, setContactQuery] = useState('')
-  const [contactResults, setContactResults] = useState<ContactOption[]>([])
-  const [loadingContacts, setLoadingContacts] = useState(false)
-  const [isContactResultsOpen, setIsContactResultsOpen] = useState(false)
-
-  const [validationMessage, setValidationMessage] = useState<string | null>(null)
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
-  const [taskToDeleteData, setTaskToDeleteData] = useState(null)
-  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false)
-
-  const [showAllTasks, setShowAllTasks] = useState(false)
-
-  const [taskOptions, setTaskOptions] = useState<TaskOption[]>([])
-  const [isLoadingOptions, setIsLoadingOptions] = useState(false)
-
-  const [statusOptions, setStatusOptions] = useState<TaskOption[]>([])
-  const [isLoadingStatusOptions, setIsLoadingStatusOptions] = useState(false)
-
-  const [formKey, setFormKey] = useState(0)
-
-  const tasksToShow = showAllTasks ? tasks : tasks.slice(0, 3)
-  const hasMoreTasks = tasks.length > 3
-
-  const [isLoading, setIsLoading] = useState(false)
-
-  const [sortConfig] = useState<{
-    field?: string
-    order?: 'asc' | 'desc'
-  }>({})
-
-  const [isInitialized, setIsInitialized] = useState(false)
-  const [tableFieldSettings, setTableFieldSettings] = useState<UserTableSettings[] | null>(null)
-
-  const {
-    data,
-    setData,
-    loading: tableLoading,
-    setLoading: setTableLoading,
-  } = useDataTableState([])
-
-  const [dynamicTableConfig, setDynamicTableConfig] = useState<{
-    columnHeadings: string[]
-    columnIndices: string[]
-    colsAlign: string[]
-    tableSettings: Array<{ blockchk: boolean }>
-    defColSort: number
-    defColSortType: string
-    colsCnt: string[]
-    formatter: string[]
-  } | null>(null)
-
-  const modernDataTableConfig = useMemo(() => {
-    // Check if both main configuration and user settings have loaded
-    if (!dynamicTableConfig || !tableFieldSettings) {
-      return null
-    }
-
-    const { columnHeadings, columnIndices, colsAlign, tableSettings, colsCnt } = dynamicTableConfig
-
-    const columns: DataTableColumn[] = columnHeadings.map((heading, index) => {
-      const columnIndex = columnIndices[index]
-      const alignment = colsAlign[index] || 'left'
-      const isNumberFormat = colsCnt.includes(index.toString())
-      const isDefault = tableSettings[index]?.blockchk || false
-
-      const calculatedWidth = isNumberFormat
-        ? 130
-        : heading.toLowerCase().includes('name') ||
-            heading.toLowerCase().includes('client') ||
-            heading.toLowerCase().includes('account')
-          ? 300
-          : 150
-
-    
-      const isActionColumn = columnIndex === 'action' || heading.toLowerCase() === 'action'
-
-      return {
-        key: columnIndex || `col_${index}`,
-        title: heading,
-        dataIndex: columnIndex,
-        width: `${calculatedWidth}px`,
-
-        render: (value: unknown, record: unknown, _index?: number) => {
-          const taskRecord = record as TaskItem
-
-          if (isActionColumn) {
-            return (
-              <div className="mt-2 flex gap-3">
-                <button
-                  className="p-2 text-yellow-600 hover:text-yellow-800"
-                  onClick={() => openEditModal(taskRecord)}
-                  title="Edit Task"
-                >
-                  <PencilIcon className="h-5 w-5" />
-                </button>
-
-                <button
-                  className="p-2 text-red-600 hover:text-red-800"
-                  onClick={() => handleDeleteClick(taskRecord.taskId, taskRecord)}
-                  title="Delete Task"
-                >
-                  <TrashIcon className="h-5 w-5" />
-                </button>
-              </div>
-            )
-          }
-
-          if (isNumberFormat && value !== null && value !== undefined) {
-            const numValue = typeof value === 'number' ? value : parseFloat(String(value))
-            if (!isNaN(numValue)) {
-              return (
-                <span className={numValue < 0 ? 'text-red-600' : ''}>
-                  {DataTableFormatters.formatCurrency(numValue)}
-                </span>
-              )
-            }
-          }
-
-          if (columnIndex === 'dealdate' && value) {
-            return moment(String(value)).format('MM/DD/YYYY')
-          }
-
-          return String(value || '')
-        },
-        align: (isActionColumn ? 'center' : alignment) as 'left' | 'center' | 'right', // Center align action column
-        sorter: (a: unknown, b: unknown) => {
-          const recordA = a as Record<string, unknown>
-          const recordB = b as Record<string, unknown>
-          const fieldKey = columnIndex || `col_${index}`
-          const aVal = recordA[fieldKey]
-          const bVal = recordB[fieldKey]
-
-          if (isNumberFormat) {
-            const aNum = typeof aVal === 'number' ? aVal : parseFloat(String(aVal || 0))
-            const bNum = typeof bVal === 'number' ? bNum : parseFloat(String(bNum || 0))
-            return aNum - bNum
-          }
-
-          return String(aVal || '').localeCompare(String(bVal || ''))
-        },
-        ellipsis: true,
-        responsive:
-          heading.toLowerCase().includes('name') ||
-          heading.toLowerCase().includes('client') ||
-          heading.toLowerCase().includes('ticker') ||
-          heading.toLowerCase().includes('deal') ||
-          isActionColumn 
-            ? ['xs', 'sm', 'md', 'lg', 'xl']
-            : ['sm', 'md', 'lg', 'xl'],
-        visible: tableFieldSettings
-          ? tableFieldSettings.find((setting) => setting.data === columnIndex)?.checked !== false
-          : isDefault !== false,
-      }
-    })
-
-    return {
-      columns,
-      tableId: `dataTable_task_expanded`,
-      scrollConfig: {
-        x: 'max-content',
-        y: 'calc(100vh - 300px)',
-      },
-      pagination: {
-        enabled: false,
-        pageSize: -1,
-      },
-      sorting: {
-        enabled: true,
-        defaultSort: dynamicTableConfig.defColSort
-          ? {
-              field: columnIndices[dynamicTableConfig.defColSort],
-              order: dynamicTableConfig.defColSortType as 'asc' | 'desc',
-            }
-          : undefined,
-      },
-      export: {
-        enabled: true,
-        formats: ['csv', 'excel'] as Array<'csv' | 'excel'>,
-        filename: 'closed_deals',
-      },
-      selection: {
-        enabled: false,
-      },
-      responsive: true,
-      stickyHeader: true,
-      loading: isLoading || tableLoading,
-    }
-  }, [dynamicTableConfig, isLoading, tableLoading, tableFieldSettings])
-
-  const processedTableData = useMemo(() => {
-    if (!data || data.length === 0) {
-      return []
-    }
-    const processedData = data.map((task, index) => ({
-      ...task,
-      id: task.taskId || index,
-      key: `${task.taskId?.toString() || 'no-id'}-${index}`,
-      taskDate_sort: task.taskDate ? moment(task.taskDate).valueOf() : 0,
-      _rowIndex: index,
-    }))
-    return processedData
-  }, [data])
-
-  // Assuming createAuthHeaders and API_CONFIG are available in scope.
-
-  const fetchUserSettings = async (tableId: string) => {
-    setTableLoading(true)
-    try {
-
-      const rnd = Date.now()
-      const url = `${API_CONFIG.baseUrl}/tableconfig/gettblfields?tblid=${tableId}&rnd=${rnd}`
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: createAuthHeaders({
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        credentials: 'include',
-      })
-
-      if (!response.ok) throw new Error('Failed to fetch user settings')
-
-      const rawSettings: TableSettingsResponse = await response.json()
-
-      const parsedColumnDefs: UserTableSetting[] = JSON.parse(rawSettings.settings.column_def)
-
-      setTableFieldSettings(parsedColumnDefs)
-    } catch (error) {
-      console.error('Error fetching table field settings:', error)
-    }
-  }
-
-  useEffect(() => {
-    const currentTableId = 'dataTable_task_expanded'
-    fetchUserSettings(currentTableId)
-  }, [])
-
-  const fetchTaskData = async () => {
-    setTableLoading(true)
-
-    try {
-      const clienttimezone = encodeURIComponent(moment.tz.guess())
-
-      // Define the payload using the new interface
-      const payloadObj: TaskPayload = {
-        top: 'collapsed',
-        action: 'expanded',
-        clienttimezone: clienttimezone,
-        enablelink: true,
-        start: 0,
-        length: 50,
-        search: { value: '', regex: false },
-        order: [{ column: 11, dir: 'desc', name: 'taskDate' }],
-        columns: [
-          {
-            data: 'action',
-            name: 'Action',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskName',
-            name: 'Task Name',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskType',
-            name: 'Task Type',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskAssignedName',
-            name: 'Assignee',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'contactId',
-            name: 'Contact Id',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'contactName',
-            name: 'Contact Name',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'accountId',
-            name: 'Account Id',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'accountName',
-            name: 'Account Name',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskId',
-            name: 'Task Id',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'assignBy',
-            name: 'Assign By',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskComment',
-            name: 'Task Comments',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskDate',
-            name: 'Task Due Date',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-          {
-            data: 'taskStatus',
-            name: 'Status',
-            searchable: true,
-            orderable: true,
-            search: { value: '', regex: false },
-          },
-        ],
-      }
-
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-
-      const response = await fetch(`${API_CONFIG.baseUrl}/task/getTaskTable`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-
-      if (!response.ok) throw new Error('Network response was not ok')
-
-      const rawApiData: DynamicTableConfigResponse = await response.json()
-      setData(rawApiData.data)
-    } catch (error) {
-      console.error('Failed to fetch task table data:', error)
-      toast({ title: 'Error fetching data', variant: 'destructive' })
-    } finally {
-      setTableLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    // This calls the function immediately when the page loads
-    fetchTaskData()
-  }, [])
-
-
-  // Intercept dialog open-change events so overlay/Escape triggers the confirmation
-  const handleDialogOpenChange = (open: boolean) => {
-    if (!open) {
-      // User attempted to close the dialog (overlay/Escape) — show confirmation and hide the modal
-      setIsCloseConfirmOpen(true)
-      setModalOpen(false)
-    } else {
-      setModalOpen(true)
-    }
-  }
-
-  // Centralize opening the close-confirm so the main modal is hidden immediately
-  const openCloseConfirm = () => {
-    setIsCloseConfirmOpen(true)
-    setModalOpen(false)
-  }
-
-  const handleConfirmDelete = async () => {
-    if (taskToDeleteData) {
-      setIsDeleteModalOpen(false)
-      await deleteTask(taskToDeleteData.taskId)
-      setTaskToDeleteData(null)
-    }
-  }
-
-  const closeDeleteModal = () => {
-    setIsDeleteModalOpen(false)
-    setTaskToDeleteData(null)
-  }
-
-  const DeleteConfirmationModal = ({
-    isOpen,
-    onClose,
-    onConfirm,
-    title = 'Delete Task',
-    message = 'Are you sure you want to delete this task?',
-    confirmLabel = 'Yes',
-    cancelLabel = 'No',
-  }: any) => {
-    if (!isOpen) return null
-
-    return (
-      <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black bg-opacity-50">
-        <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-          <h2 className="mb-4 text-xl font-bold text-gray-800">{title}</h2>
-          <p className="mb-6 text-gray-600">{message}</p>
-          <div className="flex justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="rounded bg-gray-200 px-4 py-2 text-gray-800 hover:bg-gray-300"
-            >
-              {cancelLabel}
-            </button>
-            <button
-              onClick={onConfirm}
-              className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-            >
-              {confirmLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value)
-    if (!e.target.value) {
-      setIsOpen(false)
-    } else {
-      setIsOpen(true)
-    }
-    setSelectedIndex(-1)
-    if (!isModalOpen) setModalOpen(true)
-  }
-
-  // const closeViewModal = () => {
-  //   setIsViewModalOpen(false)
-  //   setSelectedTask(null)
-  // }
-
-  // interface ViewTaskModalProps {
-  //   isOpen: boolean
-  //   onClose: () => void
-  //   task: TaskItem
-  // }
-
-  // const ViewTaskModal: React.FC<ViewTaskModalProps> = ({ isOpen, onClose, task }) => {
-  //   return (
-  //     <Dialog.Root open={isOpen} onOpenChange={onClose}>
-  //       <Dialog.Portal>
-  //         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
-
-  //         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl">
-  //           <Dialog.Title className="mb-4 text-2xl font-bold">
-  //             Task Details: {task.taskName}
-  //           </Dialog.Title>
-
-  //           <div className="space-y-3">
-  //             <p>
-  //               <strong>Status:</strong> {task.taskStatus}
-  //             </p>
-  //             <p>
-  //               <strong>Due Date:</strong>
-  //               {task.taskDate && new Date(task.taskDate).toLocaleString()}
-  //             </p>
-  //             <p>
-  //               <strong>Assignee:</strong> {task.taskAssignedName}
-  //             </p>
-  //             <p>
-  //               <strong>Task Type:</strong> {task.taskType}
-  //             </p>
-  //             <p>
-  //               <strong>Description:</strong> {task.taskComment}
-  //             </p>
-  //             <p>
-  //               <strong>Account:</strong> {task.accountName?.join(', ')}
-  //             </p>
-  //             <p>
-  //               <strong>ContactName:</strong> {task.contactName?.join(', ')}
-  //             </p>
-  //           </div>
-
-  //           <div className="mt-6 flex justify-end">
-  //             <Dialog.Close asChild>
-  //               <button onClick={onClose} className="rounded bg-gray-300 px-4 py-2">
-  //                 Close
-  //               </button>
-  //             </Dialog.Close>
-  //           </div>
-  //         </Dialog.Content>
-  //       </Dialog.Portal>
-  //     </Dialog.Root>
-  //   )
-  // }
-
-  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
-
-  // To fetch tasks from API
-  async function fetchTasks() {
-    setLoading(true)
-    try {
-      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
-      const body = new URLSearchParams({ summaryFilter }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        setTasks(Array.isArray(data.data) ? data.data : [])
-
-        const rawTasks = Array.isArray(data.data) ? data.data : []
-        const normalizedTasks = rawTasks.map((task: any) => {
-          const contactIds = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
-            : []
-
-          const contactNames = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.contact_name)
-            : []
-          const accountNames = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.account_name)
-            : []
-          return {
-            ...task,
-
-            contacts: contactIds,
-            contactName: contactNames,
-            accountName: accountNames,
-          }
-        })
-
-        setTasks(normalizedTasks)
-      } else {
-        setTasks([])
-      }
-    } catch (err) {
-      console.error('fetchTasks error', err)
-      toast({ title: 'Error', description: 'Failed to fetch tasks' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (isModalOpen) {
-      fetchTasks()
-    }
-  }, [isModalOpen])
-
-  const fetchTaskTypes = async () => {
-    // debugger;
-    setIsLoadingOptions(true)
-    try {
-      const payload = {
-        type: 'tasktype',
-      }
-      const encoded = new URLSearchParams(payload).toString()
-      const response = await fetch(`${API_CONFIG.baseUrl}/task/gettaskdetails`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok')
-      }
-
-      const data = await response.json()
-
-      if (data.status === 1 && Array.isArray(data.data)) {
-        setTaskOptions(data.data)
-      } else {
-        setTaskOptions([])
-      }
-    } catch (error) {
-      console.error('Failed to fetch task types:', error)
-    } finally {
-      setIsLoadingOptions(false)
-    }
-  }
-
-  const fetchStatusTypes = async () => {
-    setIsLoadingStatusOptions(true)
-    try {
-      const payload = { type: 'status' }
-      const encoded = new URLSearchParams(payload).toString()
-      const response = await fetch(`${API_CONFIG.baseUrl}/task/gettaskdetails`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-
-      if (!response.ok) {
-        throw new Error('Network response was not ok')
-      }
-
-      const data = await response.json()
-      if (data.status === 1 && Array.isArray(data.data)) {
-        setStatusOptions(data.data)
-      } else {
-        setStatusOptions([])
-      }
-    } catch (error) {
-      console.error('Failed to fetch status types:', error)
-    } finally {
-      setIsLoadingStatusOptions(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchTaskTypes()
-    fetchStatusTypes()
-  }, [])
-
-  // To fetch full task details by ID
-
-  const fetchTaskDetails = useCallback(
-    async (taskId: string) => {
-      try {
-        const payloadObj = {
-          task_id: taskId,
-          type: 'Task',
-        }
-
-        const encoded = new URLSearchParams(payloadObj).toString()
-
-        const res = await fetch(`${API_CONFIG.baseUrl}/task/getTaskByUsingTaskId`, {
-          method: 'POST',
-          headers: createAuthHeaders({
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          body: encoded,
-          credentials: 'include',
-        })
-
-        const data = await res.json()
-
-        if (data?.status === 1) {
-          return data.data[0]
-        } else {
-          console.warn('No specific task data found for ID:', taskId)
-          return null
-        }
-      } catch (err) {
-        console.error('fetchTaskDetails error:', err)
-        toast({ title: 'Error', description: 'Failed to fetch full task details' })
-        return null
-      }
-    },
-    [toast]
-  )
-
-  useEffect(() => {
-    
-    const initializeComponent = async () => {
-      
-      try {
-        const tableConfig = await loadTableSettings()
-        
-        if (tableConfig) {
-          await loadTableFields()
-        }
-
-        // If we have table config and component is not initialized, trigger initial data load
-        if (tableConfig && !isInitialized) {
-          setIsInitialized(true)
-        }
-      } catch (error) {
-        // Silently handle initialization errors to prevent app crash
-        // Silently handle initialization errors
-      }
-    }
-
-    initializeComponent()
-  }, [])
-  // Empty dependency array - only run on mount
-  const loadTableFields = useCallback(async () => {
-    
-    try {
-      // Use common function from datatable-utils instead of manual API call
-      const tableId = `dataTable_task_expanded`
-      const result = await DrawDataTableCore.loadTableFields(tableId)
-      if (result.success && result.settings) {
-        setTableFieldSettings(result.settings)
-        return result.settings
-      }
-
-      // If no settings found, create default settings (show first 3 columns)
-      if (dynamicTableConfig?.columnIndices) {
-        const defaultSettings: UserTableSettings[] = dynamicTableConfig.columnIndices.map(
-          (colIndex, index) => ({
-            data: colIndex,
-            checked: index < 3,
-          })
-        )
-        setTableFieldSettings(defaultSettings)
-        return defaultSettings
-      }
-
-      throw new Error('Failed to load table fields')
-    } catch (error) {
-      // Silently handle table fields error to prevent UI disruption
-      return null
-    }
-  }, [dynamicTableConfig])
-
-  const loadTableSettings = useCallback(async () => {
-    // debugger;
-    try {
-      // Use enhanced ReactUtils.fetchPost with URL-encoded content-type
-      const response = await ReactUtils.fetchPost(
-        `${API_CONFIG.baseUrl}/tableconfig/gettablesetting`,
-        {
-          moduletype: 'taskdetails',
-          rpttype: 'gettaskmodule',
-          rnd: moment().valueOf().toString(),
-        },
-        {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        }
-      )
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result = await response.json()
-      if (result) {
-        // Extract dynamic table configuration from response
-        const config = {
-          columnHeadings: result.title || [],
-          columnIndices: result.cols || [],
-          colsAlign: result.colsAlign || [],
-          tableSettings: result.table_settings || [],
-          defColSort: result.defColSort || 0,
-          defColSortType: result.defColSortType || 'asc',
-          colsCnt: result.colsCnt || [],
-          formatter: result.formatter || [],
-        }
-
-        setDynamicTableConfig(config)
-        return config
-      }
-      throw new Error('Failed to load table settings')
-    } catch (error) {
-      // Silently handle table settings error to prevent UI disruption
-      return null
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchTasks()
-  }, [])
-
-  useEffect(() => {
-    if (assigneeList.length > 0) {
-      setAssignedTo(assigneeList[0]?.value || '')
-    } else {
-      setAssignedTo('')
-    }
-  }, [assigneeList, setAssignedTo])
-
-  // Fetch assignees based on query
-  useEffect(() => {
-    if (assigneeList.length > 0) {
-      setAssigneeResults([])
-      return
-    }
-
-    const timer = setTimeout(async () => {
-      if (!query.trim()) {
-        setAssigneeResults([])
-        return
-      }
-
-      setLoadingSearch(true)
-
-      const payload = {
-        filtertype: 'employee',
-        filterrpttype: 'Outlook',
-        showuser: true,
-        searchtext: query,
-      }
-
-      const queryString = new URLSearchParams(payload).toString()
-
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
-
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        })
-
-        const data: AssigneeOption[] = await res.json()
-
-        if (Array.isArray(data)) {
-          setAssigneeResults(data)
-        } else {
-          setAssigneeResults([])
-        }
-      } catch (err) {
-        console.error('Fetch assignee error:', err)
-        setAssigneeResults([])
-      } finally {
-        setLoadingSearch(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [query, assigneeList])
-
-  // fetch contacts based on contactQuery
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!contactQuery.trim()) {
-        setContactResults([])
-        return
-      }
-
-      setLoadingContacts(true)
-      const queryString = new URLSearchParams({
-        filtertype: 'contact',
-        restype: 'Detailed',
-        searchtext: contactQuery,
-      }).toString()
-
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
-
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        })
-
-        const data: ContactOption[] = await res.json()
-
-        if (Array.isArray(data)) {
-          setContactResults(data)
-        } else {
-          setContactResults([])
-        }
-      } catch (err) {
-        console.error('Fetch contact error:', err)
-        setContactResults([])
-      } finally {
-        setLoadingContacts(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [contactQuery])
-
-  // Handle contact selection
-  const handleContactSelect = (contact: ContactOption) => {
-    if (
-      typeof contact.value !== 'string' ||
-      typeof contact.text !== 'string' ||
-      !contact.value ||
-      !contact.text
-    ) {
-      console.error('Invalid contact data received:', contact)
-      return
-    }
-    if (!contacts.includes(contact.value)) {
-      setContacts((prev) => [...prev, contact.value!])
-
-      setContactNames((prev) => [...prev, contact.text!])
-    }
-    setContactQuery('')
-    setIsContactResultsOpen(false)
-  }
-
-  const handleContactInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setContactQuery(e.target.value)
-    setIsContactResultsOpen(true)
-  }
-
-  const removeContact = (contactId: string) => {
-    setContacts((prev) => prev.filter((id) => id !== contactId))
-    setContactNames((prev) => prev.filter((name, index) => contacts[index] !== contactId))
-  }
-
-  const handleAssigneeSelect = (assignee: AssigneeOption) => {
-    // Enforce single selection: replace the current list with only the new selection
-    setAssigneeList([{ value: assignee.value, text: assignee.text }])
-
-    // Clear search related states
-    setQuery('')
-    setAssigneeResults([])
-    setIsOpen(false)
-  }
-
-  const handleRemoveAssignee = (assigneeId: string | number) => {
-    setAssigneeList([])
-  }
-
-  // Add new task
-  async function handleAddTask() {
-    try {
-      const currentAssigneeId = assigneeList.length > 0 ? assigneeList[0].value : ''
-      const isEmpty = (value: any) =>
-        value === null ||
-        value === undefined ||
-        (typeof value === 'string' && value.trim() === '') ||
-        (Array.isArray(value) && value.length === 0)
-
-      const mandatoryFields = [
-        { value: currentAssigneeId, name: 'Assignee' },
-        { value: subject, name: 'Subject' },
-        { value: dueDate, name: 'Due Date' },
-        { value: timeStr, name: 'Time' },
-        { value: taskType, name: 'Task Type' },
-        { value: status, name: 'Status' },
-        { value: contacts, name: 'Contacts' },
-      ]
-
-      const missingField = mandatoryFields.find((field) => isEmpty(field.value))
-
-      if (missingField) {
-        setValidationMessage(
-          `The mandatory field "${missingField.name}" is missing. Please fill out all required fields.`
-        )
-        return
-      }
-      if (!subject.trim()) {
-        setValidationMessage('Subject required')
-        return
-      }
-      const clienttimezone = encodeURIComponent(moment.tz.guess())
-
-      const rawTaskDate = dueDate
-
-      const formattedDateTime = rawTaskDate
-        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
-        : ''
-
-      const formattedDueTime = rawTaskDate
-        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
-        : ''
-      const sanitizedContacts = contacts.filter((id) => id != null && id !== '')
-      const sanitizedContactNames = contactNames.filter((name) => name != null && name !== '')
-
-      const payloadObj = {
-        subject,
-        dueDate: formattedDateTime,
-        dueTime: formattedDueTime,
-        contacts: sanitizedContacts,
-        contactName: sanitizedContactNames,
-        assignedTo: currentAssigneeId,
-        clienttimezone,
-        status,
-        taskType,
-        taskComments: description,
-        module_name: 'Task',
-        action: 'Save',
-      }
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        toast({ title: 'Success', description: 'Task Added Successfully' })
-        setModalOpen(false)
-        resetForm()
-        setValidationMessage(null)
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
-      }
-    } catch (err) {
-      console.error('handleAddTask', err)
-      toast({ title: 'Error', description: 'Failed to add task' })
-    }
-  }
-
-  async function handleUpdateTask() {
-    try {
-      const currentAssigneeId = assigneeList.length > 0 ? assigneeList[0].value : ''
-      const isEmpty = (value: unknown) =>
-        value === null ||
-        value === undefined ||
-        (typeof value === 'string' && String(value).trim() === '') ||
-        (Array.isArray(value) && (value as unknown[]).length === 0)
-
-      const mandatoryFields = [
-        { value: currentAssigneeId, name: 'Assignee' },
-        { value: subject, name: 'Subject' },
-        { value: dueDate, name: 'Due Date' },
-        { value: timeStr, name: 'Time' },
-        { value: taskType, name: 'Task Type' },
-        { value: status, name: 'Status' },
-        { value: contacts, name: 'Contacts' },
-      ]
-
-      const missingField = mandatoryFields.find((field) => isEmpty(field.value))
-
-      if (missingField) {
-        setValidationMessage(
-          `The mandatory field "${missingField.name}" is missing. Please fill out all required fields.`
-        )
-        return
-      }
-
-      if (!subject.trim()) {
-        setValidationMessage('Subject required')
-        return
-      }
-      if (!editTask) return
-      const rawTaskDate = dueDate
-      const clienttimezone = encodeURIComponent(moment.tz.guess())
-      const formattedDateTime = rawTaskDate
-        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
-        : ''
-      const formattedDueTime = rawTaskDate
-        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
-        : ''
-
-      const payloadObj = {
-        subject,
-        dueDate: formattedDateTime,
-        dueTime: formattedDueTime,
-        contacts,
-        contactName: contactNames,
-        assignedTo: assignedToIds,
-        clienttimezone,
-        status,
-        taskType,
-        taskComments: description,
-        module_name: 'Task',
-        action: 'Update',
-        taskId: editTask.taskId,
-      }
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        toast({ title: 'Success', description: 'Task Updated Successfully' })
-        setModalOpen(false)
-        setEditTask(null)
-        resetForm()
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
-      }
-    } catch (err) {
-      console.error('handleUpdateTask', err)
-      toast({ title: 'Error', description: 'Failed to update task' })
-    }
-  }
-
-  // To edit existing task
-  const openEditModal = useCallback(
-    async (task: TaskItem) => {
-    
-      let tdata: any = task
-      if (tdata.taskId) {
-        const full = await fetchTaskDetails(tdata.taskId)
-        if (full) tdata = { ...tdata, ...full }
-      }
-
-      setEditTask(tdata)
-      setSubject(tdata.taskName || tdata.subject || '')
-      setDescription(tdata.taskComment || tdata.taskComments || '')
-      const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
-      const assignedName = tdata.taskAssignedName || ''
-      setAssignedTo(assignedId)
-      setAssignedToNames(assignedName)
-
-      if (assignedId && assignedName) {
-        setAssigneeList([{ value: assignedId, text: assignedName }])
-      } else {
-        setAssigneeList([])
-        console.warn('Assignee data was missing, assignee list set to empty.')
-      }
-
-      setQuery('')
-      setTaskType(tdata.taskType || '')
-      setStatus(tdata.taskStatus || '')
-
-      if (tdata.taskDate) {
-        const iso = String(tdata.taskDate).replace(' ', 'T')
-        const dt = new Date(iso)
-        if (!isNaN(dt.getTime())) {
-          setDueDate(dt)
-          const hh = dt.getHours().toString().padStart(2, '0')
-          const mm = dt.getMinutes().toString().padStart(2, '0')
-          setTimeStr(`${hh}:${mm}`)
-        } else {
-          setDueDate(new Date())
-          setTimeStr('10:00')
-        }
-      } else {
-        setDueDate(new Date())
-        setTimeStr('10:00')
-      }
-
-      let contactIds: string[] = []
-      let contactNamesForAPI: string[] = []
-
-      if (tdata.contactList && Array.isArray(tdata.contactList) && tdata.contactList.length > 0) {
-        contactIds = tdata.contactList.map((c) => c.contact_id)
-        contactNamesForAPI = tdata.contactList.map((c) => c.contact_name)
-      }
-      // Fallback to the 'contacts' array if 'contactList' wasn't used (e.g., if it's the *only* thing the full fetch returns)
-      else if (Array.isArray(tdata.contacts) && tdata.contacts.length > 0) {
-        contactIds = tdata.contacts
-        contactNamesForAPI = Array.isArray(tdata.contactName) ? tdata.contactName : []
-      }
-
-      // If the above processing didn't work, we are back to parsing the single string summary data
-      if (contactIds.length === 0 && tdata.contactId && typeof tdata.contactId === 'string') {
-        contactIds = [tdata.contactId]
-      }
-
-      // setEditTask(tdata)
-      setContacts(contactIds)
-      setContactNames(contactNamesForAPI)
-      setModalOpen(true)
-    },
-    [fetchTaskDetails, setEditTask, setSubject, setContacts, setContactNames, setModalOpen]
-  )
-
-  // To delete a task
-  async function deleteTask(taskId: string) {
-    try {
-      const originalTaskData = await fetchTaskDetails(taskId)
-
-      if (!originalTaskData) {
-        toast({ title: 'Error', description: 'Could not fetch full task details to delete.' })
-        return
-      }
-      const clienttimezone = encodeURIComponent(moment.tz.guess())
-
-      const rawTaskDate = originalTaskData?.taskDate
-
-      const formattedDateTime = rawTaskDate
-        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('YYYY-MM-DD HH:mm:ss')
-        : ''
-
-      const formattedDueTime = rawTaskDate
-        ? moment(rawTaskDate, 'YYYY-MM-DD HH:mm:ss.S').format('HH:mm')
-        : ''
-
-      const taskContactNames = normalizeToArray(originalTaskData?.contactName)
-
-      const payload = {
-        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
-        dueDate: formattedDateTime,
-        dueTime: formattedDueTime,
-        contacts: normalizeToArray(originalTaskData?.contacts),
-        contactName: taskContactNames,
-        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
-        clienttimezone,
-        status: 'Dismiss',
-        taskType: originalTaskData?.taskType || '',
-        taskComments:
-          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
-        module_name: 'Task',
-        action: 'Dismiss',
-        taskId: taskId,
-      }
-      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-
-      if (data?.status === 1) {
-        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Delete failed' })
-      }
-    } catch (err) {
-      console.error('deleteTask', err)
-      toast({ title: 'Error', description: 'Delete failed' })
-    }
-  }
-
-  // Reset form fields
-  function resetForm() {
-    setSubject('')
-    setAssignedTo('')
-    setAssignedToNames('')
-    setAssigneeList([])
-
-    setTaskType('')
-    setStatus('')
-    setContacts([])
-    setContactNames([])
-    setDescription('')
-
-    setTimeStr('')
-
-    setQuery('')
-    setAssigneeResults([])
-    setContactQuery('')
-    setContactResults([])
-    setAssignedTo('')
-    setContacts([])
-    setContactNames([])
-
-    setDueDate(new Date())
-    setValidationMessage(null)
-  }
-
-  // Calculate time data for due date
-  const calcTimeData = (due: string | undefined) => {
-    if (!due) return null
-
-    const dueDate = new Date(due)
-    const now = new Date()
-    const diffMs = dueDate.getTime() - now.getTime()
-
-    const isOverdue = diffMs < 0
-    const absDiffMs = Math.abs(diffMs)
-
-    const days = Math.floor(absDiffMs / 86400000)
-    const hours = Math.floor((absDiffMs % 86400000) / 3600000)
-    const mins = Math.floor(((absDiffMs % 86400000) % 3600000) / 60000)
-
-    let timeDiffText
-    if (days > 0) timeDiffText = `${days} Day(s)`
-    else if (hours > 0) timeDiffText = `${hours} Hour(s)`
-    else if (mins > 0) timeDiffText = `${mins} Min(s)`
-    else timeDiffText = '0 Min(s)'
-
-    const label = isOverdue ? 'Over Due' : 'Time To Complete'
-
-    const statusClass = isOverdue ? 'bg-red-500' : 'bg-blue-500'
-
-    return {
-      text: timeDiffText,
-      fullText: `${timeDiffText} ${label}`,
-      statusClass: statusClass,
-    }
-  }
-  const handleDeleteClick = (taskId, taskData) => {
-    setTaskToDeleteData({ taskId, taskData })
-    setIsDeleteModalOpen(true)
-  }
-
-  // Toggle between condensed list (3 items) and full table view.
-  const handleToggleMore = async () => {
-    // If no user table settings exist, try to load dynamic table config and default fields first
-    if (!tableFieldSettings) {
-      try {
-        // Ensure we have dynamicTableConfig (column definitions) which loadTableFields may depend on
-        if (!dynamicTableConfig) {
-          await loadTableSettings()
-        }
-
-        await loadTableFields()
-        setShowAllTasks(true)
-        return
-      } catch (_err) {
-        // If loading fails, fall through to toggling the list
-      }
-    }
-
-    setShowAllTasks((prev) => !prev)
-  }
-
-  return (
-    <div className="w-full space-y-6 p-0">
-      <div className="mb-4 flex justify-end">
-        <button
-          onClick={() => {
-            setEditTask(null)
-            resetForm()
-            setModalOpen(true)
-          }}
-          className="rounded bg-blue-600 px-6 py-2 text-white shadow hover:bg-blue-700"
-          title="Add Task"
-        >
-          Add
-        </button>
-      </div>
-
-      <div className=""></div>
-      {showAllTasks ? (
-        modernDataTableConfig ? (
-          <div className="w-full overflow-hidden">
-            <DataTable
-              id="dataTable_topten_client_collapsed"
-              columns={modernDataTableConfig.columns}
-              dataSource={processedTableData}
-              loading={modernDataTableConfig.loading}
-              pagination={{
-                pageSize: 50,
-                pageSizeOptions: ['10', '25', '50', '100', '200', '500'],
-                showSizeChanger: true,
-                showTotal: (total: number, range: [number, number]) =>
-                  `${range[0]}-${range[1]} of ${total} Task`,
-              }}
-              scroll={modernDataTableConfig.scrollConfig}
-              size="middle"
-              bordered={true}
-              stickyHeader={modernDataTableConfig.stickyHeader}
-              responsive={modernDataTableConfig.responsive}
-              exportOptions={{
-                enabled: true,
-                formats: ['csv', 'excel', 'json'],
-                filename: `task_datas_${moment().format('YYYY-MM-DD')}`,
-                onExport: (format: string, data: unknown[]) => {
-                  toast({
-                    title: 'Export Started',
-                    description: `Exporting ${data.length} records as ${format.toUpperCase()}...`,
-                  })
-                },
-              }}
-              columnSettings={{
-                enabled: true,
-                onColumnChange: async (visibleColumns: string[]) => {
-                  const tableId = `dataTable_task_expanded`
-                  const preferences = { tableId, visibleColumns, timestamp: Date.now() }
-                  try {
-                    localStorage.setItem(
-                      `dataTable_${tableId}_columns`,
-                      JSON.stringify(preferences)
-                    )
-                  } catch (error) {
-                    // ignore
-                  }
-
-                  try {
-                    const userTableSettings =
-                      modernDataTableConfig?.columns.map((column) => ({
-                        data: column.dataIndex || column.key,
-                        checked: visibleColumns.includes(column.key),
-                        title: column.title || '',
-                        isDefault: false,
-                        order: modernDataTableConfig.columns.indexOf(column) + 1,
-                      })) || []
-
-                    const success = await DataTableSettings.setTableSettings(
-                      tableId,
-                      userTableSettings,
-                      {
-                        setTblIdUser: false,
-                      }
-                    )
-
-                    if (success) {
-                      toast({
-                        title: 'Column Visibility Saved',
-                        description: `${visibleColumns.length} columns visible - settings saved to server`,
-                      })
-                    } else {
-                      toast({
-                        title: 'Column Visibility Updated',
-                        description: `${visibleColumns.length} columns visible - saved locally only`,
-                        variant: 'destructive',
-                      })
-                    }
-                  } catch (error) {
-                    toast({
-                      title: 'Column Visibility Updated',
-                      description: `${visibleColumns.length} columns visible - saved locally`,
-                      variant: 'destructive',
-                    })
-                  }
-                },
-              }}
-              serverSide={false}
-            />
-          </div>
-        ) : (
-          <div className="flex items-center justify-center p-8">
-            <div className="flex items-center space-x-2">
-              <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-blue-600"></div>
-              <span className="text-gray-600">Loading table configuration...</span>
-            </div>
-          </div>
-        )
-      ) : (
-        <div>
-          <ul className="space-y-3">
-            {tasksToShow.map((t) => {
-              const due = t.taskDate
-              const timeData =
-                t.taskDate && t.taskStatus !== 'Completed' ? calcTimeData(t.taskDate) : null
-
-              return (
-                <li key={t.taskId} className="relative rounded border bg-gray-50 p-3 shadow-sm">
-                  <h3 className="font-bold">{t.taskName}</h3>
-                  <p>{t.taskComment}</p>
-                  <p className="text-sm text-gray-600">
-                    Due: {due} | Status: {t.taskStatus} | Assignee: {t.taskAssignedName} | Task
-                    Type: {t.taskType}
-                  </p>
-
-                  {timeData && (
-                    <small
-                      className={`absolute right-4 top-2 rounded px-2 py-1 text-xs text-white ${timeData.statusClass}`}
-                      title={timeData.fullText}
-                    >
-                      {timeData.fullText}
-                    </small>
-                  )}
-
-                  <div className="mt-2 flex gap-3">
-                    <button
-                      className="p-2 text-yellow-600 hover:text-yellow-800"
-                      onClick={() => openEditModal(t)}
-                      title="Edit Task"
-                    >
-                      <PencilIcon className="h-5 w-5" />
-                    </button>
-
-                    <button
-                      className="p-2 text-red-600 hover:text-red-800"
-                      onClick={() => handleDeleteClick(t.taskId, t)}
-                      title="Delete Task"
-                    >
-                      <TrashIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
-
-      {hasMoreTasks && (
-        <div className="mt-4 text-center">
-          <button
-            onClick={handleToggleMore}
-            className="mx-auto flex items-center rounded-lg bg-gray-200 px-4 py-2 text-gray-700 transition duration-150 hover:bg-gray-300"
-          >
-            {showAllTasks ? (
-              <>
-                Show Less <ChevronUpIcon className="ml-2 h-4 w-4" />
-              </>
-            ) : (
-              <>
-                More ... <ChevronDownIcon className="ml-2 h-4 w-4" />
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      <DeleteConfirmationModal
-        isOpen={isDeleteModalOpen}
-        onClose={closeDeleteModal}
-        onConfirm={handleConfirmDelete}
-      />
-
-      <DeleteConfirmationModal
-        isOpen={isCloseConfirmOpen}
-        onClose={() => {
-          setIsCloseConfirmOpen(false)
-          setModalOpen(true)
-        }}
-        onConfirm={() => {
-          setIsCloseConfirmOpen(false)
-          setModalOpen(false)
-          resetForm()
-          setEditTask(null)
-        }}
-        title="Confirm"
-        message="Are you sure you want to close the window?"
-        confirmLabel="Yes"
-        cancelLabel="No"
-      />
-
-      <Dialog.Root open={isModalOpen} onOpenChange={handleDialogOpenChange}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm" />
-
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[9999] max-h-[90vh] w-[700px] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg bg-white p-5 shadow-xl">
-            <button
-              type="button"
-              className="absolute right-3 top-3 text-gray-600 hover:text-black"
-              onClick={openCloseConfirm}
-              aria-label="Close"
-            >
-              X
-            </button>
-
-            <Dialog.Title className="mb-4 text-xl font-semibold">
-              {editTask ? 'Update Task' : 'Add Task'}
-            </Dialog.Title>
-
-            {validationMessage && (
-              <div className="mb-3 flex items-start justify-between rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
-                <div>{validationMessage}</div>
-                <button
-                  onClick={() => setValidationMessage(null)}
-                  className="ml-4 self-start rounded bg-red-100 px-2 py-1 text-xs text-red-700 hover:bg-red-200"
-                  aria-label="Close validation message"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium">
-                  Assign To (Choose ONLY ONE Employee As Assignee)
-                  <span className="text-red-500">*</span>
-                </label>
-
-                <div className="relative flex max-h-28 min-h-[3rem] flex-wrap items-center gap-2 overflow-y-auto rounded-md border border-gray-300 bg-gray-50 p-2 focus-within:border-blue-500 focus-within:bg-white">
-                  {assigneeList.map((assignee) => (
-                    <span
-                      key={assignee.value}
-                      className="inline-flex max-w-[220px] items-center truncate rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
-                    >
-                      <span className="inline-block max-w-[180px] truncate">{assignee.text}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAssignee(assignee.value ?? '')}
-                        className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
-                      >
-                        &times;
-                      </button>
-                    </span>
-                  ))}
-
-                  <Input
-                    ref={inputRef}
-                    type="text"
-                    placeholder="Search..."
-                    value={query}
-                    onChange={handleInputChange}
-                    onFocus={() => setIsOpen(true)}
-                    className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
-                  />
-                </div>
-
-                {isOpen && query.length > 0 && (
-                  <ul className="absolute z-[10000] mt-1 max-h-40 w-[calc(100%-2.5rem)] overflow-auto rounded-md border border-gray-300 bg-white py-1 text-base shadow-lg">
-                    {loadingSearch ? (
-                      <li className="p-2 text-gray-700">Loading...</li>
-                    ) : assigneeResults.length > 0 ? (
-                      assigneeResults.map((assignee) => (
-                        <li
-                          key={assignee.value}
-                          className="cursor-pointer p-2 hover:bg-blue-600 hover:text-white"
-                          onClick={() => handleAssigneeSelect(assignee)}
-                        >
-                          {assignee.text}
-                        </li>
-                      ))
-                    ) : (
-                      assigneeList.length === 0 && (
-                        <li className="p-2 text-gray-700">No results found</li>
-                      )
-                    )}
-                  </ul>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    Due Date<span className="text-red-500">*</span>
-                  </label>
-                  <DatePicker
-                    selected={dueDate}
-                    onChange={(d: Date | null) => setDueDate(d)}
-                    className="w-full rounded border border-gray-300 p-2"
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    Time<span className="text-red-500">*</span>
-                  </label>
-                  <TimePicker
-                    onChange={setTimeStr}
-                    value={timeStr}
-                    format="h:mm a"
-                    className="w-full rounded border border-gray-300 p-2"
-                    clearIcon={null}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    Task Type<span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={taskType}
-                    onChange={(e) => setTaskType(e.target.value)}
-                    className="w-full rounded border border-gray-300 p-2"
-                    disabled={isLoadingOptions}
-                  >
-                    <option value="">{isLoadingOptions ? '-- Loading --' : '-- Select --'}</option>
-                    {taskOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.text}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium">
-                    Status<span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value)}
-                    className="w-full rounded border border-gray-300 p-2"
-                    disabled={isLoadingStatusOptions}
-                  >
-                    <option value="">
-                      {isLoadingStatusOptions ? '-- Loading --' : '-- Select --'}
-                    </option>
-                    {statusOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.text}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Subject<span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  className="w-full rounded border border-gray-300 p-2"
-                  placeholder="Enter Subject..."
-                />
-              </div>
-
-              <div className="relative">
-                <label className="mb-2 block text-sm font-medium">
-                  Contacts<span className="text-red-500">*</span>
-                </label>
-
-                <div className="relative flex max-h-28 min-h-[3rem] flex-wrap items-center gap-2 overflow-y-auto rounded-md border border-gray-300 bg-gray-50 p-2 focus-within:border-blue-500 focus-within:bg-white">
-                  {contacts.map((contactId, index) => {
-                    const name = contactNames[index]
-                    if (!name) return null
-
-                    return (
-                      <span
-                        key={contactId}
-                        className="flex items-center rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
-                      >
-                        {name}
-                        <button
-                          type="button"
-                          onClick={() => removeContact(contactId)}
-                          className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
-                        >
-                          &times;
-                        </button>
-                      </span>
-                    )
-                  })}
-
-                  <Input
-                    type="text"
-                    placeholder="Search and add contacts..."
-                    value={contactQuery}
-                    onChange={handleContactInputChange}
-                    onFocus={() => setIsContactResultsOpen(true)}
-                    className="min-w-[120px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
-                  />
-                </div>
-
-                {isContactResultsOpen && (contactQuery.length > 0 || contactResults.length > 0) && (
-                  <ul className="absolute z-[10000] mt-1 max-h-40 w-[calc(100%-2.5rem)] overflow-auto rounded-md border border-gray-300 bg-white py-1 text-base shadow-lg">
-                    {loadingContacts ? (
-                      <li className="p-2 text-gray-700">Loading...</li>
-                    ) : contactResults.length > 0 ? (
-                      contactResults.map((contact) => (
-                        <li
-                          key={contact.value}
-                          className="cursor-pointer p-2 hover:bg-blue-600 hover:text-white"
-                          onClick={() => handleContactSelect(contact)}
-                        >
-                          {contact.text}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="p-2 text-gray-700">No contacts found</li>
-                    )}
-                  </ul>
-                )}
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full rounded border border-gray-300 p-2"
-                  rows={3}
-                  placeholder="Enter Description..."
-                />
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={openCloseConfirm}
-                className="rounded border border-gray-300 bg-white px-4 py-2 text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={editTask ? handleUpdateTask : handleAddTask}
-                className="rounded bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-              >
-                {editTask ? 'Update' : 'Save'}
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    </div>
-  )
-}
-----------------------------------------------------------------------------------------------------------------
+					}}
+					defaultColDef={defaultColDef}
+					modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ServerSideRowModelModule, RangeSelectionModule, ClipboardModule]}
+					rowHeight={40}
+					cellSelection
+					headerHeight={40}
+					paginationPageSize={20}
+					cacheBlockSize={20}
+					rowModelType={'serverSide'}
+					pagination={true}
+					domLayout="normal"
+					sideBar={sideBar}
+					suppressMovableColumns
+					suppressServerSideFullWidthLoadingRow={true}
+					noRowsOverlayComponent={() => <span>Record not found.</span>}
+				/>
+			</div>
+			{/* Warning dialog for Coverage Delete */}
+			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Delete Invoice</DialogTitle>
+					</DialogHeader>
+					<div>Are you sure you want to delete this invoice? This action cannot be undone.</div>
+					<DialogFooter className="flex justify-end gap-2">
+						<Button variant="outline" onClick={handleDeleteCancel}>
+							Cancel
+						</Button>
+						<Button variant="destructive" onClick={handleDeleteConfirm}>
+							Delete
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+			<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+				<SheetContent className="sm:max-w-6xl">
+					<SheetHeader>
+						<SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
+					</SheetHeader>
+					{/* Warning Dialog for Unsaved Changes in the form */}
+					<Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>Unsaved Changes</DialogTitle>
+							</DialogHeader>
+							<div>You have unsaved changes. Are you sure you want to close?</div>
+							<DialogFooter className="flex justify-end gap-2">
+								<Button variant="outline" onClick={handleDialogCancel}>
+									Cancel
+								</Button>
+								<Button variant="destructive" onClick={handleDialogConfirm}>
+									Discard & Close
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+
+					<Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
+						<DialogContent>
+							<DialogHeader>
+								<DialogTitle>{dialogConfig.title}</DialogTitle>
+							</DialogHeader>
+							<div>{dialogConfig.message}</div>
+							<DialogFooter className="flex justify-end gap-2">
+								<Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
+									Cancel
+								</Button>
+								<Button
+									variant="destructive"
+									onClick={() => {
+										dialogConfig.onConfirm();
+										setDialogConfig((prev) => ({ ...prev, isOpen: false }));
+									}}
+								>
+									Discard & Proceed
+								</Button>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+					{/* to add a scrollbar for visible the footer */}
+					<div className="flex-1 overflow-y-auto overflow-x-hidden pr-2">
+						<Form {...form}>
+							<form className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 sm:gap-x-6 p-2 sm:p-4">
+								{!getConfig('acc_id').hidden && (
+									<div>
+										<FormField
+											control={form.control}
+											name="acc_id"
+											rules={{
+												required: getConfig('acc_id').mandatory ? 'Account Name is required' : false,
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="gap-1 font-medium">
+														Account Name
+														{getConfig('acc_id').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+													<div style={{ position: 'relative' }}>
+														<AsyncTypeahead
+															id="acc_id"
+															labelKey="account_name"
+															options={accountOptions}
+															isLoading={isLoading}
+															minLength={1}
+															placeholder="Search Account Name"
+															onSearch={handleAccountSearch}
+															onChange={handleAccountChange}
+															selected={selectedAccount}
+															// Dynamic disabled state
+															disabled={getConfig('acc_id').disabled || !!editingRow}
+															inputProps={{
+																// Use this to match the Account Name style exactly
+																className:
+																	'flex h-11 w-full rounded-md border border-input bg-background px-4 py-2 text-sm sm:text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:bg-blue-100 disabled:opacity-50',
+																required: getConfig('acc_id').mandatory,
+															}}
+															menuStyle={{
+																zIndex: 1050,
+																width: '100%',
+																position: 'absolute',
+															}}
+															renderMenu={renderAccountMenu}
+														/>
+													</div>
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									</div>
+								)}
+								{!getConfig('invoice_date').hidden && (
+									<div>
+										<FormField
+											control={form.control}
+											name="invoice_date"
+											rules={{
+												required: getConfig('invoice_date').mandatory ? 'Invoice Date is required' : false,
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className={`gap-1 font-medium ${getConfig('invoice_date').disabled ? 'opacity-50' : ''}`}>
+														Invoice Date
+														{getConfig('invoice_date').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+
+													<Popover open={open} onOpenChange={setOpen}>
+														<PopoverTrigger asChild>
+															<Button
+																variant="outline"
+																disabled={getConfig('invoice_date').disabled}
+																className={
+																	'w-full justify-start text-left font-normal h-11 text-sm sm:text-base ' +
+																	'flex rounded-md border border-input bg-background px-4 py-2 ring-offset-background ' +
+																	'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 ' +
+																	(field.value ? '' : ' text-muted-foreground') +
+																	(getConfig('invoice_date').disabled ? ' opacity-50 cursor-not-allowed bg-blue-100' : '')
+																}
+															>
+																<CalendarIcon className="mr-2 h-4 w-4" />
+																{field.value ? formatDateTime(field.value) : <span>Pick a date</span>}
+															</Button>
+														</PopoverTrigger>
+														{!getConfig('invoice_date').disabled && (
+															<PopoverContent className="w-auto p-0">
+																<Calendar
+																	mode="single"
+																	selected={field.value ? parseISO(field.value) : undefined}
+																	onSelect={(date) => {
+																		if (!date) {
+																			field.onChange('');
+																			return;
+																		}
+																		const formattedDate = format(date, 'yyyy-MM-dd');
+																		field.onChange(formattedDate);
+																		setOpen(false);
+																	}}
+																	initialFocus
+																/>
+															</PopoverContent>
+														)}
+													</Popover>
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									</div>
+								)}
+
+								{!getConfig('invoice_no').hidden && (
+									<div>
+										<FormField
+											control={form.control}
+											name="invoice_no"
+											rules={{
+												required: getConfig('invoice_no').mandatory ? 'Invoice Number is required' : false,
+												min: {
+													value: 0,
+													message: 'invoice number cannot be negative',
+												},
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="gap-1 font-medium">
+														Invoice Number
+														{getConfig('invoice_no').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+													<Input
+														{...field}
+														type="text"
+														disabled={getConfig('invoice_no').disabled || !!editingRow}
+														maxLength={256}
+														className="flex h-11 w-full disabled:bg-blue-100 rounded-md border border-input bg-background px-4 py-2 text-sm sm:text-base ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+														placeholder="Enter invoice number"
+														required={getConfig('invoice_no').mandatory}
+													/>
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									</div>
+								)}
+
+								{!getConfig('invoice_status').hidden && (
+									<div>
+										<FormField
+											control={form.control}
+											name="invoice_status"
+											rules={{
+												required: getConfig('invoice_status').mandatory ? 'Invoice Status is required' : false,
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="gap-1 font-medium">
+														Invoice Status
+														{getConfig('invoice_status').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+													<Select
+														value={field.value}
+														onValueChange={field.onChange}
+														disabled={getConfig('invoice_status').disabled}
+														required={getConfig('invoice_status').mandatory}
+													>
+														<SelectTrigger className="w-full justify-between disabled:bg-blue-100 h-11 text-sm sm:text-base">
+															<SelectValue placeholder="Select status" />
+														</SelectTrigger>
+														<SelectContent>
+															{getConfig('invoice_status').options.map((option) => (
+																<SelectItem key={option.value} value={option.value}>
+																	{option.label}
+																</SelectItem>
+															))}
+														</SelectContent>
+													</Select>
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									</div>
+								)}
+
+								{!getConfig('commission').hidden && (
+									<div>
+										<FormField
+											control={form.control}
+											name="commission"
+											rules={{
+												required: getConfig('commission').mandatory ? 'Commission is required' : false,
+												min: {
+													value: 0,
+													message: 'commission number cannot be negative',
+												},
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="gap-1 font-medium">
+														Commission
+														{getConfig('commission').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+													<Input
+														{...field}
+														type="number"
+														onBlur={(e) => {
+															field.onBlur();
+															if (e.target.value !== '') {
+																field.onChange(parseFloat(e.target.value).toFixed(2));
+															}
+														}}
+														disabled={getConfig('commission').disabled}
+														className="flex h-11 w-full rounded-md border border-input bg-background px-4 py-2 text-sm sm:text-base ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:bg-blue-100"
+														placeholder="Enter commission amount"
+														required={getConfig('commission').mandatory}
+													/>
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									</div>
+								)}
+
+								{!getConfig('product').hidden && (
+									<div>
+										<FormField
+											control={form.control}
+											name="product"
+											rules={{
+												required: getConfig('product').mandatory ? 'Product is required' : false,
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="gap-1 font-medium">
+														Product
+														{getConfig('product').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+													<Select value={field.value} onValueChange={field.onChange} disabled={getConfig('product').disabled || !!editingRow}>
+														<SelectTrigger className="w-full justify-between h-11 text-sm disabled:bg-blue-100 sm:text-base">
+															<SelectValue placeholder="Select product" />
+														</SelectTrigger>
+														<SelectContent>
+															{getConfig('product').options.map((option) => (
+																<SelectItem key={option.value} value={option.value}>
+																	{option.label}
+																</SelectItem>
+															))}
+														</SelectContent>
+													</Select>
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									</div>
+								)}
+
+								{watchedStatus === 'syndicate' && (
+									<div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 gap-0 mt-2 sm:mt-6">
+										<div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+											{!getConfig('ticker').hidden && (
+												<FormField
+													control={form.control}
+													name="ticker"
+													rules={{
+														required: getConfig('ticker').mandatory ? 'Ticker is required' : false,
+														min: {
+															value: 0,
+															message: 'Ticker cannot be negative',
+														},
+													}}
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel className="gap-1 font-medium text-sm">
+																Ticker{getConfig('ticker').mandatory && <span className="text-red-500">*</span>}
+															</FormLabel>
+															<AsyncTypeahead
+																id="ticker"
+																labelKey={(option) => option.ticker_description || option.ticker_symbol}
+																options={tickerOptions}
+																isLoading={isTickerLoading}
+																minLength={1}
+																placeholder="Search Ticker..."
+																onSearch={handleTickerSearch}
+																onChange={handleTickerChange} 
+																selected={selectedTicker}
+																disabled={getConfig('ticker').disabled}
+																inputProps={{
+																	className:
+																		'h-10 w-full border disabled:bg-blue-100 rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-ring focus:outline-none',
+																	maxLength: 32,
+																}}
+																menuStyle={{
+																	zIndex: 1050,
+																	width: '100%',
+																	position: 'absolute',
+																}}
+																renderMenu={renderTickerMenu} 
+															/>
+
+															<div className="min-h-[20px]">
+																<FormMessage />
+															</div>
+														</FormItem>
+													)}
+												/>
+											)}
+											{!getConfig('quantity').hidden && (
+												<FormField
+													control={form.control}
+													name="quantity"
+													rules={{
+														required: getConfig('quantity').mandatory ? 'Quantity is required' : false,
+														min: {
+															value: 0,
+															message: 'Quantity cannot be negative',
+														},
+													}}
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel className="gap-1 font-medium text-sm">
+																Quantity{getConfig('quantity').mandatory && <span className="text-red-500">*</span>}
+															</FormLabel>
+															<Input
+																{...field}
+																disabled={getConfig('quantity').disabled}
+																type="number"
+																onBlur={(e) => {
+																	field.onBlur();
+																	if (e.target.value !== '') {
+																		field.onChange(parseFloat(e.target.value).toFixed(2));
+																	}
+																}}
+																min={0}
+																className="h-10 text-sm sm:text-base disabled:bg-blue-100"
+																placeholder="Quantity"
+															/>
+															<div className="min-h-[20px]">
+																<FormMessage />
+															</div>
+														</FormItem>
+													)}
+												/>
+											)}
+											{!getConfig('price').hidden && (
+												<FormField
+													control={form.control}
+													name="price"
+													rules={{
+														required: getConfig('price').mandatory ? 'Price is required' : false,
+														min: {
+															value: 0,
+															message: 'Price cannot be negative',
+														},
+													}}
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel className="gap-1 font-medium text-sm">
+																Price{getConfig('price').mandatory && <span className="text-red-500">*</span>}
+															</FormLabel>
+															<Input
+																{...field}
+																disabled={getConfig('price').disabled}
+																type="number"
+																onBlur={(e) => {
+																	field.onBlur();
+																	if (e.target.value !== '') {
+																		field.onChange(parseFloat(e.target.value).toFixed(2));
+																	}
+																}}
+																min={0}
+																step="any"
+																className="h-10 text-sm sm:text-base disabled:bg-blue-100"
+																placeholder="Price"
+															/>
+															<div className="min-h-[20px]">
+																<FormMessage />
+															</div>
+														</FormItem>
+													)}
+												/>
+											)}
+											{!getConfig('net_amount').hidden && (
+												<FormField
+													control={form.control}
+													name="net_amount"
+													rules={{
+														required: getConfig('net_amount').mandatory ? 'Net Amount is required' : false,
+														min: {
+															value: 0,
+															message: 'net Amount cannot be negative',
+														},
+													}}
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel className="gap-1 font-medium text-sm">
+																Net Amount{getConfig('net_amount').mandatory && <span className="text-red-500">*</span>}
+															</FormLabel>
+															<Input
+																{...field}
+																disabled={getConfig('net_amount').disabled}
+																type="number"
+																onBlur={(e) => {
+																	field.onBlur();
+																	if (e.target.value !== '') {
+																		field.onChange(parseFloat(e.target.value).toFixed(2));
+																	}
+																}}
+																min={0}
+																step="any"
+																className="h-10 text-sm sm:text-base disabled:bg-blue-100"
+																placeholder="Net Amount"
+															/>
+															<div className="min-h-[20px]">
+																<FormMessage />
+															</div>
+														</FormItem>
+													)}
+												/>
+											)}
+										</div>
+
+										{/* to get the dynamic fields from dynamicRowFields array */}
+										<div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+											{dynamicRowFields.map((item) => (
+												<FormField
+													key={item.name}
+													control={form.control}
+													name={item.name}
+													rules={getDynamicRules(item)}
+													render={({ field }) => (
+														<FormItem>
+															<FormLabel className="gap-1 font-medium text-sm">
+																{item.label}
+																{item.mandatory && !item.disabled && <span className="text-red-500">*</span>}
+															</FormLabel>
+
+															<Input
+																{...field}
+																type={item.type === 'number' ? 'number' : 'text'}
+																placeholder={item.placeholder}
+																readOnly={item.readOnly}
+																disabled={item.disabled}
+																className={`h-10 text-sm sm:text-base disabled:bg-blue-100  ${item.className || ''}`}
+																onChange={(e) =>
+																	item.readOnly || item.disabled
+																		? undefined
+																		: item.type === 'number'
+																			? field.onChange(e.target.value === '' ? undefined : Number(e.target.value))
+																			: field.onChange(e.target.value)
+																}
+															/>
+															<div className="min-h-[20px]">
+																<FormMessage />
+															</div>
+														</FormItem>
+													)}
+												/>
+											))}
+										</div>
+									</div>
+								)}
+
+								<div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+									<FormField
+										control={form.control}
+										rules={{
+											required: 'Invoice attachment is required',
+										}}
+										name="att_id"
+										render={({ field }) => (
+											<FormItem>
+												<FormLabel className="gap-1 font-medium">
+													Attach Invoice<span className="text-red-500">*</span>
+												</FormLabel>
+												<div
+													className="border-2 border-dashed border-gray-300 dark:border-gray-800 rounded-lg p-3 sm:p-4 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 dark:bg-[#182028] dark:hover:bg-gray-800 transition h-[100px] sm:h-[115px] cursor-pointer relative"
+													onClick={() => document.getElementById('att_id')?.click()}
+												>
+													<input
+														type="file"
+														id="att_id"
+														accept={`.${INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat}` || '.pdf'}
+														className="hidden"
+														onChange={async (e) => {
+															const file = e.target.files?.[0];
+															if (!file) return;
+
+															const allowedExt = INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat.toLowerCase();
+															const fileExt = file.name.split('.').pop().toLowerCase();
+															if (fileExt !== allowedExt) {
+																toast.warning(`Only ${allowedExt.toUpperCase()} files are allowed.`);
+																return;
+															}
+
+															const sizeLimitMB = parseInt(INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize || 10);
+															const maxSizeInBytes = sizeLimitMB * 1024 * 1024;
+
+															if (file.size > maxSizeInBytes) {
+																toast.warning(`File size must be less than ${INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize}.`);
+																return;
+															}
+
+															const reader = new FileReader();
+															reader.onloadend = () => {
+																const base64Content = reader.result.split(',')[1];
+																form.setValue('invoiceFile', file);
+
+																// Pass { shouldValidate: true } to trigger the FormMessage check immediately
+																form.setValue('att_id', base64Content, { shouldValidate: true });
+
+																form.setValue('att_name', file.name);
+																form.setValue('att_size', Math.round(file.size / 1024).toString());
+															};
+
+															reader.readAsDataURL(file);
+														}}
+													/>
+
+													{/* Outer check: only show anything if att_id exists */}
+													{form.watch('att_id') ? (
+														<div className="flex flex-col items-center justify-center w-full space-y-1 min-w-0">
+															{/* Only show this div if we actually have a name to display */}
+															{(form.watch('invoiceFile')?.name || form.watch('att_name')) && (
+																<div className="flex flex-col items-center text-center">
+																	<span className="text-xs sm:text-sm font-semibold text-blue-600 truncate block max-w-full">
+																		{form.watch('invoiceFile')?.name || form.watch('att_name')}
+																	</span>
+
+																	{/* Show size if available */}
+																	{(form.watch('invoiceFile') || form.watch('att_size')) && (
+																		<span className="text-[10px] sm:text-xs text-gray-500">
+																			(
+																			{form.watch('invoiceFile')
+																				? (form.watch('invoiceFile').size / 1024).toFixed(0)
+																				: form.watch('att_size')}{' '}
+																			KB)
+																		</span>
+																	)}
+																</div>
+															)}
+
+															<div className="flex gap-2 w-full max-w-[200px]">
+																{/* Download button - only if it's an existing server file */}
+																{editingRow && form.watch('att_id') && !form.watch('invoiceFile') && (
+																	<Button
+																		type="button"
+																		variant="outline"
+																		size="sm"
+																		className="h-7 flex-1 text-[10px]"
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			downloadInvoice(editingRow.invoice_no);
+																		}}
+																	>
+																		<Download className="mr-1" size={12} /> Download
+																	</Button>
+																)}
+
+																<Button
+																	type="button"
+																	variant="destructive"
+																	size="sm"
+																	className="h-7 flex-1 text-[10px]"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		form.setValue('att_id', '', { shouldValidate: true });
+																		form.setValue('invoiceFile', null);
+																		form.setValue('att_name', '');
+																		form.setValue('att_url', '');
+																	}}
+																>
+																	Remove
+																</Button>
+															</div>
+														</div>
+													) : (
+														<div className="flex flex-col items-center text-center">
+															<span className="text-gray-400 text-xs sm:text-sm">Drag & drop or click to upload</span>
+															<span className="text-[9px] sm:text-[10px] text-gray-400 uppercase mt-1">
+																{INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileFormat} Max {INVOICE_IMAGE_VARIABLE.value.fileUpload?.fileSize}
+															</span>
+														</div>
+													)}
+												</div>
+												<div className="min-h-[20px]">
+													<FormMessage />
+												</div>
+											</FormItem>
+										)}
+									/>
+
+									{!getConfig('comments').hidden && (
+										<FormField
+											control={form.control}
+											name="comments"
+											rules={{
+												required: getConfig('comments').mandatory ? 'Notes are required' : false,
+											}}
+											render={({ field }) => (
+												<FormItem>
+													<FormLabel className="gap-1 font-medium">
+														Notes
+														{getConfig('comments').mandatory && <span className="text-red-500">*</span>}
+													</FormLabel>
+													<Textarea
+														{...field}
+														id="notes"
+														rows={4}
+														disabled={getConfig('comments').disabled}
+														className="shadow-none max-h-[150px] disabled:bg-blue-100 min-h-[115px]"
+														placeholder="Enter notes here..."
+														required={getConfig('comments').mandatory}
+													></Textarea>
+
+													{/* <textarea
+														{...field}
+														id="notes"
+														rows={4}
+														disabled={getConfig('comments').disabled}
+														className="border rounded w-full min-w-0 p-2 text-sm sm:text-base focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 disabled:bg-gray-100"
+														placeholder="Enter notes here..."
+														required={getConfig('comments').mandatory}
+													/> */}
+													<div className="min-h-[20px]">
+														<FormMessage />
+													</div>
+												</FormItem>
+											)}
+										/>
+									)}
+								</div>
+							</form>
+						</Form>
+
+						{selectedAccount.length > 0 && (
+							<div className="p-2 sm:p-4">
+								<h3 className="text-base sm:text-lg font-semibold mb-2">Coverage Details</h3>
+
+								<div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-end max-w-full sm:max-w-[500px]">
+									<div style={{ position: 'relative' }} className="flex-1 w-full sm:flex-[2]">
+										<AsyncTypeahead
+											id="employee_search"
+											labelKey={(option) => option.display_name}
+											options={employeeOptions}
+											isLoading={isEmployeeLoading}
+											minLength={1}
+											placeholder="Search employee name..."
+											onSearch={handleEmployeeSearch}
+											onChange={handleEmployeeChange}
+											selected={selectedEmployee}
+											inputProps={{
+												className: 'h-10 w-full border rounded-md px-3 py-2 text-sm sm:text-base',
+											}}
+											menuStyle={{
+												zIndex: 1050,
+												width: '100%',
+												position: 'absolute',
+											}}
+											renderMenu={renderEmployeeMenu}
+										/>
+										{isEmployeeLoading && selectedEmployee.length > 0 && (
+											<ul
+												className="dark:bg-gray-800 bg-gray-100 border"
+												style={{
+													position: 'absolute',
+													zIndex: 10,
+													borderRadius: 4,
+													margin: 0,
+													padding: 0,
+													width: '100%',
+													maxHeight: 120,
+													overflowY: 'auto',
+													listStyle: 'none',
+												}}
+											></ul>
+										)}
+									</div>
+
+									{selectedEmployee && selectedEmployee.length > 0 && (
+										<div className="flex items-center gap-2">
+											<Input
+												value={parseFloat(percentage).toFixed(2)}
+												onChange={(e) => {
+													const val = e.target.value.replace(/[^0-9.]/g, '');
+													setPercentage(val);
+													if (val !== '' && Number(val) > 100) {
+														setPercentageInputError('Percentage cannot be more than 100.');
+													} else {
+														setPercentageInputError('');
+													}
+												}}
+												type="number"
+												min={0}
+												max={100}
+												placeholder="%"
+												className="input input-bordered border rounded px-3 py-2 text-sm sm:text-base w-20 sm:w-24 h-10"
+												disabled={!selectedEmployee}
+											/>
+											<Button
+												type="button"
+												variant="default"
+												className="h-10 text-sm sm:text-base whitespace-nowrap"
+												onClick={handleAddCoverage}
+												disabled={!selectedEmployee || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
+											>
+												Add
+											</Button>
+										</div>
+									)}
+								</div>
+								{coverageRows.length > 0 && (
+									<div className="w-full border rounded-md overflow-hidden" style={{ height: 220, minHeight: 120, overflow: 'auto' }}>
+										<table className="w-full text-sm text-left border-collapse">
+											<thead className={`${IS_DARK.value ? 'bg-[#2d3436] text-white' : 'bg-gray-100'} sticky top-0 z-10`}>
+												<tr style={{ height: 34 }}>
+													{coverageColumns.map((col) => (
+														<th key={col.headerName} className="px-4 font-semibold border-b text-xs uppercase tracking-wider">
+															{col.headerName}
+														</th>
+													))}
+												</tr>
+											</thead>
+											<tbody className={IS_DARK.value ? 'bg-[#181d1f] text-gray-300' : 'bg-white text-gray-700'}>
+												{coverageRows.map((row, index) => (
+													<tr key={row.id || index} style={{ height: 34 }} className="border-b hover:bg-gray-50/5 transition-colors">
+														<td className="px-4 truncate">{row.display_name}</td>
+														<td className="px-4 truncate">{row.corp_title}</td>
+														<td className="px-4 truncate">{row.email}</td>
+														<td className="px-4">
+															<Input
+																type="number"
+																value={parseFloat(row.percentage).toFixed(2) || ''}
+																onChange={(e) => {
+																	const val = e.target.value;
+																	// Use a unique identifier. If emp_id isn't there yet, the row won't update.
+																	const updatedRows = coverageRows.map((r) => (r.email === row.email ? { ...r, percentage: val } : r));
+																	setCoverageRows(updatedRows);
+																}}
+																onBlur={(e) => {
+																	const val = parseFloat(e.target.value);
+																	if (!isNaN(val)) {
+																		// Re-enforce the 2 decimals when they stop typing
+																		const formattedVal = val.toFixed(2);
+																		const updatedRows = coverageRows.map((r) =>
+																			r.email === row.email ? { ...r, percentage: formattedVal } : r
+																		);
+																		setCoverageRows(updatedRows);
+																	}
+																}}
+																className="w-full h-8 rounded-md px-2 transition-all"
+																min="0"
+																max="100"
+															/>
+														</td>
+
+														<td className="px-4">
+															<div className="flex justify-center gap-2">
+																<button
+																	type="button"
+																	className="cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
+																	title="Delete"
+																	onClick={() => handleDeleteCoverage(row)}
+																>
+																	<Trash2 size={18} strokeWidth={1.5} />
+																</button>
+																{/* Coverage Delete warning dialog */}
+																<Dialog open={showCoverageDeleteDialog} onOpenChange={setShowCoverageDeleteDialog}>
+																	<DialogContent>
+																		<DialogHeader>
+																			<DialogTitle>Delete Coverage</DialogTitle>
+																		</DialogHeader>
+																		<div>Are you sure you want to delete this coverage entry? This action cannot be undone.</div>
+																		<DialogFooter className="flex justify-end gap-2">
+																			<Button variant="outline" onClick={handleCoverageDeleteCancel}>
+																				Cancel
+																			</Button>
+																			<Button variant="destructive" onClick={handleCoverageDeleteConfirm}>
+																				Delete
+																			</Button>
+																		</DialogFooter>
+																	</DialogContent>
+																</Dialog>
+															</div>
+														</td>
+													</tr>
+												))}
+											</tbody>
+										</table>
+									</div>
+								)}
+							</div>
+						)}
+					</div>
+					<SheetFooter className="flex flex-row justify-end border-t pt-4 mt-4">
+						<Button
+							className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
+							type="submit"
+							onClick={form.handleSubmit(editingRow ? handleUpdateSubmit : handleFormSubmit)}
+						>
+							{editingRow ? 'Update' : 'Save'}
+						</Button>
+						<Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
+							Cancel
+						</Button>
+					</SheetFooter>
+				</SheetContent>
+			</Sheet>
+		</div>
+	);
