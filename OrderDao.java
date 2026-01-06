@@ -2470,3 +2470,161 @@ const fieldOrder = fields.map((f) => f.name);
 		</div>
 	);
 }
+
+--------------------------------------------------------------------------------------------------------
+	{
+  "fileUpload": {
+    "fileFormat": "pdf",
+    "fileSize": "10MB"
+  },
+  "formConfig": {
+    "extraFormFields": [
+      {
+        "name": "dyn_code",
+        "label": "Code",
+        "placeholder": "Enter code",
+        "type": "string",
+        "mandatory": true,
+        "pattern": {},
+        "patternMessage": "Only uppercase letters & numbers allowed",
+        "readOnly": false,
+        "disabled": false,
+        "defaultValue": "",
+        "className": ""
+      },
+      {
+        "name": "dyn_description",
+        "label": "Description",
+        "placeholder": "Enter description",
+        "type": "string",
+        "mandatory": false,
+        "readOnly": false,
+        "disabled": false,
+        "defaultValue": "",
+        "className": ""
+      },
+      {
+        "name": "dyn_quantity",
+        "label": "Quantity",
+        "placeholder": "Enter Quantity",
+        "type": "number",
+        "mandatory": false,
+        "pattern": {},
+        "patternMessage": "Only numbers allowed",
+        "readOnly": false,
+        "disabled": false,
+        "defaultValue": 0,
+        "className": ""
+      },
+      {
+        "name": "dyn_amount",
+        "label": "Amount",
+        "placeholder": "Enter Amount",
+        "type": "number",
+        "mandatory": false,
+        "readOnly": true,
+        "disabled": true,
+        "defaultValue": 100,
+        "className": ""
+      }
+    ],
+    "formFields": [
+      {
+        "name": "acc_id",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "invoice_no",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "invoice_date",
+        "mandatory": false,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "invoice_status",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false,
+        "options": [
+          {
+            "label": "Open",
+            "value": "open"
+          },
+          {
+            "label": "Paid",
+            "value": "paid"
+          }
+        ]
+      },
+      {
+        "name": "commission",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "product",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false,
+        "options": [
+          {
+            "label": "Syndicate",
+            "value": "syndicate"
+          },
+          {
+            "label": "Invoice",
+            "value": "invoice"
+          }
+        ]
+      },
+      {
+        "name": "ticker",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "price",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "quantity",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "payOut",
+        "mandatory": false,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "net_amount",
+        "mandatory": true,
+        "disabled": false,
+        "hidden": false
+      },
+      {
+        "name": "comments",
+        "mandatory": false,
+        "disabled": false,
+        "hidden": false
+      }
+    ]
+  },
+  "defaultDateRange": {
+    "dateFilterDefaultRange": "7"
+  }
+}
+
