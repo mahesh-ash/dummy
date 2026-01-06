@@ -1,4 +1,6 @@
 // Field component mapping
+//Add this after your existing getConfig function (around line 1350):
+
 const renderField = (fieldName, fieldConfig) => {
   const config = getConfig(fieldName);
   
@@ -680,3 +682,4 @@ const mainFields = fieldOrder.filter(f => !syndicateFields.includes(f));
     {!getConfig('comments').hidden && renderField('comments', getConfig('comments'))}
   </div>
 </form>
+
