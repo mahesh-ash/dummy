@@ -1,376 +1,294 @@
- return (
-        <div className="w-full">
-            <div className="flex justify-end gap-4 items-center pb-2">
-                <TooltipProvider>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button data-clickid={'Action: Invoice Manager - Table Refresh'} onClick={handleRefresh} className={'h-[40px]'} variant="outline">
-                                <RefreshCcwIcon className={`stroke-[#9ca3af]`}></RefreshCcwIcon>
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Last Refreshed: {convertDate(lastRefresh)}</TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
-                {rangeStartDate && (
-                    <DateRangePicker
-                        clickId={'Action: Invoice Manager - Date Range Picker'}
-                        onCancel={dateRangeCancelHandler}
-                        locale="en-US"
-                        initialDateFrom={rangeStartDate}
-                        initialDateTo={rangeEndDate}
-                        onUpdate={dateRangeHandler}
-                        showCompare={false}
-                    ></DateRangePicker>
-                )}
-                <div className="flex items-center gap-2">
-                    <ButtonGroupDropdown onExport={excelDownloadHandler} loading={excelLoading} />
-                </div>
-                <Button
-                    data-clickid={'Action: Invoice Manager - History Button'}
-                    onClick={() => props?.onHistory && props.onHistory()}
-                    variant="outline"
-                    className="gap-2 h-[40px]"
-                >
-                    History
-                </Button>
-                <Button data-clickid={'Action: Invoice Manager - Add Invoice/Syndicate'} onClick={() => setSheetOpen(true)} variant="default" className="gap-2 h-[40px]">
-                    <Plus size={18} /> Add
-                </Button>
-            </div>
-            <div
-                className={`${IS_DARK.value ? 'ag-theme-balham-dark' : 'ag-theme-balham'} w-full grid-container invoice-table`}
-                style={{ height: height, minHeight: 300, overflow: 'auto' }}
-            >
-                <AgGridReact
-                    ref={gridRef}
-                    columnDefs={columnDefs.map((col) => {
-                        if (col.cellRenderer === 'ActionCellRenderer') return { ...col, cellRenderer: ActionCellRenderer };
-                        if (col.cellRenderer === 'StatusCellRenderer') return { ...col, cellRenderer: StatusCellRenderer };
-                        if (col.cellRenderer === 'CurrencyCellRenderer') return { ...col, cellRenderer: CurrencyCellRenderer };
-                        return { ...col, cellRenderer: DefaultCellRenderer };
-                    })}
-                    onSortChanged={(e) => {
-                        if (e.source != 'api') {
-                            saveGridSettings();
-                        }
-                    }}
-                    onColumnVisible={(e) => {
-                        if (e.source != 'api') {
-                            saveGridSettings();
-                        }
-                    }}
-                    onColumnPinned={(e) => {
-                        if (e.source != 'api') {
-                            saveGridSettings();
-                        }
-                    }}
-                    defaultColDef={defaultColDef}
-                    modules={[ColumnsToolPanelModule, SetFilterModule, MenuModule, ServerSideRowModelModule, RangeSelectionModule, ClipboardModule]}
-                    rowHeight={40}
-                    cellSelection
-                    headerHeight={40}
-                    paginationPageSize={20}
-                    cacheBlockSize={20}
-                    rowModelType={'serverSide'}
-                    pagination={true}
-                    domLayout="normal"
-                    sideBar={sideBar}
-                    suppressMovableColumns
-                    suppressServerSideFullWidthLoadingRow={true}
-                    noRowsOverlayComponent={() => <span>Record not found.</span>}
-                />
-            </div>
-            {/* Warning dialog for Coverage Delete */}
-            <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Delete Invoice</DialogTitle>
-                    </DialogHeader>
-                    <div>Are you sure you want to delete this invoice? This action cannot be undone.</div>
-                    <DialogFooter className="flex justify-end gap-2">
-                        <Button variant="outline" onClick={handleDeleteCancel}>
-                            Cancel
-                        </Button>
-                        <Button variant="destructive" onClick={handleDeleteConfirm}>
-                            Delete
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-            <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
-                <SheetContent className="sm:max-w-6xl">
-                    <SheetHeader>
-                        <SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
-                    </SheetHeader>
-                    {/* Warning Dialog for Unsaved Changes in the form */}
-                    <Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>Unsaved Changes</DialogTitle>
-                            </DialogHeader>
-                            <div>You have unsaved changes. Are you sure you want to close?</div>
-                            <DialogFooter className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={handleDialogCancel}>
-                                    Cancel
-                                </Button>
-                                <Button variant="destructive" onClick={handleDialogConfirm}>
-                                    Discard & Close
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+// Replace your Sheet section with this updated version:
 
-                    <Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
-                        <DialogContent>
-                            <DialogHeader>
-                                <DialogTitle>{dialogConfig.title}</DialogTitle>
-                            </DialogHeader>
-                            <div>{dialogConfig.message}</div>
-                            <DialogFooter className="flex justify-end gap-2">
-                                <Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
-                                    Cancel
-                                </Button>
-                                <Button
-                                    variant="destructive"
-                                    onClick={() => {
-                                        dialogConfig.onConfirm();
-                                        setDialogConfig((prev) => ({ ...prev, isOpen: false }));
+<Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+    <SheetContent className="sm:max-w-[95vw] lg:max-w-[1400px]"> {/* Increased width */}
+        <SheetHeader>
+            <SheetTitle>{editingRow ? 'Edit Invoice' : 'Add Commission'}</SheetTitle>
+        </SheetHeader>
+        
+        {/* Warning Dialog for Unsaved Changes in the form */}
+        <Dialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Unsaved Changes</DialogTitle>
+                </DialogHeader>
+                <div>You have unsaved changes. Are you sure you want to close?</div>
+                <DialogFooter className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={handleDialogCancel}>
+                        Cancel
+                    </Button>
+                    <Button variant="destructive" onClick={handleDialogConfirm}>
+                        Discard & Close
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <Dialog open={dialogConfig.isOpen} onOpenChange={(open) => setDialogConfig((prev) => ({ ...prev, isOpen: open }))}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>{dialogConfig.title}</DialogTitle>
+                </DialogHeader>
+                <div>{dialogConfig.message}</div>
+                <DialogFooter className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setDialogConfig((prev) => ({ ...prev, isOpen: false }))}>
+                        Cancel
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        onClick={() => {
+                            dialogConfig.onConfirm();
+                            setDialogConfig((prev) => ({ ...prev, isOpen: false }));
+                        }}
+                    >
+                        Discard & Proceed
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        
+        {/* Scrollable content area */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2">
+            <Form autocomplete="off" {...form}>
+                <form autoComplete="off" className="p-2 sm:p-4 invoice-form">
+                    {/* First Row - 4 Fields with Equal Height */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                        {mainFields
+                            .filter((fieldName) => !['attach', 'comments', 'connection', 'product'].includes(fieldName))
+                            .slice(0, 4)
+                            .map((fieldName) => {
+                                return <div key={fieldName} className="h-full">{renderField(fieldName)}</div>;
+                            })}
+                    </div>
+
+                    {/* Second Row - Connection and Product */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                        {['connection', 'product'].map((fieldName) => {
+                            return <div key={fieldName}>{renderField(fieldName)}</div>;
+                        })}
+                    </div>
+
+                    {/* Third Row - Remaining fields in 3 columns */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                        {mainFields
+                            .filter((fieldName) => 
+                                !['attach', 'comments', 'connection', 'product'].includes(fieldName) &&
+                                !mainFields.slice(0, 4).includes(fieldName)
+                            )
+                            .map((fieldName) => {
+                                return <div key={fieldName}>{renderField(fieldName)}</div>;
+                            })}
+                    </div>
+
+                    {/* Syndicate section - conditionally rendered */}
+                    {watchedStatus === 'syndicate' && syndicateFields.length > 0 && (
+                        <div className="grid grid-cols-1 gap-0 mt-6">
+                            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                                {syndicateFields.map((fieldName) => renderField(fieldName))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* File and Comments section - 2 columns */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {['attach', 'comments'].map((fieldName) => {
+                            const config = getConfig(fieldName);
+                            if (config.hidden) return null;
+                            return <div key={fieldName}>{renderField(fieldName)}</div>;
+                        })}
+                    </div>
+                </form>
+            </Form>
+
+            {/* Coverage Details Section - keeping your existing code */}
+            {selectedAccount.length > 0 && (
+                <div className="p-2 sm:p-4">
+                    <h3 className="text-base sm:text-lg font-semibold mb-2">Coverage Details</h3>
+
+                    <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-end max-w-full sm:max-w-[500px]">
+                        <div style={{ position: 'relative' }} className="flex-1 w-full sm:flex-[2]">
+                            <AsyncTypeahead
+                                id="employee_search"
+                                labelKey={(option) => option.display_name}
+                                options={employeeOptions}
+                                isLoading={isEmployeeLoading}
+                                minLength={1}
+                                placeholder="Search employee name..."
+                                onSearch={handleEmployeeSearch}
+                                onChange={handleEmployeeChange}
+                                selected={selectedEmployee}
+                                inputProps={{
+                                    className:
+                                        'h-10 w-full border rounded-md px-3 py-2 text-sm sm:text-base focus:outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:ring-1 focus:ring-primary',
+                                }}
+                                menuStyle={{
+                                    zIndex: 1050,
+                                    width: '100%',
+                                    position: 'absolute',
+                                }}
+                                renderMenu={renderEmployeeMenu}
+                            />
+                            {isEmployeeLoading && selectedEmployee.length > 0 && (
+                                <ul
+                                    className="dark:bg-gray-800 bg-gray-100 border"
+                                    style={{
+                                        position: 'absolute',
+                                        zIndex: 10,
+                                        borderRadius: 4,
+                                        margin: 0,
+                                        padding: 0,
+                                        width: '100%',
+                                        maxHeight: 120,
+                                        overflowY: 'auto',
+                                        listStyle: 'none',
                                     }}
+                                ></ul>
+                            )}
+                        </div>
+
+                        {selectedEmployee && selectedEmployee.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    value={percentage === undefined || percentage === null ? '' : percentage}
+                                    onChange={(e) => {
+                                        let val = e.target.value;
+                                        if (val !== '' && parseFloat(val) > 100) {
+                                            val = '100';
+                                        }
+                                        setPercentage(val);
+                                        if (val !== '' && Number(val) > 100) {
+                                            setPercentageInputError('Percentage cannot be more than 100.');
+                                        } else {
+                                            setPercentageInputError('');
+                                        }
+                                    }}
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    placeholder="%"
+                                    className="input input-bordered border rounded px-3 py-2 text-sm sm:text-base w-20 sm:w-24 h-10"
+                                    disabled={!selectedEmployee}
+                                    onBlur={(e) => {
+                                        let val = parseFloat(e.target.value);
+                                        if (!isNaN(val)) {
+                                            if (val > 100) val = 100;
+                                            const formattedVal = val.toFixed(2);
+                                            setPercentage(formattedVal);
+                                        }
+                                    }}
+                                />
+                                <Button
+                                    type="button"
+                                    variant="default"
+                                    className="h-10 text-sm sm:text-base whitespace-nowrap"
+                                    onClick={handleAddCoverage}
+                                    disabled={!selectedEmployee || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
                                 >
-                                    Discard & Proceed
+                                    Add
                                 </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-                    {/* to add a scrollbar for visible the footer */}
-                    <div className="flex-1 overflow-y-auto overflow-x-hidden pr-2">
-                        <Form autocomplete="off" {...form}>
-                            <form autoComplete="off" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 sm:gap-x-6 p-2 sm:p-4 invoice-form">
-                                {mainFields
-                                    .filter((fieldName) => !['attach', 'comments'].includes(fieldName))
-                                    .map((fieldName) => {
-                                        return <div key={fieldName}>{renderField(fieldName)}</div>;
-                                    })}
-
-                                {/* Syndicate section - conditionally rendered */}
-                                {watchedStatus === 'syndicate' && syndicateFields.length > 0 && (
-                                    <div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 gap-0 mt-2 sm:mt-6">
-                                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
-                                            {syndicateFields.map((fieldName) => renderField(fieldName))}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* File and Comments section - dynamic from config */}
-                                <div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-x-4 sm:gap-x-6">
-                                    {['attach', 'comments'].map((fieldName) => {
-                                        const config = getConfig(fieldName);
-                                        if (config.hidden) return null;
-                                        return <div key={fieldName}>{renderField(fieldName)}</div>;
-                                    })}
-                                </div>
-                            </form>
-                        </Form>
-
-                        {selectedAccount.length > 0 && (
-                            <div className="p-2 sm:p-4">
-                                <h3 className="text-base sm:text-lg font-semibold mb-2">Coverage Details</h3>
-
-                                <div className="mb-4 flex flex-col sm:flex-row gap-2 items-stretch sm:items-end max-w-full sm:max-w-[500px]">
-                                    <div style={{ position: 'relative' }} className="flex-1 w-full sm:flex-[2]">
-                                        <AsyncTypeahead
-                                            id="employee_search"
-                                            labelKey={(option) => option.display_name}
-                                            options={employeeOptions}
-                                            isLoading={isEmployeeLoading}
-                                            minLength={1}
-                                            placeholder="Search employee name..."
-                                            onSearch={handleEmployeeSearch}
-                                            onChange={handleEmployeeChange}
-                                            selected={selectedEmployee}
-                                            inputProps={{
-                                                className:
-                                                    'h-10 w-full border rounded-md px-3 py-2 text-sm sm:text-base focus:outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 focus:ring-1 focus:ring-primary',
-                                            }}
-                                            menuStyle={{
-                                                zIndex: 1050,
-                                                width: '100%',
-                                                position: 'absolute',
-                                            }}
-                                            renderMenu={renderEmployeeMenu}
-                                        />
-                                        {isEmployeeLoading && selectedEmployee.length > 0 && (
-                                            <ul
-                                                className="dark:bg-gray-800 bg-gray-100 border"
-                                                style={{
-                                                    position: 'absolute',
-                                                    zIndex: 10,
-                                                    borderRadius: 4,
-                                                    margin: 0,
-                                                    padding: 0,
-                                                    width: '100%',
-                                                    maxHeight: 120,
-                                                    overflowY: 'auto',
-                                                    listStyle: 'none',
-                                                }}
-                                            ></ul>
-                                        )}
-                                    </div>
-
-                                    {selectedEmployee && selectedEmployee.length > 0 && (
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                value={percentage === undefined || percentage === null ? '' : percentage}
-                                                onChange={(e) => {
-                                                    let val = e.target.value;
-                                                    // Allow empty string for erasing
-                                                    if (val !== '' && parseFloat(val) > 100) {
-                                                        val = '100';
-                                                    }
-                                                    setPercentage(val);
-                                                    if (val !== '' && Number(val) > 100) {
-                                                        setPercentageInputError('Percentage cannot be more than 100.');
-                                                    } else {
-                                                        setPercentageInputError('');
-                                                    }
-                                                }}
-                                                type="number"
-                                                min={0}
-                                                max={100}
-                                                placeholder="%"
-                                                className="input input-bordered border rounded px-3 py-2 text-sm sm:text-base w-20 sm:w-24 h-10"
-                                                disabled={!selectedEmployee}
-                                                onBlur={(e) => {
-                                                    let val = parseFloat(e.target.value);
-                                                    if (!isNaN(val)) {
-                                                        if (val > 100) val = 100;
-                                                        // Format to 2 decimals on blur
-                                                        const formattedVal = val.toFixed(2);
-                                                        setPercentage(formattedVal);
-                                                    }
-                                                }}
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="default"
-                                                className="h-10 text-sm sm:text-base whitespace-nowrap"
-                                                onClick={handleAddCoverage}
-                                                disabled={!selectedEmployee || percentage === '' || (percentage !== '' && Number(percentage) > 100)}
-                                            >
-                                                Add
-                                            </Button>
-                                        </div>
-                                    )}
-                                </div>
-                                {coverageRows.length > 0 && (
-                                    <div className="w-full border rounded-md overflow-hidden" style={{ height: 220, minHeight: 120, overflow: 'auto' }}>
-                                        <table className="w-full text-sm text-left border-collapse">
-                                            <thead className={`${IS_DARK.value ? 'bg-[#2d3436] text-white' : 'bg-gray-100'} sticky top-0 z-10`}>
-                                                <tr style={{ height: 34 }}>
-                                                    {coverageColumns.map((col) => (
-                                                        <th key={col.headerName} className="px-4 font-semibold border-b text-xs uppercase tracking-wider">
-                                                            {col.headerName}
-                                                        </th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody className={IS_DARK.value ? 'bg-[#181d1f] text-gray-300' : 'bg-white text-gray-700'}>
-                                                {coverageRows.map((row, index) => (
-                                                    <tr key={row.id || index} style={{ height: 34 }} className="border-b hover:bg-gray-50/5 transition-colors">
-                                                        <td className="px-4 truncate">{row.display_name}</td>
-                                                        <td className="px-4 truncate">{row.corp_title}</td>
-                                                        <td className="px-4 truncate">{row.email}</td>
-                                                        <td className="px-4">
-                                                            <Input
-                                                                type="number"
-                                                                value={row.percentage === undefined || row.percentage === null ? '' : row.percentage}
-                                                                onChange={(e) => {
-                                                                    let val = e.target.value;
-                                                                    // Allow empty string for erasing
-                                                                    if (val !== '' && parseFloat(val) > 100) {
-                                                                        val = '100';
-                                                                    }
-                                                                    const updatedRows = coverageRows.map((r) => (r.email === row.email ? { ...r, percentage: val } : r));
-                                                                    setCoverageRows(updatedRows);
-                                                                }}
-                                                                onBlur={(e) => {
-                                                                    let val = parseFloat(e.target.value);
-                                                                    if (!isNaN(val)) {
-                                                                        if (val > 100) val = 100;
-                                                                        // Format to 2 decimals on blur
-                                                                        const formattedVal = val.toFixed(2);
-                                                                        const updatedRows = coverageRows.map((r) =>
-                                                                            r.email === row.email ? { ...r, percentage: formattedVal } : r
-                                                                        );
-                                                                        setCoverageRows(updatedRows);
-                                                                    } else {
-                                                                        // If invalid, clear
-                                                                        const updatedRows = coverageRows.map((r) => (r.email === row.email ? { ...r, percentage: '' } : r));
-                                                                        setCoverageRows(updatedRows);
-                                                                    }
-                                                                }}
-                                                                className="w-full h-8 rounded-md px-2 transition-all"
-                                                                min="0"
-                                                                max="100"
-                                                                step="0.01" // Allows decimal increments
-                                                            />
-                                                        </td>
-
-                                                        <td className="px-4">
-                                                            <div className="flex justify-center gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    className="cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
-                                                                    title="Delete"
-                                                                    onClick={() => handleDeleteCoverage(row)}
-                                                                >
-                                                                    <Trash2 size={18} strokeWidth={1.5} />
-                                                                </button>
-                                                                {/* Coverage Delete warning dialog */}
-                                                                <Dialog open={showCoverageDeleteDialog} onOpenChange={setShowCoverageDeleteDialog}>
-                                                                    <DialogContent>
-                                                                        <DialogHeader>
-                                                                            <DialogTitle>Delete Coverage</DialogTitle>
-                                                                        </DialogHeader>
-                                                                        <div>Are you sure you want to delete this coverage entry? This action cannot be undone.</div>
-                                                                        <DialogFooter className="flex justify-end gap-2">
-                                                                            <Button variant="outline" onClick={handleCoverageDeleteCancel}>
-                                                                                Cancel
-                                                                            </Button>
-                                                                            <Button variant="destructive" onClick={handleCoverageDeleteConfirm}>
-                                                                                Delete
-                                                                            </Button>
-                                                                        </DialogFooter>
-                                                                    </DialogContent>
-                                                                </Dialog>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>
-                    <SheetFooter className="flex flex-row justify-end border-t pt-4 mt-4">
-                        <Button
-                            className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
-                            type="submit"
-                            onClick={form.handleSubmit(editingRow ? handleUpdateSubmit : handleFormSubmit)}
-                        >
-                            {editingRow ? 'Update' : 'Save'}
-                        </Button>
-                        <Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
-                            Cancel
-                        </Button>
-                    </SheetFooter>
-                </SheetContent>
-            </Sheet>
-            {(getInvoiceDetailsMutation.isLoading || saveInvoiceMutation.isLoading || updateInvoiceMutation.isLoading || columnDefs.length === 0) && (
-                <OverlayLoader></OverlayLoader>
+                    
+                    {coverageRows.length > 0 && (
+                        <div className="w-full border rounded-md overflow-hidden" style={{ height: 220, minHeight: 120, overflow: 'auto' }}>
+                            <table className="w-full text-sm text-left border-collapse">
+                                <thead className={`${IS_DARK.value ? 'bg-[#2d3436] text-white' : 'bg-gray-100'} sticky top-0 z-10`}>
+                                    <tr style={{ height: 34 }}>
+                                        {coverageColumns.map((col) => (
+                                            <th key={col.headerName} className="px-4 font-semibold border-b text-xs uppercase tracking-wider">
+                                                {col.headerName}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className={IS_DARK.value ? 'bg-[#181d1f] text-gray-300' : 'bg-white text-gray-700'}>
+                                    {coverageRows.map((row, index) => (
+                                        <tr key={row.id || index} style={{ height: 34 }} className="border-b hover:bg-gray-50/5 transition-colors">
+                                            <td className="px-4 truncate">{row.display_name}</td>
+                                            <td className="px-4 truncate">{row.corp_title}</td>
+                                            <td className="px-4 truncate">{row.email}</td>
+                                            <td className="px-4">
+                                                <Input
+                                                    type="number"
+                                                    value={row.percentage === undefined || row.percentage === null ? '' : row.percentage}
+                                                    onChange={(e) => {
+                                                        let val = e.target.value;
+                                                        if (val !== '' && parseFloat(val) > 100) {
+                                                            val = '100';
+                                                        }
+                                                        const updatedRows = coverageRows.map((r) => (r.email === row.email ? { ...r, percentage: val } : r));
+                                                        setCoverageRows(updatedRows);
+                                                    }}
+                                                    onBlur={(e) => {
+                                                        let val = parseFloat(e.target.value);
+                                                        if (!isNaN(val)) {
+                                                            if (val > 100) val = 100;
+                                                            const formattedVal = val.toFixed(2);
+                                                            const updatedRows = coverageRows.map((r) =>
+                                                                r.email === row.email ? { ...r, percentage: formattedVal } : r
+                                                            );
+                                                            setCoverageRows(updatedRows);
+                                                        } else {
+                                                            const updatedRows = coverageRows.map((r) => (r.email === row.email ? { ...r, percentage: '' } : r));
+                                                            setCoverageRows(updatedRows);
+                                                        }
+                                                    }}
+                                                    className="w-full h-8 rounded-md px-2 transition-all"
+                                                    min="0"
+                                                    max="100"
+                                                    step="0.01"
+                                                />
+                                            </td>
+                                            <td className="px-4">
+                                                <div className="flex justify-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        className="cursor-pointer text-gray-400 hover:text-red-500 transition-colors"
+                                                        title="Delete"
+                                                        onClick={() => handleDeleteCoverage(row)}
+                                                    >
+                                                        <Trash2 size={18} strokeWidth={1.5} />
+                                                    </button>
+                                                    <Dialog open={showCoverageDeleteDialog} onOpenChange={setShowCoverageDeleteDialog}>
+                                                        <DialogContent>
+                                                            <DialogHeader>
+                                                                <DialogTitle>Delete Coverage</DialogTitle>
+                                                            </DialogHeader>
+                                                            <div>Are you sure you want to delete this coverage entry? This action cannot be undone.</div>
+                                                            <DialogFooter className="flex justify-end gap-2">
+                                                                <Button variant="outline" onClick={handleCoverageDeleteCancel}>
+                                                                    Cancel
+                                                                </Button>
+                                                                <Button variant="destructive" onClick={handleCoverageDeleteConfirm}>
+                                                                    Delete
+                                                                </Button>
+                                                            </DialogFooter>
+                                                        </DialogContent>
+                                                    </Dialog>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
             )}
         </div>
-    );
-}
+        
+        <SheetFooter className="flex flex-row justify-end border-t pt-4 mt-4">
+            <Button
+                className={`${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
+                type="submit"
+                onClick={form.handleSubmit(editingRow ? handleUpdateSubmit : handleFormSubmit)}
+            >
+                {editingRow ? 'Update' : 'Save'}
+            </Button>
+            <Button variant="outline" type="button" onClick={() => handleSheetOpenChange(false)}>
+                Cancel
+            </Button>
+        </SheetFooter>
+    </SheetContent>
+</Sheet>
