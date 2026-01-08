@@ -1,919 +1,177 @@
-import * as Dialog from '@radix-ui/react-dialog'
-import { Input } from '@/components/ui/input'
-
-import React, { useEffect, useRef, useState } from 'react'
-import DatePicker from 'react-datepicker'
-import 'react-datepicker/dist/react-datepicker.css'
-import { useToast } from '@/hooks/use-toast'
-import { createAuthHeaders } from '@/lib/legacyUtils'
-import { API_CONFIG } from '@/lib/constants'
-import { prismStorage } from '@/lib/prismStorage'
-import { Search } from 'lucide-react'
-import { getLegacyGlobal } from '@/hooks/usePostLoginInitialization'
-
-type TaskItem = {
-  taskId: string
-  taskName?: string
-  taskComment?: string
-  taskDate?: string
-  taskAssignedName?: string
-  taskAssignedId?: string
-  taskType?: string
-  taskStatus?: string
-  contacts?: string[]
-  contactName?: string[]
-  accountName?: string[]
-  taskComments?: string
-  reminder?: any[]
-}
-
-interface AssigneeOption {
-  text?: string
-  value?: string
-  code?: string
-  style?: string
-  docName?: string | null
-  docId?: string | null
-}
-
-// type ContactResult = {
-//   contact_cust_id: string
-//   contact_name: string
-// }
-interface ContactOption {
-   text?: string; 
-   value?: string; 
-   code?: string;
-   style?: string;
-   docName?: string | null;
-   docId?: string | null;
-   account_name?: string; // If you still need this property
-}
-
-
-// type ReassignResult = {
-//   EMP_ID: string
-//   reassign_name: string
-//   role_name?: string
-// }
-
-export default function TasksWidget() {
-  const { toast } = useToast()
-  const [tasks, setTasks] = useState<TaskItem[]>([])
-  const [loading, setLoading] = useState(false)
-  const [editTask, setEditTask] = useState<TaskItem | null>(null)
-  const [subject, setSubject] = useState('')
-  const [assignedTo, setAssignedTo] = useState('')
-  const [taskType, setTaskType] = useState('')
-  const [status, setStatus] = useState('')
-  const [description, setDescription] = useState('')
-  const [dueDate, setDueDate] = useState<Date | null>(new Date())
-  const [timeStr, setTimeStr] = useState('10:00')
-  const [query, setQuery] = useState('')
-  const [assigneeResults, setAssigneeResults] = useState<AssigneeOption[]>([])
-  const [loadingSearch, setLoadingSearch] = useState(false)
-  const [isOpen, setIsOpen] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(-1)
-  const [isModalOpen, setModalOpen] = useState(false)
-  const inputRef = useRef(null)
-  const [assignedToName, setAssignedToName] = useState('')
-
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null)
-
-  const [assignedToId, setAssignedToId] = useState('')
-
-  const [contactNames, setContactNames] = useState<string[]>([])
-  const [contacts, setContacts] = useState<string[]>([])
-  const [contactQuery, setContactQuery] = useState('')
-  const [contactResults, setContactResults] = useState<ContactOption[]>([])
-  const [loadingContacts, setLoadingContacts] = useState(false)
-  const [isContactResultsOpen, setIsContactResultsOpen] = useState(false)
-
-  const openViewModal = (task: TaskItem) => {
-    setSelectedTask(task)
-    setIsViewModalOpen(true)
-  }
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setQuery(e.target.value)
-    if (!e.target.value) {
-      setIsOpen(false)
-    } else {
-      setIsOpen(true)
-    }
-    setSelectedIndex(-1)
-    if (!isModalOpen) setModalOpen(true)
-  }
-
-  const closeViewModal = () => {
-    setIsViewModalOpen(false)
-    setSelectedTask(null)
-  }
-
-  interface ViewTaskModalProps {
-    isOpen: boolean
-    onClose: () => void
-    task: TaskItem
-  }
-
-  const ViewTaskModal: React.FC<ViewTaskModalProps> = ({ isOpen, onClose, task }) => {
-    return (
-      <Dialog.Root open={isOpen} onOpenChange={onClose}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
-
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl">
-            <Dialog.Title className="mb-4 text-2xl font-bold">
-              Task Details: {task.taskName}
-            </Dialog.Title>
-
-            <div className="space-y-3">
-              <p>
-                <strong>Status:</strong> {task.taskStatus}
-              </p>
-              <p>
-                <strong>Due Date:</strong> {new Date(task.taskDate).toLocaleString()}
-              </p>
-              <p>
-                <strong>Assignee:</strong> {task.taskAssignedName}
-              </p>
-              <p>
-                <strong>Task Type:</strong> {task.taskType}
-              </p>
-              <p>
-                <strong>Description:</strong> {task.taskComment}
-              </p>
-              <p>
-                <strong>Account:</strong> {task.accountName?.join(', ')}
-              </p>
-              <p>
-                <strong>ContactName:</strong> {task.contactName?.join(', ')}
-              </p>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <Dialog.Close asChild>
-                <button onClick={onClose} className="rounded bg-gray-300 px-4 py-2">
-                  Close
-                </button>
-              </Dialog.Close>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-    )
-  }
-
-  const normalizeToArray = (data: any) => (Array.isArray(data) ? data : data ? [data] : [])
-
-  async function fetchTasks() {
-    setLoading(true)
-    try {
-      const summaryFilter = prismStorage.get('summaryFilter') || JSON.stringify({ filter: [] })
-      const body = new URLSearchParams({ summaryFilter }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        setTasks(Array.isArray(data.data) ? data.data : [])
-
-        const rawTasks = Array.isArray(data.data) ? data.data : []
-        const normalizedTasks = rawTasks.map((task: any) => {
-          const contactIds = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.contact_id)
-            : []
-
-          const contactNames = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.contact_name)
-            : []
-          const accountNames = task.contactList
-            ? task.contactList.map((contactItem: any) => contactItem.account_name)
-            : []
-          return {
-            ...task,
-
-            contacts: contactIds,
-            contactName: contactNames,
-            accountName: accountNames,
-          }
-        })
-
-        setTasks(normalizedTasks)
-      } else {
-        setTasks([])
-      }
-    } catch (err) {
-      console.error('fetchTasks error', err)
-      toast({ title: 'Error', description: 'Failed to fetch tasks' })
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function fetchTaskDetails(taskId: string) {
-    try {
-      const body = new URLSearchParams({ taskId }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/getTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        }),
-        body,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        if (Array.isArray(data.data) && data.data.length > 0) return data.data[0]
-        return data.data || null
-      }
-      return null
-    } catch (err) {
-      return null
-    }
-  }
-
-  useEffect(() => {
-    fetchTasks()
-  }, [])
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!query.trim()) {
-        setAssigneeResults([])
-        return
-      }
-
-      setLoadingSearch(true)
-
-      const payload = {
-        filtertype: 'employee',
-        filterrpttype: 'Outlook',
-        showuser: true,
-        searchtext: query,
-      }
-
-      const queryString = new URLSearchParams(payload).toString()
-
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
-
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        })
-
-        const data: AssigneeOption[] = await res.json()
-
-        if (Array.isArray(data)) {
-          setAssigneeResults(data)
-        } else {
-          setAssigneeResults([])
-        }
-      } catch (err) {
-        console.error('Fetch assignee error:', err)
-        setAssigneeResults([])
-      } finally {
-        setLoadingSearch(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [query])
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (!contactQuery.trim()) {
-        setContactResults([])
-        return
-      }
-
-      setLoadingContacts(true)
-      const queryString = new URLSearchParams({
-        filtertype: 'contact',
-        restype: 'Detailed',
-        searchtext: contactQuery,
-      }).toString()
-
-      const requestUrl = `${API_CONFIG.baseUrl}/userconfig/searchfilters?${queryString}`
-
-      try {
-        const res = await fetch(requestUrl, {
-          method: 'GET',
-          headers: createAuthHeaders({
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-          }),
-          credentials: 'include',
-        })
-
-        const data: ContactOption[] = await res.json()
-
-        if (Array.isArray(data)) {
-          setContactResults(data)
-        } else {
-          setContactResults([])
-        }
-      } catch (err) {
-        console.error('Fetch contact error:', err)
-        setContactResults([])
-      } finally {
-        setLoadingContacts(false)
-      }
-    }, 300)
-
-    return () => clearTimeout(timer)
-  }, [contactQuery])
-
-  const handleContactSelect = (contact: ContactOption) => {
-    if (!contacts.includes(contact.id)) {
-      setContacts((prev) => [...prev, contact.id])
-      
-      setContactNames((prev) => [...prev, contact.name])
-    }
-    console.log('Adding contact:', contact)
-    setContactQuery('')
-    setIsContactResultsOpen(false)
-  }
-
-  const handleContactInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setContactQuery(e.target.value)
-    setIsContactResultsOpen(true)
-  }
-
-  const removeContact = (contactId: string) => {
-    setContacts((prev) => prev.filter((id) => id !== contactId))
-    setContactNames((prev) => prev.filter((name, index) => contacts[index] !== contactId))
-  }
-
-  const handleAssigneeSelect = (assignee: AssigneeOption) => {
-    setQuery(assignee.text || '')
-    setAssignedToId(assignee.value || '')
-    setAssignedToName(assignee.text || '')
-    setIsOpen(false)
-  }
-
-  async function handleAddTask() {
-    try {
-      if (!assignedToId.trim()) {
-        toast({ title: 'Validation', description: 'Assignee required' })
-        return
-      }
-      if (!subject.trim()) {
-        toast({ title: 'Validation', description: 'Subject required' })
-        return
-      }
-     const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
-      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
-      const sanitizedContacts = contacts.filter(id => id != null && id !== '');
-      console.log('sanitizedContacts:', sanitizedContacts)
-      const sanitizedContactNames = contactNames.filter(name => name != null && name !== '');
-
-      const payloadObj = {
-        subject,
-        dueDate: formattedDateTime,
-        dueTime: timeStr,
-        contacts: sanitizedContacts,      
-        contactName: sanitizedContactNames, 
-        assignedTo: assignedToId,
-        clienttimezone,
-        status,
-        taskType,
-        taskComments: description,
-        module_name: 'Task',
-        action: 'Save',
-      }
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        toast({ title: 'Success', description: 'Task Added Successfully' })
-        setModalOpen(false)
-        resetForm()
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Failed to add task' })
-      }
-    } catch (err) {
-      console.error('handleAddTask', err)
-      toast({ title: 'Error', description: 'Failed to add task' })
-    }
-  }
-
-  async function handleUpdateTask() {
-    try {
-      if (!editTask) return
-      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      const dueDateStr = dueDate ? dueDate.toISOString().slice(0, 10) : ''
-      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
-      const payloadObj = {
-        subject,
-        dueDate: formattedDateTime,
-        dueTime: timeStr,
-        contacts,
-        contactName: contactNames,
-        assignedTo: assignedToId,
-        clienttimezone,
-        status,
-        taskType,
-        taskComments: description,
-        module_name: 'Task',
-        action: 'Update',
-        taskId: editTask.taskId,
-      }
-      const encoded = new URLSearchParams({ data: JSON.stringify(payloadObj) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-      if (data?.status === 1) {
-        toast({ title: 'Success', description: 'Task Updated Successfully' })
-        setModalOpen(false)
-        setEditTask(null)
-        resetForm()
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Failed to update task' })
-      }
-    } catch (err) {
-      console.error('handleUpdateTask', err)
-      toast({ title: 'Error', description: 'Failed to update task' })
-    }
-  }
-
-  async function openEditModal(task: TaskItem) {
-    let tdata: any = task
-    const missingContacts =
-      !tdata.contacts || (Array.isArray(tdata.contacts) && tdata.contacts.length === 0)
-    const missingName = !tdata.taskName && !tdata.subject
-
-    if ((missingContacts || missingName) && tdata.taskId) {
-      const full = await fetchTaskDetails(tdata.taskId)
-      if (full) tdata = { ...tdata, ...full }
-    }
-
-    setEditTask(tdata)
-    setSubject(tdata.taskName || tdata.subject || '')
-    setDescription(tdata.taskComment || tdata.taskComments || '')
-    const assignedId = tdata.taskAssignedId || tdata.assignedTo || ''
-    setAssignedTo(assignedId)
-    const assignedName = tdata.taskAssignedName || ''
-    setQuery(assignedName)
-    setAssignedToName(assignedName)
-    setTaskType(tdata.taskType || '')
-    setStatus(tdata.taskStatus || '')
-
-    if (tdata.taskDate) {
-      const iso = String(tdata.taskDate).replace(' ', 'T')
-      const dt = new Date(iso)
-      if (!isNaN(dt.getTime())) {
-        setDueDate(dt)
-        const hh = dt.getHours().toString().padStart(2, '0')
-        const mm = dt.getMinutes().toString().padStart(2, '0')
-        setTimeStr(`${hh}:${mm}`)
-      } else {
-        setDueDate(new Date())
-        setTimeStr('10:00')
-      }
-    } else {
-      setDueDate(new Date())
-      setTimeStr('10:00')
-    }
-
-    const selectedIdsForUI = normalizeToArray(tdata.contacts)
-    const selectedNamesForAPI: string[] = []
-
-    if (availableContacts && availableContacts.length > 0) {
-      selectedIdsForUI.forEach((idFromTask) => {
-        const foundContact = availableContacts.find((contact) => contact.id === idFromTask)
-
-        if (foundContact) {
-          selectedNamesForAPI.push(foundContact.name)
-        }
-      })
-    }
-
-    setContacts(selectedIdsForUI)
-    setContactNames(selectedNamesForAPI)
-
-    setModalOpen(true)
-  }
-
-  async function deleteTask(taskId: string, originalTaskData: any) {
-    try {
-      const clienttimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      const dueDateStr = dueDate
-        ? dueDate.toISOString().slice(0, 10)
-        : originalTaskData?.taskDate
-          ? originalTaskData.taskDate.split(' ')[0]
-          : ''
-      const formattedDateTime = `${dueDateStr} ${timeStr}:00`
-      const payload = {
-        subject: originalTaskData?.subject || originalTaskData?.taskName || subject,
-        dueDate: formattedDateTime,
-        dueTime: timeStr,
-        contacts: originalTaskData?.contacts || [],
-        assignedTo: originalTaskData?.taskAssignedId || originalTaskData?.assignedTo || '',
-        clienttimezone,
-        status: 'Dismiss',
-        taskType: originalTaskData?.taskType || '',
-        taskComments:
-          originalTaskData?.taskComments || originalTaskData?.taskComment || description,
-        module_name: 'Task',
-        action: 'Dismiss',
-        taskId: taskId,
-      }
-      const encoded = new URLSearchParams({ data: JSON.stringify(payload) }).toString()
-      const res = await fetch(`${API_CONFIG.baseUrl}/task/addTask`, {
-        method: 'POST',
-        headers: createAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          Accept: 'application/json, text/javascript, */*; q=0.01',
-        }),
-        body: encoded,
-        credentials: 'include',
-      })
-      const data = await res.json()
-
-      if (data?.status === 1) {
-        toast({ title: 'Deleted', description: 'Task Deleted Successfully' })
-        fetchTasks()
-      } else {
-        toast({ title: 'Error', description: data?.message || 'Delete failed' })
-      }
-    } catch (err) {
-      console.error('deleteTask', err)
-      toast({ title: 'Error', description: 'Delete failed' })
-    }
-  }
-
-  function resetForm() {
-    setSubject('')
-    setAssignedTo('')
-    setTaskType('')
-    setStatus('')
-    setContacts([])
-    setContactNames([])
-    setDescription('')
-    const now = new Date()
-    setDueDate(now)
-    const hh = now.getHours().toString().padStart(2, '0')
-    const mm = now.getMinutes().toString().padStart(2, '0')
-    const currentTimeString = `${hh}:${mm}`
-    setTimeStr(currentTimeString)
-  }
-
-  const calcTimeData = (due: string | undefined) => {
-    if (!due) return null
-
-    const dueDate = new Date(due)
-    const now = new Date()
-    const diffMs = dueDate.getTime() - now.getTime()
-
-    const isOverdue = diffMs < 0
-    const absDiffMs = Math.abs(diffMs)
-
-    const days = Math.floor(absDiffMs / 86400000)
-    const hours = Math.floor((absDiffMs % 86400000) / 3600000)
-    const mins = Math.floor(((absDiffMs % 86400000) % 3600000) / 60000)
-
-    let timeDiffText
-    if (days > 0) timeDiffText = `${days} Day(s)`
-    else if (hours > 0) timeDiffText = `${hours} Hour(s)`
-    else if (mins > 0) timeDiffText = `${mins} Min(s)`
-    else timeDiffText = '0 Min(s)'
-
-    const label = isOverdue ? 'Over Due' : 'Time To Complete'
-
-    const statusClass = isOverdue ? 'bg-red-500' : 'bg-blue-500'
-
-    return {
-      text: timeDiffText,
-      fullText: `${timeDiffText} ${label}`,
-      statusClass: statusClass,
-    }
-  }
-
-  // const handleAssigneeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  //   setAssignedTo(e.target.value)
-  // }
-
-  const availableContacts = [
-    {
-      id: '10029',
-      name: 'David Roberts < droberts@angelogordon.com > Angelo Gordon & Co., L.P.',
-      accountName: 'Angelo Gordon & Co., L.P.',
+const STATIC_INVOICE_CONFIG = {
+    fileUpload: {
+        fileFormat: 'pdf',
+        fileSize: '10MB',
     },
-
-    {
-      id: '10030',
-      name: 'Sarah Connor < sconnor@example.com > T-800 Corp.',
-      accountName: 'T-800 Corp.',
+    formConfig: {
+        extraFormFields: [
+            // ... your existing extraFormFields
+        ],
+        formFields: [
+            // ... existing fields (acc_id, invoice_date, invoice_no, invoice_status, commission, product)
+            
+            {
+                name: 'product',
+                label: 'Product',
+                placeholder: 'Select product',
+                type: 'select',
+                mandatory: true,
+                disabled: false,
+                hidden: false,
+                readOnly: false,
+                pattern: null,
+                patternMessage: '',
+                defaultValue: '',
+                className: '',
+                options: [
+                    { label: 'Syndicate', value: 'syndicate' },
+                    { label: 'Invoice', value: 'invoice' },
+                ],
+            },
+            {
+                name: 'payOut',
+                label: '30% Payout',
+                placeholder: '',
+                type: 'checkbox',
+                mandatory: false,
+                disabled: false,
+                hidden: false,
+                readOnly: false,
+                pattern: null,
+                patternMessage: '',
+                defaultValue: false,
+                className: '',
+            },
+            {
+                name: 'ticker',
+                label: 'Ticker',
+                placeholder: 'Search Ticker...',
+                type: 'async-typeahead',
+                mandatory: true,
+                disabled: false,
+                hidden: false,
+                readOnly: false,
+                pattern: null,
+                patternMessage: '',
+                defaultValue: '',
+                className: '',
+                syndicateOnly: true,
+            },
+            // ... rest of your fields (quantity, price, net_amount, attach, comments)
+        ],
     },
-    {
-      id: '10031',
-      name: 'John Doe < jdoe@example.com > Generic Inc.',
-      accountName: 'Generic Inc.',
+    defaultDateRange: {
+        dateFilterDefaultRange: '7',
     },
-  ]
+};
 
-  // const handleContactChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-  //   const selectedOptions = Array.from(e.target.selectedOptions)
-  //   const selectedIds = selectedOptions.map((option) => option.value)
-  //   const selectedNames = selectedOptions.map((option) => option.text)
-  //   setContacts(selectedIds)
-  //   setContactNames(selectedNames)
-  // }
+-----------------------------------
+const renderField = (fieldName) => {
+    const config = getConfig(fieldName);
+    if (config.hidden) return null;
 
-  return (
-    <div className="p-5">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => {
-            setEditTask(null)
-            resetForm()
-            setModalOpen(true)
-          }}
-          className="rounded bg-blue-600 px-4 py-2 text-white"
-        >
-          Add Task
-        </button>
-      </div>
+    // Build validation rules
+    const rules = {};
+    if (config.mandatory && !config.readOnly && !config.disabled) {
+        if (config.type === 'file') {
+            rules.validate = () => (form.getValues().attach || form.getValues().att_id ? true : `${config.label} is required`);
+        } else if (config.type !== 'checkbox') {
+            rules.required = `${config.label} is required`;
+        }
+    }
+    if (config.pattern) {
+        rules.pattern = {
+            value: new RegExp(config.pattern),
+            message: config.patternMessage || 'Invalid format',
+        };
+    }
+    if (config.min !== undefined) {
+        rules.min = {
+            value: config.min,
+            message: `${config.label} cannot be less than ${config.min}`,
+        };
+    }
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : tasks.length === 0 ? (
-        <p>No tasks found</p>
-      ) : (
-        <ul className="space-y-3">
-          {tasks.map((t) => {
-            const due = t.taskDate
-            const timeData =
-              t.taskDate && t.taskStatus !== 'Completed' ? calcTimeData(t.taskDate) : null
-
+    // Render based on type
+    switch (config.type) {
+        case 'checkbox':
             return (
-              
-              <li key={t.taskId} className="relative rounded border bg-gray-50 p-3 shadow-sm">
-                <h3 className="font-bold">{t.taskName}</h3>
-                <p>{t.taskComment}</p>
-                <p className="text-sm text-gray-600">
-                  Due: {due} | Status: {t.taskStatus} | Assignee: {t.taskAssignedName} |
-                  accountName: {t.accountName?.join(', ')} |{' '}
-                  <a>ContactName: {t.contactName?.join(', ')}</a>| Task Type: {t.taskType}
-                </p>
-
-                {timeData && (
-                  <small
-                    className={`absolute right-4 top-2 rounded px-2 py-1 text-xs text-white ${timeData.statusClass}`}
-                    title={timeData.fullText}
-                  >
-                    {timeData.fullText}
-                  </small>
-                )}
-
-                <div className="mt-2 flex gap-3">
-                  <button
-                    className="rounded bg-blue-600 px-3 py-1 text-white"
-                    onClick={() => openViewModal(t)}
-                  >
-                    View
-                  </button>
-
-                  <button
-                    className="rounded bg-yellow-600 px-3 py-1 text-white"
-                    onClick={() => openEditModal(t)}
-                  >
-                    Edit
-                  </button>
-
-                  <button
-                    className="rounded bg-red-600 px-3 py-1 text-white"
-                    onClick={() => deleteTask(t.taskId, t)}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </li>
-            )
-          })}
-          {selectedTask && (
-            <ViewTaskModal isOpen={isViewModalOpen} onClose={closeViewModal} task={selectedTask} />
-          )}
-        </ul>
-      )}
-
-      {isModalOpen && (
-        <Dialog.Root open={isModalOpen} onOpenChange={setModalOpen}>
-          <Dialog.Portal>
-            <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" />
-
-            <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-5 shadow-xl">
-              <Dialog.Close className="absolute right-3 top-3 text-gray-600 hover:text-black">
-                X
-              </Dialog.Close>
-
-              <Dialog.Title className="mb-4 text-xl font-semibold">
-                {editTask ? 'Update Task' : 'Add Task'}
-              </Dialog.Title>
-
-              <label htmlFor="assignTo" className="mb-2 block">
-                Assign To
-              </label>
-
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-prism-primary" />
-                <Input
-                  ref={inputRef}
-                  type="text"
-                  placeholder="Search..."
-                  value={query}
-                  onChange={handleInputChange}
-                  autoFocus
-                  id="searchInput"
-                  className="h-full min-h-[3rem] flex-1 rounded-md border border-gray-300 bg-gray-50 pl-10 pr-24 text-base focus:border-prism-primary focus:bg-white"
-                  style={{ paddingRight: '6rem', height: '100%' }}
-                />
-                {isOpen && query.length > 0 && (
-                  <ul className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5 focus:outline-none sm:text-sm">
-                    {loadingSearch ? (
-                      <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
-                        Loading...
-                      </li>
-                    ) : assigneeResults.length > 0 ? (
-                      assigneeResults.map((assignee) => (
-                        <li
-                          key={assignee.value}
-                          className="relative cursor-pointer select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-prism-primary hover:text-white"
-                          onClick={() => {
-                            handleAssigneeSelect(assignee)
-                          }}
-                        >
-                          {assignee.text}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="relative cursor-default select-none py-2 pl-3 pr-9 text-gray-700">
-                        No results found
-                      </li>
+                <FormField
+                    key={fieldName}
+                    control={form.control}
+                    name={fieldName}
+                    render={({ field }) => (
+                        <FormItem className={`flex flex-row items-center h-10 mt-6 space-x-2 space-y-0 ${config.className}`}>
+                            <FormControl>
+                                <Checkbox 
+                                    checked={field.value} 
+                                    onCheckedChange={field.onChange}
+                                    disabled={config.disabled || config.readOnly}
+                                />
+                            </FormControl>
+                            <FormLabel className="font-medium cursor-pointer !m-0">
+                                {config.label}
+                                {config.mandatory && <span className="text-red-500 ml-1">*</span>}
+                            </FormLabel>
+                            <div className="min-h-[20px]">
+                                <FormMessage />
+                            </div>
+                        </FormItem>
                     )}
-                  </ul>
-                )}
-              </div>
-
-              <label>Due Date</label>
-              <DatePicker
-                selected={dueDate}
-                onChange={(d: Date | null) => setDueDate(d)}
-                className="mb-3 w-full rounded border p-2"
-              />
-
-              <label>Time</label>
-              <input
-                type="time"
-                value={timeStr}
-                onChange={(e) => setTimeStr(e.target.value)}
-                className="mb-3 w-full rounded border p-2"
-              />
-
-              <label>Task Type</label>
-              <select
-                value={taskType}
-                onChange={(e) => setTaskType(e.target.value)}
-                className="mb-3 w-full rounded border p-2"
-              >
-                <option value="">-- Select --</option>
-                <option value="Call Back1">Call Back1</option>
-                <option value="Action items">Action Items</option>
-                <option value="Others">Others</option>
-                <option value="Schedule Meeting">Schedule Meeting</option>
-              </select>
-
-              <label>Status</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="mb-3 w-full rounded border p-2"
-              >
-                <option value="">-- Select --</option>
-                <option value="Not Started">Not Started</option>
-                <option value="Completed">Completed</option>
-                <option value="In Progress">In Progress</option>
-              </select>
-
-              <label>Subject</label>
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                className="mb-3 w-full rounded border p-2"
-              />
-
-              <label className="mb-2 block">Contacts</label>
-              <div className="relative mb-3 h-full min-h-[3rem] rounded-md border border-gray-300 bg-gray-50 focus-within:border-prism-primary focus-within:bg-white">
-
-               {contacts.map((contactId) => {
-    const nameIndex = contacts.indexOf(contactId);
-    const name = contactNames[nameIndex];
-
-
-    return (
-        <span 
-            key={contactId} 
-            className="flex items-center rounded bg-blue-100 px-2.5 py-0.5 text-sm font-medium text-blue-800"
-        >
-            {name}
-            <button
-                type="button"
-                onClick={() => removeContact(contactId)} 
-                className="ml-1 text-blue-800 hover:text-blue-900 focus:outline-none"
-            >
-                &times; 
-            </button>
-        </span>
-    );
-})}
-
-                <Input
-                  type="text"
-                  placeholder="Search and add contacts..."
-                  value={contactQuery}
-                  onChange={handleContactInputChange}
-                  onFocus={() => setIsContactResultsOpen(true)}
-                  className="w-full min-w-[150px] flex-1 border-none bg-transparent p-0 text-base focus:outline-none"
                 />
-              </div>
+            );
 
-           {isContactResultsOpen && (contactQuery.length > 0 || contactResults.length > 0) && (
-      <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-md bg-white py-1 text-base shadow-lg ring-1 ring-black/5">
-              
-                  {loadingContacts ? (
-                    <li key="loading" className="p-2 text-gray-700">Loading...</li>
-                  ) : contactResults.length > 0 ? (
-                    contactResults.map((contact) => { 
-                      return (
-                        <li
-                          key={contact.value}
-                          className="cursor-pointer p-2 hover:bg-prism-primary hover:text-white"
-                          onClick={() => handleContactSelect(contact)}
-                        >
-                          {contact.text}
-                        </li>
-                      );
-                    })
-                  ) : (
-                    <li key="no-results" className="p-2 text-gray-700">No contacts found</li>
-                  )}
-                </ul>
-              )}
+        // ... rest of your existing cases (async-typeahead, date, file, select, number, textarea, text)
+    }
+};
 
+-----------------------------------------------------------
+<form autoComplete="off" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 sm:gap-x-6 p-2 sm:p-4 invoice-form">
+    {mainFields
+        .filter((fieldName) => !['attach', 'comments'].includes(fieldName))
+        .map((fieldName) => {
+            return <div key={fieldName}>{renderField(fieldName)}</div>;
+        })}
 
-              <label>Description</label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="mb-4 w-full rounded border p-2"
-                rows={3}
-              />
+    {/* Syndicate section - conditionally rendered */}
+    {watchedStatus === 'syndicate' && syndicateFields.length > 0 && (
+        <div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 gap-0 mt-2 sm:mt-6">
+            <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2 sm:p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
+                {syndicateFields.map((fieldName) => renderField(fieldName))}
+            </div>
+        </div>
+    )}
 
-              <div className="flex justify-end gap-3">
-                <Dialog.Close>
-                  <button className="rounded bg-gray-300 px-4 py-2">Cancel</button>
-                </Dialog.Close>
-
-                <button
-                  onClick={editTask ? handleUpdateTask : handleAddTask}
-                  className="rounded bg-blue-600 px-4 py-2 text-white"
-                >
-                  {editTask ? 'Update' : 'Add'}
-                </button>
-              </div>
-            </Dialog.Content>
-          </Dialog.Portal>
-        </Dialog.Root>
-      )}
+    {/* File and Comments section - dynamic from config */}
+    <div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-x-4 sm:gap-x-6">
+        {['attach', 'comments'].map((fieldName) => {
+            const config = getConfig(fieldName);
+            if (config.hidden) return null;
+            return <div key={fieldName}>{renderField(fieldName)}</div>;
+        })}
     </div>
-  )
-}
+</form>
+
+-------------------------------------------------------
+const defaultValues = {
+    acc_id: '',
+    invoice_date: '',
+    invoice_no: '',
+    invoice_status: '',
+    commission: '',
+    product: '',
+    ticker: '',
+    quantity: '',
+    price: '',
+    payOut: false, // or get from config: STATIC_INVOICE_CONFIG.formConfig.formFields.find(f => f.name === 'payOut')?.defaultValue ?? false
+    net_amount: '',
+    comments: '',
+    att_id: '',
+    att_name: '',
+    att_size: '',
+    attach: '',
+    emp_splits: [{ emp_id: '', split: '' }],
+};
+----------------------------------------------------------------------------
+
+0----
