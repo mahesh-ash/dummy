@@ -1,12 +1,12 @@
-import React, { useRef, useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { AgGridReact } from "ag-grid-react";
-import { Pencil, Trash2, Plus, Download, Upload, History, RotateCcw, GitCompare, RefreshCcw, X } from 'lucide-react';
+import { Pencil, Trash2, Plus, Download, Upload, History, RotateCcw, GitCompare, RefreshCcw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { useForm } from 'react-hook-form';
+import { useForm, FormProvider } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -23,14 +23,16 @@ import {
   ColumnsToolPanelModule, 
   SetFilterModule, 
   ColumnMenuModule, 
-  ContextMenuModule 
+  ContextMenuModule,
+  CellSelectionModule
 } from 'ag-grid-enterprise';
 
 ModuleRegistry.registerModules([
   ColumnsToolPanelModule,
   SetFilterModule,
   ColumnMenuModule,
-  ContextMenuModule
+  ContextMenuModule,
+  CellSelectionModule
 ]);
 
 const defaultColDef = {
@@ -46,7 +48,7 @@ const defaultColDef = {
 	},
 };
 
-// Field Configuration with insertion order
+// Field Configuration
 const FIELD_CONFIG = [
 	{
 		name: 'constant_name',
@@ -127,22 +129,6 @@ const FIELD_CONFIG = [
 		maxLength: 20,
 		order: 5,
 	},
-	// {
-	// 	name: 'updated_version',
-	// 	label: 'Updated Version',
-	// 	placeholder: 'e.g., v1.0.1',
-	// 	type: 'text',
-	// 	mandatory: false,
-	// 	disabled: false,
-	// 	hidden: false,
-	// 	readOnly: false,
-	// 	pattern: /^v\d+\.\d+\.\d+$/,
-	// 	patternMessage: 'Version format should be v1.0.0',
-	// 	defaultValue: '',
-	// 	className: '',
-	// 	maxLength: 20,
-	// 	order: 5,
-	// },
 	{
 		name: 'status',
 		label: 'Status',
@@ -170,7 +156,7 @@ function StatusCellRenderer(props) {
 	return (
 		<div className="flex items-center justify-center h-full">
 			<span
-				className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+				className={`inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs font-semibold ${
 					isActive
 						? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
 						: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
@@ -186,7 +172,7 @@ function DateCellRenderer(props) {
 	if (!props.value) return <div>-</div>;
 	const date = new Date(props.value);
 	return (
-		<div title={props.value}>
+		<div title={props.value} className="text-xs sm:text-sm">
 			{date.toLocaleString('en-US', {
 				year: 'numeric',
 				month: 'short',
@@ -235,7 +221,7 @@ export default function Constants(props) {
 		}, {});
 	}, []);
 
-	const form = useForm({
+	const formMethods = useForm({
 		mode: 'onChange',
 		defaultValues,
 	});
@@ -273,7 +259,7 @@ export default function Constants(props) {
 				flex: 2,
 				minWidth: 200,
 				cellRenderer: (params) => (
-					<div className="truncate" title={params.value}>
+					<div className="truncate text-xs sm:text-sm" title={params.value}>
 						{params.value}
 					</div>
 				),
@@ -328,7 +314,7 @@ export default function Constants(props) {
 			{
 				headerName: 'Action',
 				field: 'action',
-				width: 120,
+				width: 100,
 				pinned: 'right',
 				cellRenderer: ActionCellRenderer,
 				sortable: false,
@@ -369,7 +355,7 @@ export default function Constants(props) {
 			<div className="flex items-center justify-center h-full">
 				<DropdownMenu>
 					<DropdownMenuTrigger asChild>
-						<Button variant="ghost" size="sm" className="h-8 px-2 text-xs font-medium">
+						<Button variant="ghost" size="sm" className="h-7 px-2 text-xs font-medium">
 							Action
 						</Button>
 					</DropdownMenuTrigger>
@@ -395,14 +381,14 @@ export default function Constants(props) {
 	// Handle Add New
 	const handleAddNew = () => {
 		setEditingRow(null);
-		form.reset(defaultValues);
+		formMethods.reset(defaultValues);
 		setShowFormSheet(true);
 	};
 
 	// Handle Edit
 	const handleEdit = (data) => {
 		setEditingRow(data);
-		form.reset(data);
+		formMethods.reset(data);
 		setShowFormSheet(true);
 		toast.info('Editing constant');
 	};
@@ -470,7 +456,7 @@ export default function Constants(props) {
 				toast.success('Constant added successfully');
 			}
 
-			form.reset(defaultValues);
+			formMethods.reset(defaultValues);
 			setShowFormSheet(false);
 		} catch (error) {
 			toast.error('Invalid JSON format in Constant Values');
@@ -479,13 +465,13 @@ export default function Constants(props) {
 
 	// Handle Reset
 	const handleReset = () => {
-		form.reset(editingRow || defaultValues);
+		formMethods.reset(editingRow || defaultValues);
 		toast.info('Form reset successfully');
 	};
 
 	// Handle Compare JSON
 	const handleCompareJSON = () => {
-		const currentData = form.getValues();
+		const currentData = formMethods.getValues();
 		if (editingRow) {
 			setCompareData({
 				original: editingRow,
@@ -569,7 +555,7 @@ export default function Constants(props) {
 				return (
 					<FormField
 						key={config.name}
-						control={form.control}
+						control={formMethods.control}
 						name={config.name}
 						rules={rules}
 						render={({ field }) => (
@@ -582,9 +568,8 @@ export default function Constants(props) {
 									<Textarea
 										{...field}
 										disabled={config.disabled || config.readOnly}
-										className={`shadow-none ${config.isJSON ? 'h-[200px]' : 'h-[120px]'} resize-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-100 ${config.className}`}
+										className={`shadow-none ${config.isJSON ? 'h-[150px] sm:h-[200px]' : 'h-[100px] sm:h-[120px]'} resize-none disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-100 ${config.className}`}
 										placeholder={config.placeholder}
-										required={config.mandatory}
 									/>
 									<div className="min-h-[20px]">
 										<FormMessage />
@@ -599,7 +584,7 @@ export default function Constants(props) {
 				return (
 					<FormField
 						key={config.name}
-						control={form.control}
+						control={formMethods.control}
 						name={config.name}
 						rules={rules}
 						render={({ field }) => (
@@ -609,9 +594,9 @@ export default function Constants(props) {
 									{config.mandatory && <span className="text-red-500 ml-1">*</span>}
 								</FormLabel>
 								<div>
-									<Select value={field.value} onValueChange={field.onChange} disabled={config.disabled} required={config.mandatory}>
+									<Select value={field.value} onValueChange={field.onChange} disabled={config.disabled}>
 										<SelectTrigger
-											className={`flex h-[50px] w-full rounded-md border border-input bg-background py-2 px-4 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 text-sm disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${config.className}`}
+											className={`flex h-[44px] sm:h-[50px] w-full rounded-md border border-input bg-background py-2 px-3 sm:px-4 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 text-sm disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${config.className}`}
 										>
 											<SelectValue placeholder={config.placeholder || `Select ${config.label}`} />
 										</SelectTrigger>
@@ -637,7 +622,7 @@ export default function Constants(props) {
 				return (
 					<FormField
 						key={config.name}
-						control={form.control}
+						control={formMethods.control}
 						name={config.name}
 						rules={rules}
 						render={({ field }) => (
@@ -652,9 +637,8 @@ export default function Constants(props) {
 										type="text"
 										disabled={config.disabled || config.readOnly}
 										maxLength={config.maxLength}
-										className={`flex h-[50px] w-full rounded-md border border-input bg-background py-2 px-4 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 text-sm disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${config.className}`}
+										className={`flex h-[44px] sm:h-[50px] w-full rounded-md border border-input bg-background py-2 px-3 sm:px-4 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 text-sm disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed ${config.className}`}
 										placeholder={config.placeholder}
-										required={config.mandatory}
 									/>
 									<div className="min-h-[20px]">
 										<FormMessage />
@@ -668,27 +652,26 @@ export default function Constants(props) {
 	};
 
 	return (
-		<div className="w-full h-screen flex flex-col overflow-hidden">
-			{/* Main Content Area */}
-			<div className="flex-1 overflow-y-auto overflow-x-hidden">
-				<div className="p-4 sm:p-6 space-y-4">
-					{/* Header with Title and Action Buttons */}
-					<div className="flex flex-col sm:flex-row justify-between gap-4 items-start sm:items-center">
+		<div className="w-full h-screen flex flex-col overflow-hidden bg-gray-50 dark:bg-gray-900">
+			{/* Header Section - Fixed */}
+			<div className="flex-shrink-0 bg-white dark:bg-gray-800 border-b dark:border-gray-700">
+				<div className="p-3 sm:p-4 md:p-6">
+					<div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-4 items-start sm:items-center">
 						{/* Left Side - Title */}
-						<h2 className="text-xl font-semibold dark:text-white">Constants Management</h2>
+						<h2 className="text-lg sm:text-xl font-semibold dark:text-white">Constants Management</h2>
 
 						{/* Right Side - Action Buttons */}
-						<div className="flex flex-wrap gap-2 items-center">
-							<Button onClick={handleAddNew} className="gap-2 h-[40px] bg-blue-600 hover:bg-blue-700 text-white">
-								<Plus size={18} />
-								<span className="hidden sm:inline">Add New</span>
+						<div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+							<Button onClick={handleAddNew} className="gap-2 h-[36px] sm:h-[40px] bg-blue-600 hover:bg-blue-700 text-white text-sm flex-1 sm:flex-none">
+								<Plus size={16} className="sm:w-[18px] sm:h-[18px]" />
+								<span>Add New</span>
 							</Button>
 
 							<TooltipProvider>
 								<Tooltip>
 									<TooltipTrigger asChild>
-										<Button onClick={handleRefresh} className="h-[40px]" variant="outline" size="sm">
-											<RefreshCcw className="stroke-[#9ca3af]" size={18} />
+										<Button onClick={handleRefresh} className="h-[36px] sm:h-[40px]" variant="outline" size="sm">
+											<RefreshCcw className="stroke-[#9ca3af] w-4 h-4 sm:w-[18px] sm:h-[18px]" />
 										</Button>
 									</TooltipTrigger>
 									<TooltipContent>
@@ -697,15 +680,15 @@ export default function Constants(props) {
 								</Tooltip>
 							</TooltipProvider>
 
-							<Button onClick={handleExport} variant="outline" size="sm" className="gap-2 h-[40px]" disabled={tableData.length === 0 || excelLoading}>
-								<Download size={18} />
+							<Button onClick={handleExport} variant="outline" size="sm" className="gap-2 h-[36px] sm:h-[40px] text-sm" disabled={tableData.length === 0 || excelLoading}>
+								<Download size={16} className="sm:w-[18px] sm:h-[18px]" />
 								<span className="hidden sm:inline">Export</span>
 							</Button>
 
 							<label>
-								<Button variant="outline" size="sm" className="gap-2 h-[40px]" asChild>
+								<Button variant="outline" size="sm" className="gap-2 h-[36px] sm:h-[40px] text-sm" asChild>
 									<span>
-										<Upload size={18} />
+										<Upload size={16} className="sm:w-[18px] sm:h-[18px]" />
 										<span className="hidden sm:inline">Import</span>
 									</span>
 								</Button>
@@ -713,136 +696,30 @@ export default function Constants(props) {
 							</label>
 						</div>
 					</div>
-
-					{/* AG Grid Table */}
-					<div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg overflow-hidden">
-						<div className="w-full" style={{ height: '600px', overflowX: 'auto', overflowY: 'auto' }}>
-							<div className="w-full h-full min-w-[800px]">
-								<AgGridReact
-									ref={gridRef}
-									rowData={tableData}
-									columnDefs={columnDefs}
-									defaultColDef={defaultColDef}
-									modules={[ColumnsToolPanelModule, SetFilterModule]}
-									rowHeight={40}
-									cellSelection
-									headerHeight={40}
-									pagination={true}
-									paginationPageSize={20}
-									domLayout="normal"
-									sideBar={sideBar}
-									suppressMovableColumns
-									noRowsOverlayComponent={() => <span>Record not found.</span>}
-									className="ag-theme-quartz w-full h-full"
-								/>
-							</div>
-						</div>
-					</div>
 				</div>
 			</div>
 
-			{/* Form Sheet */}
-			<Sheet open={showFormSheet} onOpenChange={setShowFormSheet}>
-				<SheetContent side="right" className="w-full sm:max-w-2xl overflow-y-auto">
-					<SheetHeader className="mb-6">
-						<SheetTitle className="text-xl">
-							{editingRow ? 'Edit Constant' : 'Add New Constant'}
-						</SheetTitle>
-					</SheetHeader>
-
-					<Form {...form}>
-						<div autoComplete="off" className="space-y-6">
-							{/* Form Fields */}
-							<div className="space-y-6">
-								{sortedFields.map((field) => renderFormField(field))}
-							</div>
-
-							{/* Action Buttons */}
-							<SheetFooter className="flex flex-col sm:flex-row gap-2 pt-6 border-t dark:border-gray-700">
-								<Button 
-									type="button" 
-									size="sm" 
-									onClick={handleReset} 
-									variant="outline"
-									className="gap-2 h-[44px]"
-								>
-									<RotateCcw size={16} />
-									Reset
-								</Button>
+			{/* AG Grid Container - Scrollable */}
+			<div className="flex-1 overflow-hidden p-3 sm:p-4 md:p-6">
+				<div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg h-full overflow-hidden">
+					<div className="w-full h-full">
+						<AgGridReact
+							ref={gridRef}
+							rowData={tableData}
+							columnDefs={columnDefs}
+							defaultColDef={defaultColDef}
+							rowHeight={40}
+							cellSelection={true}
+							headerHeight={40}
+							pagination={true}
+							paginationPageSize={20}
+							domLayout="normal"
+							sideBar={sideBar}
+							suppressMovableColumns={true}
+							noRowsOverlayComponent={() => <span>Record not found.</span>}
+							className="ag-theme-quartz w-full h-full"
+						/>
+					</div>
+				</div>
+			</div>
 								
-								{editingRow && (
-									<Button 
-										type="button" 
-										size="sm" 
-										onClick={handleCompareJSON} 
-										className="gap-2 h-[44px] bg-cyan-600 hover:bg-cyan-700 text-white"
-									>
-										<GitCompare size={16} />
-										Compare
-									</Button>
-								)}
-
-								<Button
-									className={`h-[44px] flex-1 bg-green-600 hover:bg-green-700 text-white ${!form.formState.isValid ? 'opacity-50 cursor-not-allowed' : ''}`}
-									type="button"
-									onClick={form.handleSubmit(handleFormSubmit)}
-									disabled={!form.formState.isValid}
-								>
-									{editingRow ? 'Update' : 'Save'}
-								</Button>
-							</SheetFooter>
-						</div>
-					</Form>
-				</SheetContent>
-			</Sheet>
-
-			{/* Delete Dialog */}
-			<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Delete Constant</DialogTitle>
-					</DialogHeader>
-					<div>Are you sure you want to delete this constant? This action cannot be undone.</div>
-					<DialogFooter className="flex justify-end gap-2">
-						<Button variant="outline" onClick={handleDeleteCancel}>
-							Cancel
-						</Button>
-						<Button variant="destructive" onClick={handleDeleteConfirm}>
-							Delete
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
-			{/* Compare Dialog */}
-			{showCompareDialog && (
-				<Dialog open={showCompareDialog} onOpenChange={setShowCompareDialog}>
-					<DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
-						<DialogHeader>
-							<DialogTitle>Compare JSON</DialogTitle>
-						</DialogHeader>
-						<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-							<div>
-								<h3 className="font-semibold mb-2 text-sm dark:text-white">Original</h3>
-								<pre className="bg-gray-100 dark:bg-gray-900 p-3 rounded text-xs overflow-auto max-h-96">
-									{JSON.stringify(compareData.original, null, 2)}
-								</pre>
-							</div>
-							<div>
-								<h3 className="font-semibold mb-2 text-sm dark:text-white">Modified</h3>
-								<pre className="bg-gray-100 dark:bg-gray-900 p-3 rounded text-xs overflow-auto max-h-96">
-									{JSON.stringify(compareData.modified, null, 2)}
-								</pre>
-							</div>
-						</div>
-						<DialogFooter>
-							<Button variant="outline" onClick={() => setShowCompareDialog(false)}>
-								Close
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
-			)}
-		</div>
-	);
-}
